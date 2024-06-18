@@ -1,2 +1,3 @@
-.env
-
+# .gitignore
+config/.env*
+config/.env.script2

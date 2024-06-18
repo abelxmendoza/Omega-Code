@@ -7,7 +7,7 @@
 # and Raspberry Pi user should be defined in a .env file.
 
 # Load environment variables from .env file
-export $(grep -v '^#' .env | xargs)
+export $(grep -v '^#' config/.env | xargs)
 
 # Function to connect to iPhone hotspot
 connect_to_hotspot() {
@@ -23,7 +23,7 @@ check_internet() {
     else
         echo "No internet connection. Please check your hotspot settings."
         exit 1
-    }
+    fi
 }
 
 # Function to check Tailscale status
