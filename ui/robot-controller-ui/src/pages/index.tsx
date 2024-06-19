@@ -16,10 +16,15 @@ const Home: React.FC = () => {
 
       <Header />
       <main className="p-4 space-y-4">
-        <VideoFeed />
-        <ControlPanel />
-        <SpeedControl />
-        <CommandLog />
+        <div className="flex justify-center items-center space-x-4">
+          <ControlPanel />
+          <VideoFeed />
+          <ControlPanel />
+        </div>
+        <div className="flex flex-col items-center space-y-4 mt-4">
+          <SpeedControl />
+          <CommandLog />
+        </div>
       </main>
     </div>
   );
