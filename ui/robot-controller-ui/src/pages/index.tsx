@@ -113,6 +113,7 @@ const Home: React.FC = () => {
               onLeft={handleCarControl('move-left')}
               onRight={handleCarControl('move-right')}
               labels={{ up: 'W', down: 'S', left: 'A', right: 'D' }}
+              controlType="wasd"
             />
           </div>
           <VideoFeed />
@@ -123,6 +124,7 @@ const Home: React.FC = () => {
               onLeft={handleCameraControl('camera-left')}
               onRight={handleCameraControl('camera-right')}
               labels={{ up: '↑', down: '↓', left: '←', right: '→' }}
+              controlType="arrows"
             />
           </div>
         </div>
