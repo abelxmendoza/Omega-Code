@@ -1,4 +1,3 @@
-// File: /Omega-Code/ui/robot-controller-ui/src/pages/index.tsx
 import React, { useEffect, useState } from 'react';
 import Head from 'next/head';
 import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
@@ -7,8 +6,8 @@ import VideoFeed from '../components/VideoFeed';
 import ControlPanel from '../components/ControlPanel';
 import SpeedControl from '../components/SpeedControl';
 import CommandLog from '../components/CommandLog';
-import { useCommandLog } from '../components/CommandLogContext';
 import LedModal from '../components/LedModal';
+import { useCommandLog } from '../components/CommandLogContext';
 
 const Home: React.FC = () => {
   const { addCommand } = useCommandLog();
@@ -82,7 +81,7 @@ const Home: React.FC = () => {
         case 'i':
         case 'I':
           setIsModalOpen(true);
-          return; // Exit the function early, as we don't want to send a command for 'i'
+          break;
         default:
           break;
       }
@@ -103,10 +102,6 @@ const Home: React.FC = () => {
   const handleCarControl = (command: string) => () => sendCommand(command);
   const handleCameraControl = (command: string) => () => sendCommand(command);
 
-  const batteryClass = batteryLife > 20 ? 'bg-blue-500' : 'bg-red-500';
-  const batteryStyle = batteryLife > 20 ? 'neon-blue' : 'black';
-  const batteryBarClass = `h-4 rounded ${batteryClass}`;
-
   return (
     <div className="min-h-screen bg-gray-50">
       <Head>
@@ -116,9 +111,10 @@ const Home: React.FC = () => {
       </Head>
 
       <Header isConnected={isConnected} batteryLevel={batteryLife} />
+
       <main className="p-4 space-y-4">
-        <div className="flex justify-between items-center space-x-8">
-          <div className="flex-shrink-0">
+        <div className="flex justify-center items-center space-x-8">
+          <div className="flex-shrink-0 mr-20">
             <ControlPanel
               onUp={handleCarControl('move-up')}
               onDown={handleCarControl('move-down')}
@@ -129,7 +125,7 @@ const Home: React.FC = () => {
             />
           </div>
           <VideoFeed />
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 ml-20">
             <ControlPanel
               onUp={handleCameraControl('camera-up')}
               onDown={handleCameraControl('camera-down')}
@@ -141,10 +137,10 @@ const Home: React.FC = () => {
           </div>
         </div>
         <div className="flex flex-col items-center space-y-4 mt-4">
-          <div className="flex space-x-4 items-center">
+          <div className="flex items-center space-x-4">
             <button
-              onClick={() => setIsModalOpen(true)}
               className="w-16 h-16 rounded-lg bg-blue-500 text-white flex flex-col items-center justify-center"
+              onClick={() => setIsModalOpen(true)}
             >
               <span>I</span>
               <span>(LED)</span>
