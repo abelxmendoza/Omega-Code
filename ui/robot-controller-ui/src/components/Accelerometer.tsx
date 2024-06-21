@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ sendCommand }) => {
+const Accelerometer: React.FC<{ sendCommand: (command: string) => void }> = ({ sendCommand }) => {
   const [speed, setSpeed] = useState(0);
   const [accelerating, setAccelerating] = useState(false);
   const [decelerating, setDecelerating] = useState(false);
@@ -36,9 +36,6 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
               });
             }, 100); // Adjust this value to control the deceleration speed
           }
-          break;
-        case ' ':
-          sendCommand('honk');
           break;
         default:
           break;
@@ -83,13 +80,15 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
     <div className="flex flex-col items-center space-y-4">
       <div className="flex items-center space-x-2 w-full">
         <span>Speed:</span>
-        <div className="w-full bg-gray-300 rounded h-4 flex items-center">
+        <div className="w-full bg-gray-300 rounded h-4 flex items-center relative">
           <div
-            className={`h-full rounded ${getProgressColor()}`}
+            className={`h-full rounded ${getProgressColor()} transition-all duration-500 ease-in-out`}
             style={{ width: `${speed}%` }}
           ></div>
+          <div className="absolute inset-0 flex justify-center items-center text-white font-bold">
+            {speed}%
+          </div>
         </div>
-        <span>{speed}</span>
       </div>
       <div className="flex flex-col items-center">
         <div className="flex space-x-4">
@@ -117,4 +116,4 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
   );
 };
 
-export default SpeedControl;
+export default Accelerometer;
