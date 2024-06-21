@@ -1,11 +1,14 @@
+// File: /Omega-Code/ui/robot-controller-ui/src/pages/index.tsx
 import React, { useEffect, useState } from 'react';
 import Head from 'next/head';
+import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 import Header from '../components/Header';
 import VideoFeed from '../components/VideoFeed';
 import ControlPanel from '../components/ControlPanel';
 import SpeedControl from '../components/SpeedControl';
 import CommandLog from '../components/CommandLog';
 import { useCommandLog } from '../components/CommandLogContext';
+import LedControl from '../components/LedControl'; // Add this line
 
 const Home: React.FC = () => {
   const { addCommand } = useCommandLog();
@@ -73,7 +76,7 @@ const Home: React.FC = () => {
           command = 'decrease-speed';
           break;
         case ' ':
-          command = 'stop';
+          command = 'honk';
           break;
         default:
           break;
@@ -94,6 +97,10 @@ const Home: React.FC = () => {
 
   const handleCarControl = (command: string) => () => sendCommand(command);
   const handleCameraControl = (command: string) => () => sendCommand(command);
+
+  const batteryClass = batteryLife > 20 ? 'bg-blue-500' : 'bg-red-500';
+  const batteryStyle = batteryLife > 20 ? 'neon-blue' : 'black';
+  const batteryBarClass = `h-4 rounded ${batteryClass}`;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -129,7 +136,8 @@ const Home: React.FC = () => {
           </div>
         </div>
         <div className="flex flex-col items-center space-y-4 mt-4">
-          <SpeedControl />
+          <SpeedControl sendCommand={sendCommand} />
+          <LedControl sendCommand={sendCommand} />
           <CommandLog />
         </div>
       </main>
