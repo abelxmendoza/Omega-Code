@@ -1,4 +1,3 @@
-// File: /Omega-Code/ui/robot-controller-ui/components/SpeedControl.tsx
 import React, { useState, useEffect } from 'react';
 
 const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ sendCommand }) => {
@@ -24,7 +23,7 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
                 sendCommand(`set-speed-${newSpeed}`);
                 return newSpeed;
               });
-            }, 100); 
+            }, 100); // Adjust this value to control the acceleration speed
           }
           break;
         case 'o':
@@ -38,7 +37,7 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
                 sendCommand(`set-speed-${newSpeed}`);
                 return newSpeed;
               });
-            }, 100); 
+            }, 100); // Adjust this value to control the deceleration speed
           }
           break;
         case ' ':
@@ -84,9 +83,9 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
   }, [accelerating, decelerating, sendCommand]);
 
   const getProgressColor = () => {
-    if (accelerating) return 'bg-green-500';
-    if (decelerating) return 'bg-red-500';
-    return 'bg-gray-300';
+    if (speed <= 20) return 'bg-red-500';
+    if (speed <= 60) return 'bg-yellow-500';
+    return 'bg-green-500';
   };
 
   const getButtonClass = (key: string) => {
@@ -97,13 +96,15 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
     <div className="flex flex-col items-center space-y-4">
       <div className="flex items-center space-x-2 w-full">
         <span>Speed:</span>
-        <div className="w-full bg-gray-300 rounded h-4 flex items-center">
+        <div className="w-full bg-gray-300 rounded h-4 flex items-center relative">
           <div
-            className={`h-full rounded ${getProgressColor()}`}
+            className={`h-full rounded ${getProgressColor()} transition-all duration-500 ease-in-out`}
             style={{ width: `${speed}%` }}
           ></div>
+          <div className="absolute inset-0 flex justify-center items-center text-white font-bold">
+            {speed}%
+          </div>
         </div>
-        <span>{speed}</span>
       </div>
       <div className="flex flex-col items-center">
         <div className="flex space-x-4">
