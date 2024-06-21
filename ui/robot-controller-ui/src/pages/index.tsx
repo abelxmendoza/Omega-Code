@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Header from '../components/Header';
 import VideoFeed from '../components/VideoFeed';
@@ -9,6 +9,8 @@ import { useCommandLog } from '../components/CommandLogContext';
 
 const Home: React.FC = () => {
   const { addCommand } = useCommandLog();
+  const [isConnected, setIsConnected] = useState(true);
+  const [batteryLife, setBatteryLife] = useState(80);
 
   const sendCommand = (command: string) => {
     fetch('https://localhost:8080/command', {
@@ -26,6 +28,7 @@ const Home: React.FC = () => {
       }
     }).catch(error => {
       console.error('Error sending command:', error);
+      setIsConnected(false);
     });
   };
 
@@ -100,7 +103,7 @@ const Home: React.FC = () => {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <Header />
+      <Header isConnected={isConnected} batteryLevel={batteryLife} />
       <main className="p-4 space-y-4">
         <div className="flex justify-between items-center space-x-8">
           <div className="flex-shrink-0">
