@@ -1,3 +1,4 @@
+// File: /Omega-Code/servers/robot-controller-backend/main.go
 package main
 
 import (
@@ -8,12 +9,23 @@ import (
     "io/ioutil"
     "net/http"
     "os"
+    "os/exec"
 
     "github.com/joho/godotenv"
 )
 
 type Command struct {
-    Command string `json:"command"`
+    Command  string `json:"command"`
+    Color    string `json:"color,omitempty"`
+    Mode     string `json:"mode,omitempty"`
+    Pattern  string `json:"pattern,omitempty"`
+    Interval int    `json:"interval,omitempty"`
+}
+
+func executeLEDCommand(cmd Command) {
+    // Simulate the LED control command with a Python script
+    cmdArgs := []string{"-c", fmt.Sprintf("python3 led_control.py %s %s %s %d", cmd.Color, cmd.Mode, cmd.Pattern, cmd.Interval)}
+    exec.Command("sh", cmdArgs...).Run()
 }
 
 // CORS Middleware
@@ -52,6 +64,10 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
     }
 
     fmt.Printf("Command received: %s\n", cmd.Command)
+    if cmd.Command == "set-led" {
+        executeLEDCommand(cmd)
+    }
+
     fmt.Fprintf(w, "Command executed: %s", cmd.Command)
 }
 

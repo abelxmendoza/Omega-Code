@@ -8,12 +8,13 @@ import ControlPanel from '../components/ControlPanel';
 import SpeedControl from '../components/SpeedControl';
 import CommandLog from '../components/CommandLog';
 import { useCommandLog } from '../components/CommandLogContext';
-import LedControl from '../components/LedControl'; // Add this line
+import LedModal from '../components/LedModal';
 
 const Home: React.FC = () => {
   const { addCommand } = useCommandLog();
   const [isConnected, setIsConnected] = useState(true);
   const [batteryLife, setBatteryLife] = useState(80);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const sendCommand = (command: string) => {
     fetch('https://localhost:8080/command', {
@@ -78,6 +79,10 @@ const Home: React.FC = () => {
         case ' ':
           command = 'honk';
           break;
+        case 'i':
+        case 'I':
+          setIsModalOpen(true);
+          return; // Exit the function early, as we don't want to send a command for 'i'
         default:
           break;
       }
@@ -136,11 +141,24 @@ const Home: React.FC = () => {
           </div>
         </div>
         <div className="flex flex-col items-center space-y-4 mt-4">
-          <SpeedControl sendCommand={sendCommand} />
-          <LedControl sendCommand={sendCommand} />
+          <div className="flex space-x-4 items-center">
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="w-16 h-16 rounded-lg bg-blue-500 text-white flex flex-col items-center justify-center"
+            >
+              <span>I</span>
+              <span>(LED)</span>
+            </button>
+            <SpeedControl sendCommand={sendCommand} />
+          </div>
           <CommandLog />
         </div>
       </main>
+      <LedModal
+        sendCommand={sendCommand}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
     </div>
   );
 };
