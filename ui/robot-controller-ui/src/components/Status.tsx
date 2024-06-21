@@ -31,3 +31,4 @@ const Status: React.FC<StatusProps> = ({ status, battery }) => {
 };
 
 export default Status;
+

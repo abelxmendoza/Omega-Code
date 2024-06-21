@@ -1,9 +1,11 @@
+// File: /Omega-Code/ui/robot-controller-ui/components/SpeedControl.tsx
 import React, { useState, useEffect } from 'react';
 
 const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ sendCommand }) => {
   const [speed, setSpeed] = useState(0);
   const [accelerating, setAccelerating] = useState(false);
   const [decelerating, setDecelerating] = useState(false);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
 
   useEffect(() => {
     let accelerateInterval: NodeJS.Timeout;
@@ -15,29 +17,32 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
         case 'P':
           if (!accelerating) {
             setAccelerating(true);
+            setActiveKey('p');
             accelerateInterval = setInterval(() => {
               setSpeed(prevSpeed => {
                 const newSpeed = Math.min(prevSpeed + 1, 100);
                 sendCommand(`set-speed-${newSpeed}`);
                 return newSpeed;
               });
-            }, 100); // Adjust this value to control the acceleration speed
+            }, 100); 
           }
           break;
         case 'o':
         case 'O':
           if (!decelerating) {
             setDecelerating(true);
+            setActiveKey('o');
             decelerateInterval = setInterval(() => {
               setSpeed(prevSpeed => {
                 const newSpeed = Math.max(prevSpeed - 1, 0);
                 sendCommand(`set-speed-${newSpeed}`);
                 return newSpeed;
               });
-            }, 100); // Adjust this value to control the deceleration speed
+            }, 100); 
           }
           break;
         case ' ':
+          setActiveKey(' ');
           sendCommand('honk');
           break;
         default:
@@ -50,12 +55,17 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
         case 'p':
         case 'P':
           setAccelerating(false);
+          setActiveKey(null);
           clearInterval(accelerateInterval);
           break;
         case 'o':
         case 'O':
           setDecelerating(false);
+          setActiveKey(null);
           clearInterval(decelerateInterval);
+          break;
+        case ' ':
+          setActiveKey(null);
           break;
         default:
           break;
@@ -74,9 +84,13 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
   }, [accelerating, decelerating, sendCommand]);
 
   const getProgressColor = () => {
-    if (speed <= 20) return 'bg-red-500';
-    if (speed <= 60) return 'bg-yellow-500';
-    return 'bg-green-500';
+    if (accelerating) return 'bg-green-500';
+    if (decelerating) return 'bg-red-500';
+    return 'bg-gray-300';
+  };
+
+  const getButtonClass = (key: string) => {
+    return activeKey === key ? 'bg-red-500' : 'bg-blue-500';
   };
 
   return (
@@ -94,20 +108,22 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
       <div className="flex flex-col items-center">
         <div className="flex space-x-4">
           <button
-            className="w-16 h-16 rounded-lg bg-blue-500 text-white flex items-center justify-center"
-            onClick={() => sendCommand('accelerate')}
-          >
-            P
-          </button>
-          <button
-            className="w-16 h-16 rounded-lg bg-blue-500 text-white flex items-center justify-center"
+            className={`w-16 h-16 rounded-lg ${getButtonClass('o')} text-white flex flex-col items-center justify-center`}
             onClick={() => sendCommand('decelerate')}
           >
-            O
+            <span>O</span>
+            <span>(brake)</span>
+          </button>
+          <button
+            className={`w-16 h-16 rounded-lg ${getButtonClass('p')} text-white flex flex-col items-center justify-center`}
+            onClick={() => sendCommand('accelerate')}
+          >
+            <span>P</span>
+            <span>(gas)</span>
           </button>
         </div>
         <button
-          className="w-32 h-12 rounded-lg bg-blue-500 text-white mt-4 flex items-center justify-center"
+          className={`w-32 h-12 rounded-lg ${getButtonClass(' ')} text-white mt-4 flex items-center justify-center`}
           onClick={() => sendCommand('honk')}
         >
           Space (Honk)
