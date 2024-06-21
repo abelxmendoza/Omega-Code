@@ -1,8 +1,14 @@
+import React from 'react';
 import { AppProps } from 'next/app';
-import '../styles/globals.css';
+import { CommandLogProvider } from '../components/CommandLogContext';
+import '../styles/globals.css'; // Import your global CSS file
 
-function MyApp({ Component, pageProps }: AppProps) {
-  return <Component {...pageProps} />;
-}
+const MyApp = ({ Component, pageProps }: AppProps) => {
+  return (
+    <CommandLogProvider>
+      <Component {...pageProps} />
+    </CommandLogProvider>
+  );
+};
 
 export default MyApp;

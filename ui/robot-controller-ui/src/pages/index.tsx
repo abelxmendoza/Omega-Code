@@ -5,10 +5,13 @@ import VideoFeed from '../components/VideoFeed';
 import ControlPanel from '../components/ControlPanel';
 import SpeedControl from '../components/SpeedControl';
 import CommandLog from '../components/CommandLog';
+import { useCommandLog } from '../components/CommandLogContext';
 
 const Home: React.FC = () => {
+  const { addCommand } = useCommandLog();
+
   const sendCommand = (command: string) => {
-    fetch('http://localhost:8080/command', {  // Ensure the URL matches your Go server port
+    fetch('https://localhost:8080/command', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -17,6 +20,9 @@ const Home: React.FC = () => {
     }).then(response => {
       if (!response.ok) {
         console.error('Error sending command:', response.statusText);
+      } else {
+        console.log(`Command sent: ${command}`);
+        addCommand(command);
       }
     }).catch(error => {
       console.error('Error sending command:', error);
@@ -25,48 +31,54 @@ const Home: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      let command = '';
       switch (event.key) {
         case 'w':
         case 'W':
-          sendCommand('move-up');
+          command = 'move-up';
           break;
         case 'a':
         case 'A':
-          sendCommand('move-left');
+          command = 'move-left';
           break;
         case 's':
         case 'S':
-          sendCommand('move-down');
+          command = 'move-down';
           break;
         case 'd':
         case 'D':
-          sendCommand('move-right');
+          command = 'move-right';
           break;
         case 'ArrowUp':
-          sendCommand('camera-up');
+          command = 'camera-up';
           break;
         case 'ArrowLeft':
-          sendCommand('camera-left');
+          command = 'camera-left';
           break;
         case 'ArrowDown':
-          sendCommand('camera-down');
+          command = 'camera-down';
           break;
         case 'ArrowRight':
-          sendCommand('camera-right');
+          command = 'camera-right';
           break;
         case 'p':
         case 'P':
-          sendCommand('increase-speed');
+          command = 'increase-speed';
           break;
         case 'o':
         case 'O':
-          sendCommand('decrease-speed');
+          command = 'decrease-speed';
           break;
         case ' ':
-          sendCommand('stop');
+          command = 'stop';
           break;
         default:
           break;
+      }
+
+      if (command) {
+        console.log(`Sending command: ${command}`);
+        sendCommand(command);
       }
     };
 
@@ -97,6 +109,7 @@ const Home: React.FC = () => {
               onDown={handleCarControl('move-down')}
               onLeft={handleCarControl('move-left')}
               onRight={handleCarControl('move-right')}
+              labels={{ up: 'W', down: 'S', left: 'A', right: 'D' }}
             />
           </div>
           <VideoFeed />
@@ -106,6 +119,7 @@ const Home: React.FC = () => {
               onDown={handleCameraControl('camera-down')}
               onLeft={handleCameraControl('camera-left')}
               onRight={handleCameraControl('camera-right')}
+              labels={{ up: '↑', down: '↓', left: '←', right: '→' }}
             />
           </div>
         </div>
@@ -119,4 +133,3 @@ const Home: React.FC = () => {
 };
 
 export default Home;
-
