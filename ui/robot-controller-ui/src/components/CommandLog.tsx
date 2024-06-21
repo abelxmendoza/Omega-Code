@@ -1,7 +1,9 @@
 import React from 'react';
+import { useCommandLog } from './CommandLogContext';
 
 const CommandLog: React.FC = () => {
-  const commands = ["Command 1", "Command 2", "Command 3"];
+  const { commands } = useCommandLog();
+
   return (
     <div className="w-full md:w-3/4 lg:w-1/2 p-4 bg-gray-100">
       <h2 className="text-lg">Command Log</h2>
@@ -15,5 +17,3 @@ const CommandLog: React.FC = () => {
 };
 
 export default CommandLog;
-
-
