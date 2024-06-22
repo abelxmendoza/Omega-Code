@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import Head from 'next/head';
-import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 import Header from '../components/Header';
 import VideoFeed from '../components/VideoFeed';
 import ControlPanel from '../components/ControlPanel';
@@ -8,6 +7,8 @@ import SpeedControl from '../components/SpeedControl';
 import CommandLog from '../components/CommandLog';
 import LedModal from '../components/LedModal';
 import { useCommandLog } from '../components/CommandLogContext';
+import { COMMAND } from '@/control_definitions'; // Use alias defined in tsconfig.json
+
 
 const Home: React.FC = () => {
   const { addCommand } = useCommandLog();
@@ -15,13 +16,13 @@ const Home: React.FC = () => {
   const [batteryLife, setBatteryLife] = useState(80);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const sendCommand = (command: string) => {
+  const sendCommand = (command: string, angle: number = 0) => {
     fetch('https://localhost:8080/command', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ command }),
+      body: JSON.stringify({ command, angle }),
     }).then(response => {
       if (!response.ok) {
         console.error('Error sending command:', response.statusText);
@@ -38,45 +39,51 @@ const Home: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       let command = '';
+      let angle = 0;
+
       switch (event.key) {
         case 'w':
         case 'W':
-          command = 'move-up';
+          command = COMMAND.MOVE_UP;
           break;
         case 'a':
         case 'A':
-          command = 'move-left';
+          command = COMMAND.MOVE_LEFT;
           break;
         case 's':
         case 'S':
-          command = 'move-down';
+          command = COMMAND.MOVE_DOWN;
           break;
         case 'd':
         case 'D':
-          command = 'move-right';
+          command = COMMAND.MOVE_RIGHT;
           break;
         case 'ArrowUp':
-          command = 'camera-up';
+          command = COMMAND.CMD_SERVO_VERTICAL;
+          angle = 10; // Adjust angle as needed
           break;
         case 'ArrowLeft':
-          command = 'camera-left';
+          command = COMMAND.CMD_SERVO_HORIZONTAL;
+          angle = -10; // Adjust angle as needed
           break;
         case 'ArrowDown':
-          command = 'camera-down';
+          command = COMMAND.CMD_SERVO_VERTICAL;
+          angle = -10; // Adjust angle as needed
           break;
         case 'ArrowRight':
-          command = 'camera-right';
+          command = COMMAND.CMD_SERVO_HORIZONTAL;
+          angle = 10; // Adjust angle as needed
           break;
         case 'p':
         case 'P':
-          command = 'increase-speed';
+          command = COMMAND.INCREASE_SPEED;
           break;
         case 'o':
         case 'O':
-          command = 'decrease-speed';
+          command = COMMAND.DECREASE_SPEED;
           break;
         case ' ':
-          command = 'honk';
+          command = COMMAND.HONK;
           break;
         case 'i':
         case 'I':
@@ -88,7 +95,7 @@ const Home: React.FC = () => {
 
       if (command) {
         console.log(`Sending command: ${command}`);
-        sendCommand(command);
+        sendCommand(command, angle);
       }
     };
 
@@ -116,10 +123,10 @@ const Home: React.FC = () => {
         <div className="flex justify-center items-center space-x-8">
           <div className="flex-shrink-0 mr-20">
             <ControlPanel
-              onUp={handleCarControl('move-up')}
-              onDown={handleCarControl('move-down')}
-              onLeft={handleCarControl('move-left')}
-              onRight={handleCarControl('move-right')}
+              onUp={handleCarControl(COMMAND.MOVE_UP)}
+              onDown={handleCarControl(COMMAND.MOVE_DOWN)}
+              onLeft={handleCarControl(COMMAND.MOVE_LEFT)}
+              onRight={handleCarControl(COMMAND.MOVE_RIGHT)}
               labels={{ up: 'W', down: 'S', left: 'A', right: 'D' }}
               controlType="wasd"
             />
@@ -127,10 +134,10 @@ const Home: React.FC = () => {
           <VideoFeed />
           <div className="flex-shrink-0 ml-20">
             <ControlPanel
-              onUp={handleCameraControl('camera-up')}
-              onDown={handleCameraControl('camera-down')}
-              onLeft={handleCameraControl('camera-left')}
-              onRight={handleCameraControl('camera-right')}
+              onUp={handleCameraControl(COMMAND.CMD_SERVO_VERTICAL)}
+              onDown={handleCameraControl(COMMAND.CMD_SERVO_VERTICAL)}
+              onLeft={handleCameraControl(COMMAND.CMD_SERVO_HORIZONTAL)}
+              onRight={handleCameraControl(COMMAND.CMD_SERVO_HORIZONTAL)}
               labels={{ up: '↑', down: '↓', left: '←', right: '→' }}
               controlType="arrows"
             />
