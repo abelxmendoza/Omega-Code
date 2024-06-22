@@ -1,3 +1,4 @@
+// File: src/components/CommandLog.tsx
 import React from 'react';
 import { useCommandLog } from './CommandLogContext';
 
