@@ -1,15 +1,11 @@
-// src/components/CommandLog.tsx
-
-/*
-This component displays the log of commands received by the application.
-It uses the CommandLogContext to access the commands.
-*/
-
 import React from 'react';
 import { useCommandLog } from './CommandLogContext';
 
+// CommandLog component renders the list of commands that have been sent
 const CommandLog: React.FC = () => {
   const { commands } = useCommandLog();
+
+  console.log('Rendering CommandLog with commands:', commands); // Add print statement for debugging
 
   return (
     <div className="w-full md:w-3/4 lg:w-1/2 p-4 bg-gray-900 rounded-lg shadow-md">

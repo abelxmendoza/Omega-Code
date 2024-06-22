@@ -1,44 +1,45 @@
-// src/pages/index.tsx
-
-/*
-This is the main application page that sets up the robot control interface.
-It includes the video feed, control panels, speed control, and command log.
-*/
-
-import React, { useEffect } from 'react';
 import Head from 'next/head';
-import Header from '../components/Header';
-import VideoFeed from '../components/VideoFeed';
+import React, { useEffect } from 'react';
 import ControlPanel from '../components/ControlPanel';
 import SpeedControl from '../components/SpeedControl';
 import CommandLog from '../components/CommandLog';
 import { CommandLogProvider, useCommandLog } from '../components/CommandLogContext';
-import { COMMAND } from '../control_definitions'; // Import command definitions
+import { COMMAND } from '../control_definitions';
+import Header from '../components/Header';
+import VideoFeed from '../components/VideoFeed';
+import { v4 as uuidv4 } from 'uuid';
 
+/**
+ * Home Component
+ * 
+ * This component serves as the main page for controlling the robot, including
+ * video feed, control panels, speed control, and command log.
+ */
 const Home: React.FC = () => {
-  const { addCommand } = useCommandLog(); // Use context to add command to log
+  const { addCommand } = useCommandLog();
 
-  // Function to send commands to the server
   const sendCommand = (command: string, angle: number = 0) => {
+    const requestId = uuidv4();
     fetch('https://localhost:8080/command', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ command, angle }),
-    }).then(response => {
-      if (!response.ok) {
-        console.error('Error sending command:', response.statusText);
-      } else {
-        console.log(`Command sent: ${command}`);
-        addCommand(command); // Add command to log on successful send
-      }
-    }).catch(error => {
-      console.error('Error sending command:', error);
-    });
+      body: JSON.stringify({ command, angle, request_id: requestId }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          console.error('Error sending command:', response.statusText);
+        } else {
+          console.log(`Command sent: ${command}`);
+          addCommand(`${command} (ID: ${requestId})`);
+        }
+      })
+      .catch((error) => {
+        console.error('Error sending command:', error);
+      });
   };
 
-  // Effect hook to handle key press events
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       switch (event.key) {
@@ -59,16 +60,16 @@ const Home: React.FC = () => {
           sendCommand(COMMAND.MOVE_RIGHT);
           break;
         case 'ArrowUp':
-          sendCommand(COMMAND.CMD_SERVO_VERTICAL, 10); // Adjust angle as needed
+          sendCommand(COMMAND.CMD_SERVO_VERTICAL, 10);
           break;
         case 'ArrowLeft':
-          sendCommand(COMMAND.CMD_SERVO_HORIZONTAL, 10); // Adjust angle as needed
+          sendCommand(COMMAND.CMD_SERVO_HORIZONTAL, 10);
           break;
         case 'ArrowDown':
-          sendCommand(COMMAND.CMD_SERVO_VERTICAL, -10); // Adjust angle as needed
+          sendCommand(COMMAND.CMD_SERVO_VERTICAL, -10);
           break;
         case 'ArrowRight':
-          sendCommand(COMMAND.CMD_SERVO_HORIZONTAL, -10); // Adjust angle as needed
+          sendCommand(COMMAND.CMD_SERVO_HORIZONTAL, -10);
           break;
         case 'p':
         case 'P':
@@ -79,7 +80,10 @@ const Home: React.FC = () => {
           sendCommand(COMMAND.DECREASE_SPEED);
           break;
         case ' ':
-          sendCommand(COMMAND.HONK);
+          sendCommand(COMMAND.CMD_BUZZER);
+          break;
+        case '0':
+          sendCommand(COMMAND.CMD_BUZZER_STOP);
           break;
         default:
           break;
@@ -97,7 +101,7 @@ const Home: React.FC = () => {
   const handleCameraControl = (command: string, angle: number) => () => sendCommand(command, angle);
 
   return (
-    <CommandLogProvider> {/* Wrap components with CommandLogProvider */}
+    <CommandLogProvider>
       <div className="min-h-screen bg-gray-50">
         <Head>
           <title>Robot Controller</title>
@@ -105,7 +109,7 @@ const Home: React.FC = () => {
           <link rel="icon" href="/favicon.ico" />
         </Head>
 
-        <Header />
+        <Header isConnected={true} batteryLevel={75} />
         <main className="p-4 space-y-4">
           <div className="flex justify-center items-center space-x-8">
             <div className="flex-shrink-0">

@@ -1,12 +1,6 @@
-// src/components/ControlPanel.tsx
-
-/*
-This component represents a control panel for the robot that can be operated using either WASD keys or arrow keys.
-It allows the user to control the robot's movements (up, down, left, right) and provides visual feedback on the active control.
-*/
-
 import React, { useState, useEffect } from 'react';
 
+// Props for the ControlPanel component
 interface ControlPanelProps {
   onUp: () => void;
   onDown: () => void;
@@ -16,12 +10,17 @@ interface ControlPanelProps {
   controlType: 'wasd' | 'arrows';
 }
 
+/**
+ * ControlPanel Component
+ * 
+ * This component provides controls for moving the robot in different directions.
+ */
 const ControlPanel: React.FC<ControlPanelProps> = ({ onUp, onDown, onLeft, onRight, labels, controlType }) => {
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
   useEffect(() => {
-    // Function to handle keydown events
     const handleKeyDown = (event: KeyboardEvent) => {
+      console.log(`Key pressed in ControlPanel (${controlType}): ${event.key}`);
       switch (controlType) {
         case 'wasd':
           switch (event.key) {
@@ -76,8 +75,8 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onUp, onDown, onLeft, onRig
       }
     };
 
-    // Function to handle keyup events
     const handleKeyUp = (event: KeyboardEvent) => {
+      console.log(`Key released in ControlPanel (${controlType}): ${event.key}`);
       switch (controlType) {
         case 'wasd':
           switch (event.key) {
@@ -124,18 +123,17 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onUp, onDown, onLeft, onRig
       }
     };
 
-    // Add event listeners for keydown and keyup
+    console.log('Adding event listeners in ControlPanel');
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    // Cleanup event listeners on component unmount
     return () => {
+      console.log('Removing event listeners in ControlPanel');
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [controlType, activeKey, onUp, onDown, onLeft, onRight]);
 
-  // Function to get the button class based on the active key
   const getButtonClass = (key: string) => {
     return activeKey === key ? 'bg-red-500' : 'bg-blue-500';
   };

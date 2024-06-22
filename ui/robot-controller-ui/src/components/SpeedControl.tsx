@@ -1,107 +1,107 @@
-// src/components/SpeedControl.tsx
-
-/*
-This component provides a control interface for adjusting the speed of the robot and honking the horn.
-It handles both keyboard and button inputs for increasing, decreasing speed, and honking.
-*/
-
 import React, { useState, useEffect } from 'react';
-import { COMMAND } from '../control_definitions'; // Import command definitions
+import { COMMAND } from '../control_definitions';
+import { debounce } from 'lodash';
 
+/**
+ * SpeedControl Component
+ * 
+ * This component provides controls for adjusting the speed of the robot.
+ */
 const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ sendCommand }) => {
   const [speed, setSpeed] = useState(0);
-  const [accelerating, setAccelerating] = useState(false);
-  const [decelerating, setDecelerating] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
   useEffect(() => {
-    let accelerateInterval: NodeJS.Timeout;
-    let decelerateInterval: NodeJS.Timeout;
+    let accelerateInterval: NodeJS.Timeout | undefined;
+    let decelerateInterval: NodeJS.Timeout | undefined;
 
-    // Handle key down events for controlling speed and honking
-    const handleKeyDown = (event: KeyboardEvent) => {
+    const handleKeyDown = debounce((event: KeyboardEvent) => {
       switch (event.key) {
         case 'p':
         case 'P':
-          if (!accelerating) {
-            setAccelerating(true);
+          if (!accelerateInterval) {
             setActiveKey('p');
             accelerateInterval = setInterval(() => {
-              setSpeed(prevSpeed => {
-                const newSpeed = Math.min(prevSpeed + 1, 100);
+              setSpeed((prevSpeed) => {
+                const newSpeed = Math.min(prevSpeed + 5, 100); // Accelerate faster
                 sendCommand(`${COMMAND.INCREASE_SPEED}-${newSpeed}`);
                 return newSpeed;
               });
-            }, 100); // Adjust this value to control the acceleration speed
+            }, 100); // Faster interval for acceleration
           }
           break;
         case 'o':
         case 'O':
-          if (!decelerating) {
-            setDecelerating(true);
+          if (!decelerateInterval) {
             setActiveKey('o');
             decelerateInterval = setInterval(() => {
-              setSpeed(prevSpeed => {
-                const newSpeed = Math.max(prevSpeed - 1, 0);
+              setSpeed((prevSpeed) => {
+                const newSpeed = Math.max(prevSpeed - 10, 0); // Decelerate faster
                 sendCommand(`${COMMAND.DECREASE_SPEED}-${newSpeed}`);
                 return newSpeed;
               });
-            }, 100); // Adjust this value to control the deceleration speed
+            }, 100); // Faster interval for deceleration
           }
           break;
         case ' ':
           setActiveKey(' ');
-          sendCommand(COMMAND.HONK);
+          clearInterval(accelerateInterval);
+          clearInterval(decelerateInterval);
+          setSpeed(0);
+          sendCommand(`${COMMAND.INCREASE_SPEED}-0`); // Emergency stop
+          break;
+        case '0':
+          setActiveKey('0');
+          sendCommand(COMMAND.CMD_BUZZER);
           break;
         default:
           break;
       }
-    };
+    }, 300);
 
-    // Handle key up events to stop accelerating or decelerating
     const handleKeyUp = (event: KeyboardEvent) => {
       switch (event.key) {
         case 'p':
         case 'P':
-          setAccelerating(false);
-          setActiveKey(null);
           clearInterval(accelerateInterval);
+          accelerateInterval = undefined;
+          setActiveKey(null);
           break;
         case 'o':
         case 'O':
-          setDecelerating(false);
-          setActiveKey(null);
           clearInterval(decelerateInterval);
+          decelerateInterval = undefined;
+          setActiveKey(null);
           break;
         case ' ':
           setActiveKey(null);
+          break;
+        case '0':
+          setActiveKey(null);
+          sendCommand(COMMAND.CMD_BUZZER_STOP); // Send stop command for buzzer
           break;
         default:
           break;
       }
     };
 
-    // Add event listeners for key down and key up events
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    // Cleanup event listeners on component unmount
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       clearInterval(accelerateInterval);
       clearInterval(decelerateInterval);
     };
-  }, [accelerating, decelerating, sendCommand]);
+  }, [sendCommand]);
 
-  // Get the progress bar color based on the current speed
   const getProgressColor = () => {
     if (speed <= 20) return 'bg-red-500';
     if (speed <= 60) return 'bg-yellow-500';
     return 'bg-green-500';
   };
 
-  // Get the button class based on the active key
   const getButtonClass = (key: string) => {
     return activeKey === key ? 'bg-red-500' : 'bg-blue-500';
   };
@@ -139,9 +139,21 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
         </div>
         <button
           className={`w-32 h-12 rounded-lg ${getButtonClass(' ')} text-white mt-4 flex items-center justify-center`}
-          onClick={() => sendCommand(COMMAND.HONK)}
+          onClick={() => {
+            clearInterval(accelerateInterval);
+            clearInterval(decelerateInterval);
+            setSpeed(0);
+            sendCommand(`${COMMAND.INCREASE_SPEED}-0`);
+          }}
         >
-          Space (Honk)
+          Space (E-stop)
+        </button>
+        <button
+          className={`w-32 h-12 rounded-lg ${getButtonClass('0')} text-white mt-4 flex items-center justify-center`}
+          onMouseDown={() => sendCommand(COMMAND.CMD_BUZZER)}
+          onMouseUp={() => sendCommand(COMMAND.CMD_BUZZER_STOP)}
+        >
+          0 (Buzz)
         </button>
       </div>
     </div>
