@@ -1,4 +1,3 @@
-// File: /Omega-Code/servers/robot-controller-backend/main.go
 package main
 
 import (
