@@ -4,6 +4,15 @@ import struct
 import numpy as np
 import cv2
 from flask import Flask, Response, jsonify
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+load_dotenv(os.path.join(os.path.dirname(__file__), '../../config/.env'))  # Load the parent .env file
+
+# Access the Tailscale IP from environment variables
+TAILSCALE_IP_PI = os.getenv('TAILSCALE_IP_PI')
 
 app = Flask(__name__)
 
@@ -49,5 +58,4 @@ def video_feed():
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
-
+    app.run(host=TAILSCALE_IP_PI, port=5000)
