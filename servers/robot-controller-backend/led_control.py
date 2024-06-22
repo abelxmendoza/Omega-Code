@@ -183,10 +183,13 @@ class Led:
             pattern (str): The pattern of the LED.
             interval (int): The interval time in milliseconds.
         """
+        r = (color >> 16) & 0xFF
+        g = (color >> 8) & 0xFF
+        b = color & 0xFF
         if mode == 'single':
-            self.colorWipe(Color(color))
+            self.colorWipe(Color(r, g, b))
         elif mode == 'multi':
-            self.theaterChase(Color(color), wait_ms=interval)
+            self.theaterChase(Color(r, g, b), wait_ms=interval)
         elif mode == 'two':
             self.rainbow(wait_ms=interval)
         else:

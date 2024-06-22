@@ -111,6 +111,14 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
     return activeKey === key ? 'bg-red-500' : 'bg-blue-500';
   };
 
+  const handleLedButtonClick = () => {
+    onOpenLedModal();
+  };
+
+  const handleLedButtonDoubleClick = () => {
+    sendCommand('toggle-led');
+  };
+
   return (
     <div className="flex flex-col items-center space-y-4">
       <div className="flex items-center space-x-2 w-full">
@@ -129,7 +137,8 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
         <div className="flex space-x-4">
           <button
             className={`w-16 h-16 rounded-lg ${getButtonClass('i')} text-white flex flex-col items-center justify-center`}
-            onClick={onOpenLedModal}
+            onClick={handleLedButtonClick}
+            onDoubleClick={handleLedButtonDoubleClick}
           >
             <span>I</span>
             <span>(LED)</span>
