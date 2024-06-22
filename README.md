@@ -17,32 +17,132 @@ The project is organized into several directories:
 
 The backend server, written in Go, handles incoming HTTP requests to control the robot. It includes command execution for movements, speed control, servo control, and LED control.
 
-### Key Files
+## Key Backend Files
 
-- **main.go**: The entry point of the backend server. It sets up the server, loads environment variables, and handles incoming commands.
-- **servo_control.py**: A Python script used by the backend server to control servo motors.
+### PCA9685
+
+- **PCA9685 Control**: `PCA9685.py` - Controls the PCA9685 PWM driver.
+
+### LED Control
+
+- **LED Control**: `led_control.py` - Manages the LED lights on the robot.
+
+### Servo Control
+
+- **Servo Control**: `servo_control.py` - Controls the servo motors.
+
+### ADC
+
+- **ADC**: `adc.py` - Handles analog to digital conversion.
+
+### Main Application
+
+- **Main Application (Go)**: `main.go` - Entry point of the backend server.
+- **Main Application (Python)**: `main.py` - Entry point of the Python backend server.
+
+### Line Tracking
+
+- **Line Tracking**: `line_tracking.py` - Manages the line tracking functionality.
+
+### Threading Control
+
+- **Threading Control**: `threading_control.py` - Manages threading for concurrent tasks.
+
+### Ultrasonic Sensor
+
+- **Ultrasonic Sensor**: `ultrasonic_sensor.py` - Controls the ultrasonic sensor for distance measurement.
+
+### Command Definitions
+
+- **Command Definitions**: `command_defintions.py` - Defines commands for the robot.
+
+### Mock PCA9685
+
+- **Mock PCA9685**: `mock_pca9685.py` - Mock implementation of PCA9685 for testing.
+
+### Video Server
+
+- **Video Server**: `video_server.py` - Handles video streaming from the robot.
+
+### Certificates and Logs
+
+- **Certificates Directory**: `certs` - Contains SSL certificates for secure communication.
+- **Server CSR**: `server.csr` - Certificate Signing Request file.
+- **Server Log**: `server.log` - Log file for server activities.
+
+### Go Modules
+
+- **Go Mod File**: `go.mod` - Go module definitions.
+- **Go Sum File**: `go.sum` - Go module dependencies.
+
+### Virtual Environment
+
+- **Virtual Environment**: `venv` - Python virtual environment for dependencies.
 
 ## Frontend User Interface
 
 The frontend UI, built with Next.js and React, provides a web-based interface for controlling the robot. Features include a video feed, control panels, speed control, command log, and LED control.
 
-### Key Files and Components
+## Key Files and Components
 
-- `src/pages/index.tsx`: Main page integrating all components.
-- `src/components/CommandLogContext.tsx`: Context for logging commands.
-- `src/components/ControlPanel.tsx`: Component for controlling robot movements.
-- `src/components/SpeedControl.tsx`: Component for controlling robot speed.
-- `src/components/LedControl.tsx`: Component for controlling LED lights.
-- `src/components/VideoFeed.tsx`: Component for displaying video feed.
-- `src/components/Header.tsx`: Displays connection status and battery level.
-- `src/components/Status.tsx`: Displays connection status and battery level.
-- `src/components/LedModal.tsx`: Modal for configuring LED settings.
-- `src/components/LightingPattern.tsx`: Selects lighting patterns.
-- `src/components/LightingMode.tsx`: Selects lighting modes.
-- `src/components/IntervalTiming.tsx`: Sets interval timing for LED patterns.
-- `src/components/ControlButtons.tsx`: Start, stop, and apply settings buttons.
-- `src/components/ColorWheel.tsx`: Color selection using a color wheel.
-- `control_definitions.ts`: Command definitions used throughout the project.
+### Home
+
+- **Main Page**: `src/pages/index.tsx` - Main page integrating all components.
+
+### Command Log Context
+
+- **Context for Logging Commands**: `src/components/CommandLogContext.tsx`
+
+### Control Panel
+
+- **Control Panel**: `src/components/ControlPanel.tsx` - Component for controlling robot movements.
+
+### Speed Control
+
+- **Speed Control**: `src/components/SpeedControl.tsx` - Component for controlling robot speed.
+
+### LED Control
+
+- **LED Control**: `src/components/LedControl.tsx` - Component for controlling LED lights.
+
+### Video Feed
+
+- **Video Feed**: `src/components/VideoFeed.tsx` - Component for displaying video feed.
+
+### Status and Header
+
+- **Header**: `src/components/Header.tsx` - Displays connection status and battery level.
+- **Status**: `src/components/Status.tsx` - Displays connection status and battery level.
+
+### LED Modal
+
+- **LED Modal**: `src/components/LedModal.tsx` - Modal for configuring LED settings.
+
+### Lighting Settings
+
+- **Lighting Pattern**: `src/components/LightingPattern.tsx` - Selects lighting patterns.
+- **Lighting Mode**: `src/components/LightingMode.tsx` - Selects lighting modes.
+- **Interval Timing**: `src/components/IntervalTiming.tsx` - Sets interval timing for LED patterns.
+
+### Control Buttons
+
+- **Control Buttons**: `src/components/ControlButtons.tsx` - Start, stop, and apply settings buttons.
+
+### Color Selection
+
+- **Color Wheel**: `src/components/ColorWheel.tsx` - Color selection using a color wheel.
+
+### Command Definitions
+
+- **Command Definitions**: `control_definitions.ts` - Command definitions used throughout the project.
+
+
+## Scripts
+
+### Connect Laptop to Phone Hotspot Scripts
+
+- **Connect Hotspot v1**: `connect_hotspot_v1.sh` - Script for connecting the robot to a hotspot (version 1).
+- **Connect Hotspot v2**: `connect_hotspot_v2.sh` - Script for connecting the robot to a hotspot (version 2).
 
 ## Getting Started
 

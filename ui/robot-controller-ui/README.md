@@ -1,36 +1,100 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Robot Controller UI
+
+This project is the frontend user interface for the Omega-Code robot controller. Built with Next.js and React, it provides a web-based interface for controlling the robot's movements, camera, and LED lights.
+
+## Project Structure
+
+The project is organized into several directories:
+
+- **components**: Contains all the React components used in the UI.
+- **pages**: Contains the Next.js pages.
+- **styles**: Contains global CSS styles.
+- **control_definitions.ts**: Contains command definitions used throughout the project.
+
+## Components
+
+### Home
+
+- **Main Page**: `src/pages/index.tsx` - Main page integrating all components.
+
+### Command Log Context
+
+- **Context for Logging Commands**: `src/components/CommandLogContext.tsx`
+
+### Control Panel
+
+- **Control Panel**: `src/components/ControlPanel.tsx` - Component for controlling robot movements.
+
+### Speed Control
+
+- **Speed Control**: `src/components/SpeedControl.tsx` - Component for controlling robot speed.
+
+### LED Control
+
+- **LED Control**: `src/components/LedControl.tsx` - Component for controlling LED lights.
+
+### Video Feed
+
+- **Video Feed**: `src/components/VideoFeed.tsx` - Component for displaying video feed.
+
+### Status and Header
+
+- **Header**: `src/components/Header.tsx` - Displays connection status and battery level.
+- **Status**: `src/components/Status.tsx` - Displays connection status and battery level.
+
+### LED Modal
+
+- **LED Modal**: `src/components/LedModal.tsx` - Modal for configuring LED settings.
+
+### Lighting Settings
+
+- **Lighting Pattern**: `src/components/LightingPattern.tsx` - Selects lighting patterns.
+- **Lighting Mode**: `src/components/LightingMode.tsx` - Selects lighting modes.
+- **Interval Timing**: `src/components/IntervalTiming.tsx` - Sets interval timing for LED patterns.
+
+### Control Buttons
+
+- **Control Buttons**: `src/components/ControlButtons.tsx` - Start, stop, and apply settings buttons.
+
+### Color Selection
+
+- **Color Wheel**: `src/components/ColorWheel.tsx` - Color selection using a color wheel.
+
+## Styles
+
+- **Global Styles**: `src/styles/globals.css` - Global CSS styles for the project.
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Node.js
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Installation
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Install frontend dependencies:
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+   ```bash
+   npm install
+   ```
+2. Set up environment variables:
+   Create a `.env.local` file in the root directory with any necessary environment variables.
 
-## Learn More
+### Running the Project
 
-To learn more about Next.js, take a look at the following resources:
+1. Start the development server:
+   ```bash
+   npm run dev
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Usage
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+Open a web browser and navigate to `http://localhost:3000` to access the robot controller interface. Use the provided controls to send commands to the robot.
 
-## Deploy on Vercel
+## Contributing
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Contributions are welcome! Please fork the repository and submit a pull request for any improvements or bug fixes.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+## License
+
+This project is licensed under the MIT License.
