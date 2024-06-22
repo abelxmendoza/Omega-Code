@@ -6,7 +6,6 @@ This script defines a set of commands for controlling various parts of the robot
 Class:
 - COMMAND: Contains static command strings for different robot functions.
 """
-
 class COMMAND:
     CMD_MOTOR = "CMD_MOTOR"
     CMD_LED = "CMD_LED"
@@ -25,6 +24,7 @@ class COMMAND:
     MOVE_RIGHT = "move-right"
     INCREASE_SPEED = "increase-speed"
     DECREASE_SPEED = "decrease-speed"
+    SET_LED = "set-led"  # Command to set the LED color and pattern
 
     def __init__(self):
         pass

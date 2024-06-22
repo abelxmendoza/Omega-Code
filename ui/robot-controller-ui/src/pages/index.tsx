@@ -1,5 +1,5 @@
 import Head from 'next/head';
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import ControlPanel from '../components/ControlPanel';
 import SpeedControl from '../components/SpeedControl';
 import CommandLog from '../components/CommandLog';
@@ -7,16 +7,17 @@ import { CommandLogProvider, useCommandLog } from '../components/CommandLogConte
 import { COMMAND } from '../control_definitions';
 import Header from '../components/Header';
 import VideoFeed from '../components/VideoFeed';
+import LedModal from '../components/LedModal'; // Import LedModal
 import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Home Component
  * 
- * This component serves as the main page for controlling the robot, including
- * video feed, control panels, speed control, and command log.
+ * This component is the main entry point for the robot controller application.
  */
 const Home: React.FC = () => {
   const { addCommand } = useCommandLog();
+  const [isLedModalOpen, setIsLedModalOpen] = useState(false); // State to manage LED modal
 
   const sendCommand = (command: string, angle: number = 0) => {
     const requestId = uuidv4();
@@ -82,8 +83,9 @@ const Home: React.FC = () => {
         case ' ':
           sendCommand(COMMAND.CMD_BUZZER);
           break;
-        case '0':
-          sendCommand(COMMAND.CMD_BUZZER_STOP);
+        case 'i':
+        case 'I':
+          setIsLedModalOpen(true);
           break;
         default:
           break;
@@ -135,10 +137,11 @@ const Home: React.FC = () => {
             </div>
           </div>
           <div className="flex flex-col items-center space-y-4 mt-4">
-            <SpeedControl sendCommand={sendCommand} />
+            <SpeedControl sendCommand={sendCommand} onOpenLedModal={() => setIsLedModalOpen(true)} />
             <CommandLog />
           </div>
         </main>
+        {isLedModalOpen && <LedModal isOpen={isLedModalOpen} sendCommand={sendCommand} onClose={() => setIsLedModalOpen(false)} />}
       </div>
     </CommandLogProvider>
   );

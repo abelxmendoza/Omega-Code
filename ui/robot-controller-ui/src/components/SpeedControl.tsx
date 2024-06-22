@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { COMMAND } from '../control_definitions';
-import { debounce } from 'lodash';
+import { debounce } from 'lodash'; // Use lodash debounce
+
+interface SpeedControlProps {
+  sendCommand: (command: string) => void;
+  onOpenLedModal: () => void; // New prop for opening LED modal
+}
 
 /**
  * SpeedControl Component
  * 
- * This component provides controls for adjusting the speed of the robot.
+ * This component provides control buttons for the robot's speed and LED settings.
  */
-const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ sendCommand }) => {
+const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal }) => {
   const [speed, setSpeed] = useState(0);
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
@@ -78,7 +83,7 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
           break;
         case '0':
           setActiveKey(null);
-          sendCommand(COMMAND.CMD_BUZZER_STOP); // Send stop command for buzzer
+          sendCommand(`${COMMAND.CMD_BUZZER_STOP}`); // Send stop command for buzzer
           break;
         default:
           break;
@@ -122,6 +127,13 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
       </div>
       <div className="flex flex-col items-center">
         <div className="flex space-x-4">
+          <button
+            className={`w-16 h-16 rounded-lg ${getButtonClass('i')} text-white flex flex-col items-center justify-center`}
+            onClick={onOpenLedModal}
+          >
+            <span>I</span>
+            <span>(LED)</span>
+          </button>
           <button
             className={`w-16 h-16 rounded-lg ${getButtonClass('o')} text-white flex flex-col items-center justify-center`}
             onClick={() => sendCommand(COMMAND.DECREASE_SPEED)}
