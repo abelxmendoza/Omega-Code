@@ -6,49 +6,58 @@ import (
     "encoding/json"
     "fmt"
     "io/ioutil"
-    "log"
     "net/http"
     "os"
     "os/exec"
-    "time"
 
     "github.com/joho/godotenv"
 )
 
+// Summary
+// The provided Go code handles commands sent from a frontend application to control LEDs and servos on a robot.
+// It also includes handling of movement commands and other robot controls. The code utilizes environment variables
+// for certificate paths to set up a secure server using HTTPS.
+
+// Command struct to hold the JSON payload data
 type Command struct {
-    Command string `json:"command"`
-    Angle   int    `json:"angle,omitempty"`
+    Command  string `json:"command"`
+    Color    string `json:"color,omitempty"`
+    Mode     string `json:"mode,omitempty"`
+    Pattern  string `json:"pattern,omitempty"`
+    Interval int    `json:"interval,omitempty"`
+    Angle    int    `json:"angle,omitempty"` // Add Angle for servo control
 }
 
-func logRequest(r *http.Request) {
-    log.Printf("Received %s request for %s from %s\n", r.Method, r.URL, r.RemoteAddr)
+// Function to execute LED commands
+func executeLEDCommand(cmd Command) {
+    // Simulate the LED control command with a Python script
+    cmdArgs := []string{"-c", fmt.Sprintf("python3 led_control.py %s %s %s %d", cmd.Color, cmd.Mode, cmd.Pattern, cmd.Interval)}
+    exec.Command("sh", cmdArgs...).Run()
 }
 
-func logCommand(cmd Command) {
-    log.Printf("Executing command: %s with angle: %d\n", cmd.Command, cmd.Angle)
-}
-
+// Function to execute Servo commands
 func executeServoCommand(cmd Command) {
-    logCommand(cmd)
-
+    // Determine the servo type based on the command
     var servoType string
     if cmd.Command == "servo-horizontal" {
-        servoType = "horizontal"
+        servoType = "0"
     } else if cmd.Command == "servo-vertical" {
-        servoType = "vertical"
+        servoType = "1"
     } else {
-        log.Printf("Unknown servo command: %s\n", cmd.Command)
+        fmt.Println("Unknown servo command:", cmd.Command)
         return
     }
 
-    cmdArgs := []string{"servo_control.py", servoType, fmt.Sprintf("%d", cmd.Angle)}
-    command := exec.Command("python3", cmdArgs...)
-    err := command.Run()
+    // Execute the Python script to control the servo
+    cmdArgs := []string{"-c", fmt.Sprintf("python3 servo_control.py %s %d", servoType, cmd.Angle)}
+    output, err := exec.Command("sh", cmdArgs...).CombinedOutput()
     if err != nil {
-        log.Printf("Error executing Python script: %s\n", err)
+        fmt.Printf("Error executing servo command: %s\n", err)
     }
+    fmt.Printf("Python script output: %s\n", output)
 }
 
+// CORS Middleware to handle cross-origin requests
 func corsMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -63,58 +72,66 @@ func corsMiddleware(next http.Handler) http.Handler {
     })
 }
 
+// Handler function to process commands
 func handleCommand(w http.ResponseWriter, r *http.Request) {
-    logRequest(r)
-
     var body bytes.Buffer
     _, err := body.ReadFrom(r.Body)
     if err != nil {
-        log.Printf("Error reading body: %s\n", err)
+        fmt.Println("Error reading body:", err)
         http.Error(w, "Error reading body", http.StatusBadRequest)
         return
     }
+    fmt.Printf("Received body: %s\n", body.String())
     r.Body = ioutil.NopCloser(&body)
 
     var cmd Command
     decoder := json.NewDecoder(r.Body)
     err = decoder.Decode(&cmd)
     if err != nil {
-        log.Printf("Error decoding JSON: %s\n", err)
+        fmt.Println("Error decoding JSON:", err)
         http.Error(w, "Error decoding JSON", http.StatusBadRequest)
         return
     }
 
-    if cmd.Command == "servo-horizontal" || cmd.Command == "servo-vertical" {
+    fmt.Printf("Command received: %s\n", cmd.Command)
+    switch cmd.Command {
+    case "set-led":
+        executeLEDCommand(cmd)
+    case "servo-horizontal", "servo-vertical":
+        fmt.Printf("Executing command: %s with angle: %d\n", cmd.Command, cmd.Angle)
         executeServoCommand(cmd)
-    } else {
-        log.Printf("Unknown command: %s\n", cmd.Command)
-        http.Error(w, "Unknown command", http.StatusBadRequest)
+    case "move-up", "move-down", "move-left", "move-right":
+        // Handle movement commands here if needed
+        fmt.Printf("Movement command: %s\n", cmd.Command)
+    case "increase-speed", "decrease-speed", "honk":
+        // Handle other commands here if needed
+        fmt.Printf("Other command: %s\n", cmd.Command)
+    default:
+        fmt.Printf("Unknown command: %s\n", cmd.Command)
     }
 
     fmt.Fprintf(w, "Command executed: %s", cmd.Command)
 }
 
 func main() {
-    logFile, err := os.OpenFile("server.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-    if err != nil {
-        fmt.Printf("Failed to open log file: %s\n", err)
-        return
-    }
-    log.SetOutput(logFile)
-    log.Printf("Server started at %s\n", time.Now().Format(time.RFC3339))
-
+    // Load environment variables from .env file
     if err := godotenv.Load("../../config/.env"); err != nil {
-        log.Printf("Error loading .env file: %s\n", err)
+        fmt.Println("Error loading .env file:", err)
     }
 
+    // Get certificate and key paths from environment variables
     certPath := os.Getenv("CERT_PATH")
     keyPath := os.Getenv("KEY_PATH")
 
     if certPath == "" || keyPath == "" {
-        log.Printf("CERT_PATH or KEY_PATH environment variable is not set\n")
+        fmt.Println("CERT_PATH or KEY_PATH environment variable is not set")
         return
     }
 
+    fmt.Printf("CERT_PATH: %s\n", certPath)
+    fmt.Printf("KEY_PATH: %s\n", keyPath)
+
+    // Setup HTTP server with CORS middleware
     mux := http.NewServeMux()
     mux.HandleFunc("/command", handleCommand)
 
@@ -126,8 +143,9 @@ func main() {
         },
     }
 
-    log.Printf("Starting secure server on :8080\n")
+    // Start the secure server
+    fmt.Println("Starting secure server on :8080")
     if err := server.ListenAndServeTLS(certPath, keyPath); err != nil {
-        log.Printf("Error starting server: %s\n", err)
+        fmt.Println("Error starting server:", err)
     }
 }

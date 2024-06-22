@@ -1,21 +1,24 @@
-import React, { useEffect, useState } from 'react';
+// src/pages/index.tsx
+
+/*
+This is the main application page that sets up the robot control interface.
+It includes the video feed, control panels, speed control, and command log.
+*/
+
+import React, { useEffect } from 'react';
 import Head from 'next/head';
 import Header from '../components/Header';
 import VideoFeed from '../components/VideoFeed';
 import ControlPanel from '../components/ControlPanel';
 import SpeedControl from '../components/SpeedControl';
 import CommandLog from '../components/CommandLog';
-import LedModal from '../components/LedModal';
-import { useCommandLog } from '../components/CommandLogContext';
-import { COMMAND } from '@/control_definitions'; // Use alias defined in tsconfig.json
-
+import { CommandLogProvider, useCommandLog } from '../components/CommandLogContext';
+import { COMMAND } from '../control_definitions'; // Import command definitions
 
 const Home: React.FC = () => {
-  const { addCommand } = useCommandLog();
-  const [isConnected, setIsConnected] = useState(true);
-  const [batteryLife, setBatteryLife] = useState(80);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const { addCommand } = useCommandLog(); // Use context to add command to log
 
+  // Function to send commands to the server
   const sendCommand = (command: string, angle: number = 0) => {
     fetch('https://localhost:8080/command', {
       method: 'POST',
@@ -28,74 +31,58 @@ const Home: React.FC = () => {
         console.error('Error sending command:', response.statusText);
       } else {
         console.log(`Command sent: ${command}`);
-        addCommand(command);
+        addCommand(command); // Add command to log on successful send
       }
     }).catch(error => {
       console.error('Error sending command:', error);
-      setIsConnected(false);
     });
   };
 
+  // Effect hook to handle key press events
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      let command = '';
-      let angle = 0;
-
       switch (event.key) {
         case 'w':
         case 'W':
-          command = COMMAND.MOVE_UP;
+          sendCommand(COMMAND.MOVE_UP);
           break;
         case 'a':
         case 'A':
-          command = COMMAND.MOVE_LEFT;
+          sendCommand(COMMAND.MOVE_LEFT);
           break;
         case 's':
         case 'S':
-          command = COMMAND.MOVE_DOWN;
+          sendCommand(COMMAND.MOVE_DOWN);
           break;
         case 'd':
         case 'D':
-          command = COMMAND.MOVE_RIGHT;
+          sendCommand(COMMAND.MOVE_RIGHT);
           break;
         case 'ArrowUp':
-          command = COMMAND.CMD_SERVO_VERTICAL;
-          angle = 10; // Adjust angle as needed
+          sendCommand(COMMAND.CMD_SERVO_VERTICAL, 10); // Adjust angle as needed
           break;
         case 'ArrowLeft':
-          command = COMMAND.CMD_SERVO_HORIZONTAL;
-          angle = -10; // Adjust angle as needed
+          sendCommand(COMMAND.CMD_SERVO_HORIZONTAL, 10); // Adjust angle as needed
           break;
         case 'ArrowDown':
-          command = COMMAND.CMD_SERVO_VERTICAL;
-          angle = -10; // Adjust angle as needed
+          sendCommand(COMMAND.CMD_SERVO_VERTICAL, -10); // Adjust angle as needed
           break;
         case 'ArrowRight':
-          command = COMMAND.CMD_SERVO_HORIZONTAL;
-          angle = 10; // Adjust angle as needed
+          sendCommand(COMMAND.CMD_SERVO_HORIZONTAL, -10); // Adjust angle as needed
           break;
         case 'p':
         case 'P':
-          command = COMMAND.INCREASE_SPEED;
+          sendCommand(COMMAND.INCREASE_SPEED);
           break;
         case 'o':
         case 'O':
-          command = COMMAND.DECREASE_SPEED;
+          sendCommand(COMMAND.DECREASE_SPEED);
           break;
         case ' ':
-          command = COMMAND.HONK;
-          break;
-        case 'i':
-        case 'I':
-          setIsModalOpen(true);
+          sendCommand(COMMAND.HONK);
           break;
         default:
           break;
-      }
-
-      if (command) {
-        console.log(`Sending command: ${command}`);
-        sendCommand(command, angle);
       }
     };
 
@@ -107,62 +94,49 @@ const Home: React.FC = () => {
   }, []);
 
   const handleCarControl = (command: string) => () => sendCommand(command);
-  const handleCameraControl = (command: string) => () => sendCommand(command);
+  const handleCameraControl = (command: string, angle: number) => () => sendCommand(command, angle);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Head>
-        <title>Robot Controller</title>
-        <meta name="description" content="Control your robot" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+    <CommandLogProvider> {/* Wrap components with CommandLogProvider */}
+      <div className="min-h-screen bg-gray-50">
+        <Head>
+          <title>Robot Controller</title>
+          <meta name="description" content="Control your robot" />
+          <link rel="icon" href="/favicon.ico" />
+        </Head>
 
-      <Header isConnected={isConnected} batteryLevel={batteryLife} />
-
-      <main className="p-4 space-y-4">
-        <div className="flex justify-center items-center space-x-8">
-          <div className="flex-shrink-0 mr-20">
-            <ControlPanel
-              onUp={handleCarControl(COMMAND.MOVE_UP)}
-              onDown={handleCarControl(COMMAND.MOVE_DOWN)}
-              onLeft={handleCarControl(COMMAND.MOVE_LEFT)}
-              onRight={handleCarControl(COMMAND.MOVE_RIGHT)}
-              labels={{ up: 'W', down: 'S', left: 'A', right: 'D' }}
-              controlType="wasd"
-            />
+        <Header />
+        <main className="p-4 space-y-4">
+          <div className="flex justify-center items-center space-x-8">
+            <div className="flex-shrink-0">
+              <ControlPanel
+                onUp={handleCarControl(COMMAND.MOVE_UP)}
+                onDown={handleCarControl(COMMAND.MOVE_DOWN)}
+                onLeft={handleCarControl(COMMAND.MOVE_LEFT)}
+                onRight={handleCarControl(COMMAND.MOVE_RIGHT)}
+                labels={{ up: 'W', down: 'S', left: 'A', right: 'D' }}
+                controlType="wasd"
+              />
+            </div>
+            <VideoFeed />
+            <div className="flex-shrink-0">
+              <ControlPanel
+                onUp={handleCameraControl(COMMAND.CMD_SERVO_VERTICAL, 10)}
+                onDown={handleCameraControl(COMMAND.CMD_SERVO_VERTICAL, -10)}
+                onLeft={handleCameraControl(COMMAND.CMD_SERVO_HORIZONTAL, 10)}
+                onRight={handleCameraControl(COMMAND.CMD_SERVO_HORIZONTAL, -10)}
+                labels={{ up: '↑', down: '↓', left: '←', right: '→' }}
+                controlType="arrows"
+              />
+            </div>
           </div>
-          <VideoFeed />
-          <div className="flex-shrink-0 ml-20">
-            <ControlPanel
-              onUp={handleCameraControl(COMMAND.CMD_SERVO_VERTICAL)}
-              onDown={handleCameraControl(COMMAND.CMD_SERVO_VERTICAL)}
-              onLeft={handleCameraControl(COMMAND.CMD_SERVO_HORIZONTAL)}
-              onRight={handleCameraControl(COMMAND.CMD_SERVO_HORIZONTAL)}
-              labels={{ up: '↑', down: '↓', left: '←', right: '→' }}
-              controlType="arrows"
-            />
-          </div>
-        </div>
-        <div className="flex flex-col items-center space-y-4 mt-4">
-          <div className="flex items-center space-x-4">
-            <button
-              className="w-16 h-16 rounded-lg bg-blue-500 text-white flex flex-col items-center justify-center"
-              onClick={() => setIsModalOpen(true)}
-            >
-              <span>I</span>
-              <span>(LED)</span>
-            </button>
+          <div className="flex flex-col items-center space-y-4 mt-4">
             <SpeedControl sendCommand={sendCommand} />
+            <CommandLog />
           </div>
-          <CommandLog />
-        </div>
-      </main>
-      <LedModal
-        sendCommand={sendCommand}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-      />
-    </div>
+        </main>
+      </div>
+    </CommandLogProvider>
   );
 };
 

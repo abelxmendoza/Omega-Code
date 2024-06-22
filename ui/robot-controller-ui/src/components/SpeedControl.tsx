@@ -1,4 +1,12 @@
+// src/components/SpeedControl.tsx
+
+/*
+This component provides a control interface for adjusting the speed of the robot and honking the horn.
+It handles both keyboard and button inputs for increasing, decreasing speed, and honking.
+*/
+
 import React, { useState, useEffect } from 'react';
+import { COMMAND } from '../control_definitions'; // Import command definitions
 
 const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ sendCommand }) => {
   const [speed, setSpeed] = useState(0);
@@ -10,6 +18,7 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
     let accelerateInterval: NodeJS.Timeout;
     let decelerateInterval: NodeJS.Timeout;
 
+    // Handle key down events for controlling speed and honking
     const handleKeyDown = (event: KeyboardEvent) => {
       switch (event.key) {
         case 'p':
@@ -20,7 +29,7 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
             accelerateInterval = setInterval(() => {
               setSpeed(prevSpeed => {
                 const newSpeed = Math.min(prevSpeed + 1, 100);
-                sendCommand(`set-speed-${newSpeed}`);
+                sendCommand(`${COMMAND.INCREASE_SPEED}-${newSpeed}`);
                 return newSpeed;
               });
             }, 100); // Adjust this value to control the acceleration speed
@@ -34,7 +43,7 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
             decelerateInterval = setInterval(() => {
               setSpeed(prevSpeed => {
                 const newSpeed = Math.max(prevSpeed - 1, 0);
-                sendCommand(`set-speed-${newSpeed}`);
+                sendCommand(`${COMMAND.DECREASE_SPEED}-${newSpeed}`);
                 return newSpeed;
               });
             }, 100); // Adjust this value to control the deceleration speed
@@ -42,13 +51,14 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
           break;
         case ' ':
           setActiveKey(' ');
-          sendCommand('honk');
+          sendCommand(COMMAND.HONK);
           break;
         default:
           break;
       }
     };
 
+    // Handle key up events to stop accelerating or decelerating
     const handleKeyUp = (event: KeyboardEvent) => {
       switch (event.key) {
         case 'p':
@@ -71,9 +81,11 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
       }
     };
 
+    // Add event listeners for key down and key up events
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
+    // Cleanup event listeners on component unmount
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -82,12 +94,14 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
     };
   }, [accelerating, decelerating, sendCommand]);
 
+  // Get the progress bar color based on the current speed
   const getProgressColor = () => {
     if (speed <= 20) return 'bg-red-500';
     if (speed <= 60) return 'bg-yellow-500';
     return 'bg-green-500';
   };
 
+  // Get the button class based on the active key
   const getButtonClass = (key: string) => {
     return activeKey === key ? 'bg-red-500' : 'bg-blue-500';
   };
@@ -110,14 +124,14 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
         <div className="flex space-x-4">
           <button
             className={`w-16 h-16 rounded-lg ${getButtonClass('o')} text-white flex flex-col items-center justify-center`}
-            onClick={() => sendCommand('decelerate')}
+            onClick={() => sendCommand(COMMAND.DECREASE_SPEED)}
           >
             <span>O</span>
             <span>(brake)</span>
           </button>
           <button
             className={`w-16 h-16 rounded-lg ${getButtonClass('p')} text-white flex flex-col items-center justify-center`}
-            onClick={() => sendCommand('accelerate')}
+            onClick={() => sendCommand(COMMAND.INCREASE_SPEED)}
           >
             <span>P</span>
             <span>(gas)</span>
@@ -125,7 +139,7 @@ const SpeedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ se
         </div>
         <button
           className={`w-32 h-12 rounded-lg ${getButtonClass(' ')} text-white mt-4 flex items-center justify-center`}
-          onClick={() => sendCommand('honk')}
+          onClick={() => sendCommand(COMMAND.HONK)}
         >
           Space (Honk)
         </button>

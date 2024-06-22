@@ -1,3 +1,10 @@
+// src/components/ControlPanel.tsx
+
+/*
+This component represents a control panel for the robot that can be operated using either WASD keys or arrow keys.
+It allows the user to control the robot's movements (up, down, left, right) and provides visual feedback on the active control.
+*/
+
 import React, { useState, useEffect } from 'react';
 
 interface ControlPanelProps {
@@ -13,99 +20,122 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onUp, onDown, onLeft, onRig
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
   useEffect(() => {
+    // Function to handle keydown events
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (controlType === 'wasd') {
-        switch (event.key) {
-          case 'w':
-          case 'W':
-            setActiveKey('up');
-            break;
-          case 'a':
-          case 'A':
-            setActiveKey('left');
-            break;
-          case 's':
-          case 'S':
-            setActiveKey('down');
-            break;
-          case 'd':
-          case 'D':
-            setActiveKey('right');
-            break;
-          default:
-            break;
-        }
-      } else if (controlType === 'arrows') {
-        switch (event.key) {
-          case 'ArrowUp':
-            setActiveKey('up');
-            break;
-          case 'ArrowLeft':
-            setActiveKey('left');
-            break;
-          case 'ArrowDown':
-            setActiveKey('down');
-            break;
-          case 'ArrowRight':
-            setActiveKey('right');
-            break;
-          default:
-            break;
-        }
+      switch (controlType) {
+        case 'wasd':
+          switch (event.key) {
+            case 'w':
+            case 'W':
+              setActiveKey('up');
+              onUp();
+              break;
+            case 'a':
+            case 'A':
+              setActiveKey('left');
+              onLeft();
+              break;
+            case 's':
+            case 'S':
+              setActiveKey('down');
+              onDown();
+              break;
+            case 'd':
+            case 'D':
+              setActiveKey('right');
+              onRight();
+              break;
+            default:
+              break;
+          }
+          break;
+        case 'arrows':
+          switch (event.key) {
+            case 'ArrowUp':
+              setActiveKey('up');
+              onUp();
+              break;
+            case 'ArrowLeft':
+              setActiveKey('left');
+              onLeft();
+              break;
+            case 'ArrowDown':
+              setActiveKey('down');
+              onDown();
+              break;
+            case 'ArrowRight':
+              setActiveKey('right');
+              onRight();
+              break;
+            default:
+              break;
+          }
+          break;
+        default:
+          break;
       }
     };
 
+    // Function to handle keyup events
     const handleKeyUp = (event: KeyboardEvent) => {
-      if (controlType === 'wasd') {
-        switch (event.key) {
-          case 'w':
-          case 'W':
-            if (activeKey === 'up') setActiveKey(null);
-            break;
-          case 'a':
-          case 'A':
-            if (activeKey === 'left') setActiveKey(null);
-            break;
-          case 's':
-          case 'S':
-            if (activeKey === 'down') setActiveKey(null);
-            break;
-          case 'd':
-          case 'D':
-            if (activeKey === 'right') setActiveKey(null);
-            break;
-          default:
-            break;
-        }
-      } else if (controlType === 'arrows') {
-        switch (event.key) {
-          case 'ArrowUp':
-            if (activeKey === 'up') setActiveKey(null);
-            break;
-          case 'ArrowLeft':
-            if (activeKey === 'left') setActiveKey(null);
-            break;
-          case 'ArrowDown':
-            if (activeKey === 'down') setActiveKey(null);
-            break;
-          case 'ArrowRight':
-            if (activeKey === 'right') setActiveKey(null);
-            break;
-          default:
-            break;
-        }
+      switch (controlType) {
+        case 'wasd':
+          switch (event.key) {
+            case 'w':
+            case 'W':
+              if (activeKey === 'up') setActiveKey(null);
+              break;
+            case 'a':
+            case 'A':
+              if (activeKey === 'left') setActiveKey(null);
+              break;
+            case 's':
+            case 'S':
+              if (activeKey === 'down') setActiveKey(null);
+              break;
+            case 'd':
+            case 'D':
+              if (activeKey === 'right') setActiveKey(null);
+              break;
+            default:
+              break;
+          }
+          break;
+        case 'arrows':
+          switch (event.key) {
+            case 'ArrowUp':
+              if (activeKey === 'up') setActiveKey(null);
+              break;
+            case 'ArrowLeft':
+              if (activeKey === 'left') setActiveKey(null);
+              break;
+            case 'ArrowDown':
+              if (activeKey === 'down') setActiveKey(null);
+              break;
+            case 'ArrowRight':
+              if (activeKey === 'right') setActiveKey(null);
+              break;
+            default:
+              break;
+          }
+          break;
+        default:
+          break;
       }
     };
 
+    // Add event listeners for keydown and keyup
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
+    // Cleanup event listeners on component unmount
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [controlType, activeKey]);
+  }, [controlType, activeKey, onUp, onDown, onLeft, onRight]);
 
+  // Function to get the button class based on the active key
   const getButtonClass = (key: string) => {
     return activeKey === key ? 'bg-red-500' : 'bg-blue-500';
   };

@@ -1,3 +1,10 @@
+// src/components/CommandLog.tsx
+
+/*
+This component displays the log of commands received by the application.
+It uses the CommandLogContext to access the commands.
+*/
+
 import React from 'react';
 import { useCommandLog } from './CommandLogContext';
 
