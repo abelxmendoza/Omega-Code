@@ -2,6 +2,9 @@
 
 This project is the frontend user interface for the Omega-Code robot controller. Built with Next.js and React, it provides a web-based interface for controlling the robot's movements, camera, and LED lights.
 
+
+![1719083171038](image/README/1719083171038.png)
+
 ## Project Structure
 
 The project is organized into several directories:
@@ -11,7 +14,18 @@ The project is organized into several directories:
 - **styles**: Contains global CSS styles.
 - **control_definitions.ts**: Contains command definitions used throughout the project.
 
-## Components
+
+![1719083563125](image/README/1719083563125.png)
+
+
+![1719083575021](image/README/1719083575021.png)
+
+#### LED Modal
+
+<img src="image/README/1719083688816.png" alt="description" width="300"/>
+
+
+# Components
 
 ### Home
 
