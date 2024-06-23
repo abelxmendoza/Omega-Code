@@ -4,6 +4,8 @@ Omega-Code is a comprehensive project aimed at developing a fully-featured robot
 
 <img src="image/README/1719064424761.png" alt="1719064424761" width="400"/>
 
+<img src="image/README/1719168223539.png" alt="Screenshot" width="400"/>
+
 ## Project Structure
 
 The project is organized into several directories:
@@ -136,7 +138,6 @@ The frontend UI, built with Next.js and React, provides a web-based interface fo
 
 - **Command Definitions**: `control_definitions.ts` - Command definitions used throughout the project.
 
-
 ## Scripts
 
 ### Connect Laptop to Phone Hotspot Scripts
@@ -239,3 +240,6 @@ Freenove is an open-source electronics platform committed to helping customers q
 ## License
 
 This project is licensed under the MIT License.
+
+
+![1719168124569](image/README/1719168124569.png)

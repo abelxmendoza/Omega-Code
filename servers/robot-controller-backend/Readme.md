@@ -2,6 +2,9 @@
 
 This project is the backend server for the Omega-Code robot controller. Written in Go and Python, it handles incoming HTTP requests to control the robot's movements, speed, servos, and LED lights.
 
+![1719168072062](image/Readme/1719168072062.png)
+
+
 ## Project Structure
 
 The project is organized into several directories and files:
