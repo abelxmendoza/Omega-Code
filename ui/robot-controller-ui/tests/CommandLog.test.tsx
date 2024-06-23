@@ -1,4 +1,4 @@
-// File: tests/CommandLog.test.tsx
+// tests/CommandLog.test.tsx
 import React from 'react';
 import { render, act, screen } from '@testing-library/react';
 import CommandLog from '../src/components/CommandLog';
@@ -7,18 +7,18 @@ import { CommandLogProvider, useCommandLog } from '../src/components/CommandLogC
 // Helper component to simulate adding commands
 const AddCommands: React.FC = () => {
   const { addCommand } = useCommandLog();
+  const [commandsAdded, setCommandsAdded] = React.useState(false);
 
   React.useEffect(() => {
-    console.log('AddCommands: useEffect triggered');
-    try {
+    if (!commandsAdded) {
+      console.log('AddCommands: useEffect triggered');
       addCommand('move-up');
       console.log('AddCommands: move-up command added');
       addCommand('move-down');
       console.log('AddCommands: move-down command added');
-    } catch (error) {
-      console.error('AddCommands: Error adding commands', error);
+      setCommandsAdded(true);
     }
-  }, [addCommand]);
+  }, [addCommand, commandsAdded]);
 
   return null;
 };
@@ -42,6 +42,7 @@ describe('CommandLog', () => {
 
   it('renders command log with provided commands', async () => {
     console.log('Test: renders command log with provided commands - Start');
+
     try {
       render(
         <CommandLogProvider>

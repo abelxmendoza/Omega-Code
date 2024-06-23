@@ -6,18 +6,23 @@ It wraps all pages with the CommandLogProvider to manage the command log state a
 It also includes global CSS styles for consistent styling throughout the application.
 */
 
+// File: /src/pages/_app.tsx
+
+// File: /Omega-Code/ui/robot-controller-ui/src/pages/_app.tsx
 import React from 'react';
 import { AppProps } from 'next/app';
+import { Provider } from 'react-redux';
 import { CommandLogProvider } from '../components/CommandLogContext';
-import '../styles/globals.css'; // Import your global CSS file
+import store from '../redux/store';
+import '../styles/globals.css';
 
 const MyApp = ({ Component, pageProps }: AppProps) => {
   return (
-    // Wrap all pages with CommandLogProvider to manage command log state globally
-    <CommandLogProvider>
-      {/* Render the current page */}
-      <Component {...pageProps} />
-    </CommandLogProvider>
+    <Provider store={store}>
+      <CommandLogProvider>
+        <Component {...pageProps} />
+      </CommandLogProvider>
+    </Provider>
   );
 };
 

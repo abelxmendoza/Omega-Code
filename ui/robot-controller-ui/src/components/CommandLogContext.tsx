@@ -1,4 +1,3 @@
-// File: src/components/CommandLogContext.tsx
 import React, { createContext, useState, useContext, ReactNode } from 'react';
 
 // Define the type for the command log context

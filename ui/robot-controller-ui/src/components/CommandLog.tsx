@@ -1,12 +1,13 @@
-// File: src/components/CommandLog.tsx
+// src/components/CommandLog.tsx
 import React from 'react';
-import { useCommandLog } from './CommandLogContext';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 
 // CommandLog component renders the list of commands that have been sent
 const CommandLog: React.FC = () => {
-  const { commands } = useCommandLog();
+  const commands = useSelector((state: RootState) => state.commands.commands);
 
-  console.log('Rendering CommandLog with commands:', commands); // Add print statement for debugging
+  console.log('Rendering CommandLog with commands:', commands);
 
   return (
     <div className="w-full md:w-3/4 lg:w-1/2 p-4 bg-gray-900 rounded-lg shadow-md">
