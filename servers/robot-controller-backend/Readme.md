@@ -4,7 +4,6 @@ This project is the backend server for the Omega-Code robot controller. Written 
 
 ![1719168072062](image/Readme/1719168072062.png)
 
-
 ## Project Structure
 
 The project is organized into several directories and files:
@@ -106,6 +105,71 @@ The project is organized into several directories and files:
 ### Usage
 
 The backend server will listen for incoming HTTP requests to control the robot. Ensure the frontend is running to interact with the backend.
+
+## Testing
+
+This project includes a comprehensive test suite to ensure the functionality of the backend components.
+
+### Test Structure
+
+The tests are located in the `tests` directory and are organized as follows:
+
+- `led_control_test.py`: Tests for the LED control functionality.
+- `mock_pca9685_test.py`: Tests for the mock PCA9685 functionality.
+- `servo_control_test.py`: Tests for the servo control functionality.
+
+### Running Tests
+
+To run the tests, follow these steps:
+
+* Ensure you have all dependencies installed. You can install them using the provided `requirements.txt` file.
+
+  ```bash
+  pip install -r requirements.txt
+  ```
+* Set the PYTHONPATH to the current directory and run pytest.
+
+  ```
+  export PYTHONPATH=$(pwd)
+  pytest
+  ```
+
+======================= test session starts =======================
+platform darwin -- Python 3.10.8, pytest-8.2.2, pluggy-1.5.0
+rootdir: /Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend
+plugins: mock-3.14.0
+collected 11 items
+
+tests/led_control_test.py ......                            [ 54%]
+tests/mock_pca9685_test.py ..                               [ 72%]
+tests/servo_control_test.py ...                             [100%]
+
+================== 11 passed in 295.62s (0:04:55) ==================
+
+### CI/CD Integration
+
+The tests are automatically run on each push to the master branch and on each pull request targeting the master branch using GitHub Actions. The CI/CD configuration can be found in the `.github/workflows/ci.yml` file.
+
+### Test Descriptions
+
+- **led_control_test.py**: Tests for the LED control functionality.
+
+  - `test_color_wipe`: Tests the color wipe functionality.
+  - `test_theater_chase`: Tests the theater chase functionality.
+  - `test_rainbow`: Tests the rainbow functionality.
+  - `test_set_led_single`: Tests setting a single LED.
+  - `test_set_led_multi`: Tests setting multiple LEDs.
+  - `test_set_led_two`: Tests setting two LEDs.
+- **mock_pca9685_test.py**: Tests for the mock PCA9685 functionality.
+
+  - `test_set_pwm_freq`: Tests setting the PWM frequency.
+  - `test_set_servo_pulse`: Tests setting the servo pulse.
+- **servo_control_test.py**: Tests for the servo control functionality.
+
+  - `test_servo_initialization`: Tests the initialization of the servo.
+  - `test_set_servo_pwm_horizontal`: Tests setting the PWM for the horizontal servo.
+  - `test_set_servo_pwm_vertical`: Tests setting the PWM for the vertical servo.
+
 
 ## Contributing
 
