@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
 import { executeCommand } from '../redux/reducers/controlPanelReducer';
+import { useCommandLog } from './CommandLogContext';
 
 interface ControlPanelProps {
   onUp: () => void;
@@ -14,6 +15,7 @@ interface ControlPanelProps {
 const ControlPanel: React.FC<ControlPanelProps> = ({ onUp, onDown, onLeft, onRight, labels, controlType }) => {
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const dispatch = useDispatch();
+  const { addCommand } = useCommandLog();
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -81,6 +83,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onUp, onDown, onLeft, onRig
       }
       if (command) {
         dispatch(executeCommand(command));
+        addCommand(command); // Add the command to the command log context
       }
     };
 
@@ -141,7 +144,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onUp, onDown, onLeft, onRig
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [controlType, activeKey, onUp, onDown, onLeft, onRight, dispatch]);
+  }, [controlType, activeKey, onUp, onDown, onLeft, onRight, dispatch, addCommand]);
 
   const getButtonClass = (key: string) => {
     return activeKey === key ? 'bg-red-500' : 'bg-blue-500';
@@ -154,6 +157,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onUp, onDown, onLeft, onRig
         onClick={() => {
           onUp();
           dispatch(executeCommand('move-up'));
+          addCommand('move-up');
         }}
       >
         {labels.up}
@@ -163,6 +167,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onUp, onDown, onLeft, onRig
         onClick={() => {
           onLeft();
           dispatch(executeCommand('move-left'));
+          addCommand('move-left');
         }}
       >
         {labels.left}
@@ -172,6 +177,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onUp, onDown, onLeft, onRig
         onClick={() => {
           onRight();
           dispatch(executeCommand('move-right'));
+          addCommand('move-right');
         }}
       >
         {labels.right}
@@ -181,6 +187,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onUp, onDown, onLeft, onRig
         onClick={() => {
           onDown();
           dispatch(executeCommand('move-down'));
+          addCommand('move-down');
         }}
       >
         {labels.down}

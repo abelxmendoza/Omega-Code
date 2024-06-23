@@ -1,15 +1,15 @@
-// tests/Integration.test.tsx
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, screen } from '@testing-library/react';
 import { Provider } from 'react-redux';
-import store from '../src/store';
+import store from '../src/redux/store';
+import { CommandLogProvider } from '../src/components/CommandLogContext';
 import ControlPanel from '../src/components/ControlPanel';
 import CommandLog from '../src/components/CommandLog';
 
 test('Integration: ControlPanel and CommandLog', () => {
-  const { getByText } = render(
+  render(
     <Provider store={store}>
-      <div>
+      <CommandLogProvider>
         <ControlPanel
           onUp={() => {}}
           onDown={() => {}}
@@ -19,7 +19,7 @@ test('Integration: ControlPanel and CommandLog', () => {
           controlType="wasd"
         />
         <CommandLog />
-      </div>
+      </CommandLogProvider>
     </Provider>
   );
 
@@ -30,6 +30,6 @@ test('Integration: ControlPanel and CommandLog', () => {
   fireEvent.keyUp(window, { key: 's' });
 
   // Check if the commands are in the CommandLog
-  expect(getByText('move-up')).toBeInTheDocument();
-  expect(getByText('move-down')).toBeInTheDocument();
+  expect(screen.getByText('move-up')).toBeInTheDocument();
+  expect(screen.getByText('move-down')).toBeInTheDocument();
 });

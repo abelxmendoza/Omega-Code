@@ -1,8 +1,12 @@
 // tests/CommandLog.test.tsx
 import React from 'react';
 import { render, act, screen } from '@testing-library/react';
+import { Provider } from 'react-redux';
+import configureStore from 'redux-mock-store';
 import CommandLog from '../src/components/CommandLog';
 import { CommandLogProvider, useCommandLog } from '../src/components/CommandLogContext';
+
+const mockStore = configureStore([]);
 
 // Helper component to simulate adding commands
 const AddCommands: React.FC = () => {
@@ -24,12 +28,19 @@ const AddCommands: React.FC = () => {
 };
 
 describe('CommandLog', () => {
+  let store;
+
   beforeAll(() => {
     console.log('Starting CommandLog tests...');
   });
 
   beforeEach(() => {
     console.log('Setting up for a new test...');
+    store = mockStore({
+      commands: { commands: [] }
+    });
+
+    store.dispatch = jest.fn(store.dispatch);
   });
 
   afterEach(() => {
@@ -45,15 +56,17 @@ describe('CommandLog', () => {
 
     try {
       render(
-        <CommandLogProvider>
-          <AddCommands />
-          <CommandLog />
-        </CommandLogProvider>
+        <Provider store={store}>
+          <CommandLogProvider>
+            <AddCommands />
+            <CommandLog />
+          </CommandLogProvider>
+        </Provider>
       );
 
       await act(async () => {
         console.log('Test: Waiting for state updates');
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       });
 
       console.log('Test: Checking if commands are rendered');

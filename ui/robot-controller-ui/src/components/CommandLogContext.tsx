@@ -34,3 +34,4 @@ export const CommandLogProvider: React.FC<{ children: ReactNode }> = ({ children
     </CommandLogContext.Provider>
   );
 };
+
