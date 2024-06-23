@@ -2,6 +2,7 @@
 import { defineConfig } from 'cypress';
 
 export default defineConfig({
+  projectId: 'muvqwy',
   e2e: {
     setupNodeEvents(on, config) {
       // Example: Implement a task to reset the database
