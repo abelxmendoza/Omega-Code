@@ -1,5 +1,16 @@
+/**
+ * File Path: src/pages/index.tsx
+ * 
+ * Home Component
+ * 
+ * This component is the main entry point for the robot controller application.
+ * It provides the UI for controlling the robot, viewing sensor data, and managing command logs.
+ * The component handles sending commands to the robot and integrates multiple sub-components.
+ */
+
 import Head from 'next/head';
 import React, { useState, useEffect } from 'react';
+import ControlPanel from '../components/ControlPanel';
 import SpeedControl from '../components/SpeedControl';
 import CommandLog from '../components/CommandLog';
 import SensorDashboard from '../components/SensorDashboard';
@@ -12,13 +23,6 @@ import VideoFeed from '../components/VideoFeed';
 import LedModal from '../components/LedModal'; // Import LedModal
 import { v4 as uuidv4 } from 'uuid';
 
-/**
- * Home Component
- * 
- * This component is the main entry point for the robot controller application.
- * It provides the UI for controlling the robot, viewing sensor data, and managing command logs.
- * The component handles sending commands to the robot and integrates multiple sub-components.
- */
 const Home: React.FC = () => {
   const { addCommand } = useCommandLog();
   const [isLedModalOpen, setIsLedModalOpen] = useState(false); // State to manage LED modal visibility
@@ -99,14 +103,18 @@ const Home: React.FC = () => {
             <div className="flex-shrink-0">
               <CarControlPanel sendCommand={sendCommand} />
             </div>
-            <VideoFeed />
+            <div data-testid="video-feed">
+              <VideoFeed />
+            </div>
             <div className="flex-shrink-0">
               <CameraControlPanel sendCommand={sendCommand} />
             </div>
           </div>
           <div className="flex justify-center items-center space-x-8 mt-4">
             <SensorDashboard />
-            <SpeedControl sendCommand={sendCommand} onOpenLedModal={() => setIsLedModalOpen(true)} />
+            <div data-testid="speed-control">
+              <SpeedControl sendCommand={sendCommand} onOpenLedModal={() => setIsLedModalOpen(true)} />
+            </div>
           </div>
           <div className="flex flex-col items-center space-y-4 mt-4">
             <CommandLog />

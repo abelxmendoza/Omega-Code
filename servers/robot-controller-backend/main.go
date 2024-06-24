@@ -134,6 +134,8 @@ func main() {
 
     mux := http.NewServeMux()
     mux.HandleFunc("/command", handleCommand)
+    mux.HandleFunc("/line-tracking", handleLineTracking)
+    mux.HandleFunc("/ultrasonic-sensor", handleUltrasonicSensor)
 
     server := &http.Server{
         Addr:    ":8080",

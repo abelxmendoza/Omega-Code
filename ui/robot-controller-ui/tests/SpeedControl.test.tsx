@@ -7,11 +7,11 @@ describe('SpeedControl', () => {
     const mockSendCommand = jest.fn();
     const mockOnOpenLedModal = jest.fn();
 
-    const { getByRole } = render(
+    const { getByText } = render(
       <SpeedControl sendCommand={mockSendCommand} onOpenLedModal={mockOnOpenLedModal} />
     );
 
-    const ledButton = getByRole('button', { name: /I \(LED\)/i });
+    const ledButton = getByText((content, element) => content.includes('I') && content.includes('(LED)'));
     fireEvent.click(ledButton);
     expect(mockOnOpenLedModal).toHaveBeenCalled();
   });
@@ -20,11 +20,11 @@ describe('SpeedControl', () => {
     const mockSendCommand = jest.fn();
     const mockOnOpenLedModal = jest.fn();
 
-    const { getByRole } = render(
+    const { getByText } = render(
       <SpeedControl sendCommand={mockSendCommand} onOpenLedModal={mockOnOpenLedModal} />
     );
 
-    const ledButton = getByRole('button', { name: /I \(LED\)/i });
+    const ledButton = getByText((content, element) => content.includes('I') && content.includes('(LED)'));
 
     fireEvent.doubleClick(ledButton);
     expect(mockSendCommand).toHaveBeenCalledWith('toggle-led');

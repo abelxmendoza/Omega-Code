@@ -1,10 +1,3 @@
-// src/components/Header.tsx
-
-/*
-This component renders the header for the robot control interface.
-It displays the application title, connection status with an icon, and the battery level as a percentage and a visual bar.
-*/
-
 import React from 'react';
 import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 
@@ -18,6 +11,7 @@ const Header: React.FC<{ isConnected: boolean; batteryLevel: number }> = ({ isCo
     <div className="flex justify-between items-center bg-gray-800 text-white p-4 sticky top-0 z-10">
       {/* Application title */}
       <div className="text-lg font-bold">Robot Controller</div>
+
       <div className="flex items-center space-x-4">
         {/* Display the connection status with an icon */}
         <div className="flex items-center">

@@ -1,32 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { COMMAND } from '../control_definitions';
-import { debounce } from 'lodash'; // Use lodash debounce
 
 interface SpeedControlProps {
   sendCommand: (command: string) => void;
-  onOpenLedModal: () => void; // New prop for opening LED modal
+  onOpenLedModal: () => void;
 }
 
-/**
- * SpeedControl Component
- * 
- * This component provides control buttons for the robot's speed and LED settings.
- */
 const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal }) => {
   const [speed, setSpeed] = useState(0);
   const [activeKey, setActiveKey] = useState<string | null>(null);
+  const accelerateInterval = useRef<NodeJS.Timeout | undefined>(undefined);
+  const decelerateInterval = useRef<NodeJS.Timeout | undefined>(undefined);
+  const buzzTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
 
   useEffect(() => {
-    let accelerateInterval: NodeJS.Timeout | undefined;
-    let decelerateInterval: NodeJS.Timeout | undefined;
-
-    const handleKeyDown = debounce((event: KeyboardEvent) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       switch (event.key) {
         case 'p':
         case 'P':
-          if (!accelerateInterval) {
+          if (!accelerateInterval.current) {
             setActiveKey('p');
-            accelerateInterval = setInterval(() => {
+            accelerateInterval.current = setInterval(() => {
               setSpeed((prevSpeed) => {
                 const newSpeed = Math.min(prevSpeed + 5, 100); // Accelerate faster
                 sendCommand(`${COMMAND.INCREASE_SPEED}-${newSpeed}`);
@@ -37,9 +31,9 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
           break;
         case 'o':
         case 'O':
-          if (!decelerateInterval) {
+          if (!decelerateInterval.current) {
             setActiveKey('o');
-            decelerateInterval = setInterval(() => {
+            decelerateInterval.current = setInterval(() => {
               setSpeed((prevSpeed) => {
                 const newSpeed = Math.max(prevSpeed - 10, 0); // Decelerate faster
                 sendCommand(`${COMMAND.DECREASE_SPEED}-${newSpeed}`);
@@ -50,40 +44,42 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
           break;
         case ' ':
           setActiveKey(' ');
-          clearInterval(accelerateInterval);
-          clearInterval(decelerateInterval);
+          clearInterval(accelerateInterval.current);
+          clearInterval(decelerateInterval.current);
           setSpeed(0);
           sendCommand(`${COMMAND.INCREASE_SPEED}-0`); // Emergency stop
           break;
-        case '0':
-          setActiveKey('0');
-          sendCommand(COMMAND.CMD_BUZZER);
+        case 'i':
+        case 'I':
+          setActiveKey('i');
+          sendCommand('toggle-led');
+          onOpenLedModal();
           break;
         default:
           break;
       }
-    }, 300);
+    };
 
     const handleKeyUp = (event: KeyboardEvent) => {
       switch (event.key) {
         case 'p':
         case 'P':
-          clearInterval(accelerateInterval);
-          accelerateInterval = undefined;
+          clearInterval(accelerateInterval.current);
+          accelerateInterval.current = undefined;
           setActiveKey(null);
           break;
         case 'o':
         case 'O':
-          clearInterval(decelerateInterval);
-          decelerateInterval = undefined;
+          clearInterval(decelerateInterval.current);
+          decelerateInterval.current = undefined;
           setActiveKey(null);
           break;
         case ' ':
           setActiveKey(null);
           break;
-        case '0':
+        case 'i':
+        case 'I':
           setActiveKey(null);
-          sendCommand(`${COMMAND.CMD_BUZZER_STOP}`); // Send stop command for buzzer
           break;
         default:
           break;
@@ -96,10 +92,10 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      clearInterval(accelerateInterval);
-      clearInterval(decelerateInterval);
+      clearInterval(accelerateInterval.current);
+      clearInterval(decelerateInterval.current);
     };
-  }, [sendCommand]);
+  }, [sendCommand, onOpenLedModal]);
 
   const getProgressColor = () => {
     if (speed <= 20) return 'bg-red-500';
@@ -111,12 +107,42 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
     return activeKey === key ? 'bg-red-500' : 'bg-blue-500';
   };
 
-  const handleLedButtonClick = () => {
-    onOpenLedModal();
+  const handleButtonClick = (command: string) => {
+    console.log(`Button click: ${command}`);
+    try {
+      sendCommand(command);
+    } catch (error) {
+      console.error(`Error sending command ${command}:`, error);
+    }
   };
 
-  const handleLedButtonDoubleClick = () => {
-    sendCommand('toggle-led');
+  const handleButtonDoubleClick = (command: string) => {
+    console.log(`Button double click: ${command}`);
+    try {
+      if (command === COMMAND.CMD_BUZZER) {
+        sendCommand(command);
+        buzzTimeout.current = setTimeout(() => {
+          sendCommand(COMMAND.CMD_BUZZER_STOP);
+        }, 10000); // Buzz for 10 seconds
+      } else {
+        sendCommand(command);
+      }
+    } catch (error) {
+      console.error(`Error sending command ${command}:`, error);
+    }
+  };
+
+  const handleButtonRelease = (command: string) => {
+    console.log(`Button release: ${command}`);
+    try {
+      if (buzzTimeout.current) {
+        clearTimeout(buzzTimeout.current);
+        buzzTimeout.current = undefined;
+      }
+      sendCommand(command);
+    } catch (error) {
+      console.error(`Error sending command ${command}:`, error);
+    }
   };
 
   return (
@@ -137,22 +163,27 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
         <div className="flex space-x-4">
           <button
             className={`w-16 h-16 rounded-lg ${getButtonClass('i')} text-white flex flex-col items-center justify-center`}
-            onClick={handleLedButtonClick}
-            onDoubleClick={handleLedButtonDoubleClick}
+            onClick={() => {
+              handleButtonClick('toggle-led');
+              onOpenLedModal();
+            }}
+            onDoubleClick={() => handleButtonDoubleClick('toggle-led')}
           >
             <span>I</span>
             <span>(LED)</span>
           </button>
           <button
             className={`w-16 h-16 rounded-lg ${getButtonClass('o')} text-white flex flex-col items-center justify-center`}
-            onClick={() => sendCommand(COMMAND.DECREASE_SPEED)}
+            onClick={() => handleButtonClick(COMMAND.DECREASE_SPEED)}
+            onDoubleClick={() => handleButtonDoubleClick(COMMAND.DECREASE_SPEED)}
           >
             <span>O</span>
             <span>(brake)</span>
           </button>
           <button
             className={`w-16 h-16 rounded-lg ${getButtonClass('p')} text-white flex flex-col items-center justify-center`}
-            onClick={() => sendCommand(COMMAND.INCREASE_SPEED)}
+            onClick={() => handleButtonClick(COMMAND.INCREASE_SPEED)}
+            onDoubleClick={() => handleButtonDoubleClick(COMMAND.INCREASE_SPEED)}
           >
             <span>P</span>
             <span>(gas)</span>
@@ -161,18 +192,20 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
         <button
           className={`w-32 h-12 rounded-lg ${getButtonClass(' ')} text-white mt-4 flex items-center justify-center`}
           onClick={() => {
-            clearInterval(accelerateInterval);
-            clearInterval(decelerateInterval);
+            clearInterval(accelerateInterval.current);
+            clearInterval(decelerateInterval.current);
             setSpeed(0);
-            sendCommand(`${COMMAND.INCREASE_SPEED}-0`);
+            handleButtonClick(`${COMMAND.INCREASE_SPEED}-0`);
           }}
+          onDoubleClick={() => handleButtonDoubleClick(`${COMMAND.INCREASE_SPEED}-0`)}
         >
           Space (E-stop)
         </button>
         <button
           className={`w-32 h-12 rounded-lg ${getButtonClass('0')} text-white mt-4 flex items-center justify-center`}
-          onMouseDown={() => sendCommand(COMMAND.CMD_BUZZER)}
-          onMouseUp={() => sendCommand(COMMAND.CMD_BUZZER_STOP)}
+          onClick={() => handleButtonClick(COMMAND.CMD_BUZZER)}
+          onDoubleClick={() => handleButtonDoubleClick(COMMAND.CMD_BUZZER)}
+          onMouseUp={() => handleButtonRelease(COMMAND.CMD_BUZZER_STOP)}
         >
           0 (Buzz)
         </button>
