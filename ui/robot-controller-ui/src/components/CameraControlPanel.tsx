@@ -65,7 +65,7 @@ const CameraControlPanel: React.FC<{ sendCommand: (command: string, angle: numbe
   };
 
   const buttonClass = (direction: string) => {
-    return `bg-gray-800 text-white p-2 rounded ${
+    return `bg-gray-800 text-white p-4 m-1 rounded-lg ${
       buttonState[direction] ? 'bg-gray-600' : 'bg-gray-800'
     }`;
   };
