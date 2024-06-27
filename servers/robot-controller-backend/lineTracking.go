@@ -1,10 +1,12 @@
+// +build rpi
+
 package main
 
 import (
     "encoding/json"
     "log"
     "net/http"
-    "time"
+    "os/exec"
     "github.com/stianeikeland/go-rpio"
 )
 
@@ -33,11 +35,18 @@ func handleLineTracking(w http.ResponseWriter, r *http.Request) {
     ir03.Input()
 
     data := LineTrackingData{
-        IR01: ir01.Read(),
-        IR02: ir02.Read(),
-        IR03: ir03.Read(),
+        IR01: int(ir01.Read()),
+        IR02: int(ir02.Read()),
+        IR03: int(ir03.Read()),
     }
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(data)
+
+    // Optional: Execute the Python script
+    cmd := exec.Command("python3", "line_tracking.py")
+    err := cmd.Run()
+    if err != nil {
+        log.Printf("Error executing line tracking Python script: %s\n", err)
+    }
 }

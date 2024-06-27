@@ -1,9 +1,12 @@
+// +build rpi
+
 package main
 
 import (
     "encoding/json"
     "log"
     "net/http"
+    "os/exec"
     "time"
     "github.com/stianeikeland/go-rpio"
 )
@@ -48,4 +51,11 @@ func handleUltrasonicSensor(w http.ResponseWriter, r *http.Request) {
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(data)
+
+    // Optional: Execute the Python script
+    cmd := exec.Command("python3", "ultrasonic_sensor.py")
+    err := cmd.Run()
+    if err != nil {
+        log.Printf("Error executing ultrasonic sensor Python script: %s\n", err)
+    }
 }

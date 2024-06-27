@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import Header from '../src/components/Header';
+import '@testing-library/jest-dom/extend-expect'; // for the extra matchers like toHaveClass and toHaveTextContent
+import Header from '../src/components/Header'; // Ensure this path is correct
 
 describe('Header Component', () => {
   it('renders the application title', () => {
@@ -13,12 +14,13 @@ describe('Header Component', () => {
   it('displays the correct connection status', () => {
     const { rerender } = render(<Header isConnected={true} batteryLevel={75} />);
 
-    const statusElements = screen.getAllByText((content, element) => element.textContent.includes('Status:'));
-    expect(statusElements[0]).toHaveTextContent('Status:');
+    const statusElement = screen.getByText(/Status:/i);
+    expect(statusElement).toBeInTheDocument();
     expect(screen.getByTestId('status-icon')).toHaveClass('text-green-500');
 
     rerender(<Header isConnected={false} batteryLevel={75} />);
     expect(screen.getByTestId('status-icon')).toHaveClass('text-red-500');
+    expect(statusElement).toHaveTextContent('Status: Disconnected');
   });
 
   it('displays the correct battery level', () => {

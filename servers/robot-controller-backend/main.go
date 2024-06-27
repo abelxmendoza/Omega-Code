@@ -5,20 +5,106 @@ import (
     "crypto/tls"
     "encoding/json"
     "fmt"
+    "io"
     "log"
     "net/http"
     "os"
     "os/exec"
+    "runtime"
     "time"
-    "io"
 
     "github.com/joho/godotenv"
+    "github.com/stianeikeland/go-rpio/v4"
 )
+
+// GPIO interface and types definition
+type GPIO interface {
+    Open() error
+    Close() error
+    Pin(int) GPIOPin
+}
+
+type GPIOPin interface {
+    Input()
+    Output()
+    Read() rpio.State
+    High()
+    Low()
+}
+
+// RealGPIO implements the GPIO interface for actual Raspberry Pi hardware
+type RealGPIO struct{}
+
+func (r RealGPIO) Open() error {
+    return rpio.Open()
+}
+
+func (r RealGPIO) Close() error {
+    return rpio.Close()
+}
+
+func (r RealGPIO) Pin(pin int) GPIOPin {
+    return RealGPIOPin(rpio.Pin(pin))
+}
+
+type RealGPIOPin rpio.Pin
+
+func (p RealGPIOPin) Input() {
+    rpio.Pin(p).Input()
+}
+
+func (p RealGPIOPin) Output() {
+    rpio.Pin(p).Output()
+}
+
+func (p RealGPIOPin) Read() rpio.State {
+    return rpio.Pin(p).Read()
+}
+
+func (p RealGPIOPin) High() {
+    rpio.Pin(p).High()
+}
+
+func (p RealGPIOPin) Low() {
+    rpio.Pin(p).Low()
+}
+
+// Initialize global variables
+var (
+    gpio GPIO
+    Low  rpio.State = 0
+    High rpio.State = 1
+    execCommand = exec.Command // Declare execCommand for mocking in tests
+)
+
+func isRunningOnRaspberryPi() bool {
+    return runtime.GOARCH == "arm" || runtime.GOARCH == "arm64"
+}
+
+func initGPIO() {
+    if isRunningOnRaspberryPi() {
+        gpio = RealGPIO{}
+        Low = rpio.Low
+        High = rpio.High
+    } else {
+        gpio = nil // No GPIO simulation in Go
+    }
+}
 
 type Command struct {
     Command   string `json:"command"`
     Angle     int    `json:"angle,omitempty"`
-    RequestID string `json:"request_id"` // Add this field to hold the unique identifier
+    RequestID string `json:"request_id"`
+}
+
+type LineTrackingData struct {
+    IR01 int `json:"ir01"`
+    IR02 int `json:"ir02"`
+    IR03 int `json:"ir03"`
+}
+
+type UltrasonicData struct {
+    Distance int `json:"distance"`
 }
 
 func logRequest(r *http.Request) {
@@ -32,18 +118,25 @@ func logCommand(cmd Command) {
 func executeServoCommand(cmd Command) {
     logCommand(cmd)
 
-    var servoType string
+    var pin int
     if cmd.Command == "servo-horizontal" {
-        servoType = "horizontal"
+        pin = 17 // Example pin for horizontal servo
     } else if cmd.Command == "servo-vertical" {
-        servoType = "vertical"
+        pin = 18 // Example pin for vertical servo
     } else {
         log.Printf("Unknown servo command: %s\n", cmd.Command)
         return
     }
 
-    cmdArgs := []string{"servo_control.py", servoType, fmt.Sprintf("%d", cmd.Angle)}
-    command := exec.Command("python3", cmdArgs...)
+    err := executePythonScript(pin, "HIGH")
+    if err != nil {
+        log.Printf("Error executing Python script: %s\n", err)
+    }
+}
+
+func executePythonScript(pin int, state string) error {
+    cmdArgs := []string{"gpio_mock.py", fmt.Sprintf("%d", pin), state}
+    command := execCommand("python3", cmdArgs...)
     var out bytes.Buffer
     var stderr bytes.Buffer
     command.Stdout = &out
@@ -51,9 +144,10 @@ func executeServoCommand(cmd Command) {
     err := command.Run()
     if err != nil {
         log.Printf("Error executing Python script: %s\n", stderr.String())
-    } else {
-        log.Printf("Python script output: %s\n", out.String())
+        return err
     }
+    log.Printf("Python script output: %s\n", out.String())
+    return nil
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
@@ -111,9 +205,52 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, "Command executed: %s", cmd.Command)
 }
 
+func handleLineTracking(w http.ResponseWriter, r *http.Request) {
+    logRequest(r)
+
+    err := executePythonScript(14, "HIGH")
+    if err != nil {
+        http.Error(w, "Error executing GPIO simulator", http.StatusInternalServerError)
+        return
+    }
+
+    data := LineTrackingData{
+        IR01: 1,
+        IR02: 0,
+        IR03: 1,
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(data)
+}
+
+func handleUltrasonicSensor(w http.ResponseWriter, r *http.Request) {
+    logRequest(r)
+
+    err := executePythonScript(27, "HIGH")
+    if err != nil {
+        http.Error(w, "Error executing GPIO simulator", http.StatusInternalServerError)
+        return
+    }
+
+    data := UltrasonicData{Distance: 100}
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(data)
+}
+
+func boolToInt(b bool) int {
+    if b {
+        return 1
+    }
+    return 0
+}
+
 func main() {
     log.SetOutput(os.Stdout)
     log.Printf("Starting server setup at %s\n", time.Now().Format(time.RFC3339))
+
+    initGPIO()
 
     if err := godotenv.Load(".env"); err != nil {
         log.Printf("Error loading .env file: %s\n", err)

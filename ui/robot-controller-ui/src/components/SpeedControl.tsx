@@ -22,11 +22,11 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
             setActiveKey('p');
             accelerateInterval.current = setInterval(() => {
               setSpeed((prevSpeed) => {
-                const newSpeed = Math.min(prevSpeed + 5, 100); // Accelerate faster
+                const newSpeed = Math.min(prevSpeed + 5, 100);
                 sendCommand(`${COMMAND.INCREASE_SPEED}-${newSpeed}`);
                 return newSpeed;
               });
-            }, 100); // Faster interval for acceleration
+            }, 100);
           }
           break;
         case 'o':
@@ -35,11 +35,11 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
             setActiveKey('o');
             decelerateInterval.current = setInterval(() => {
               setSpeed((prevSpeed) => {
-                const newSpeed = Math.max(prevSpeed - 10, 0); // Decelerate faster
+                const newSpeed = Math.max(prevSpeed - 10, 0);
                 sendCommand(`${COMMAND.DECREASE_SPEED}-${newSpeed}`);
                 return newSpeed;
               });
-            }, 100); // Faster interval for deceleration
+            }, 100);
           }
           break;
         case ' ':
@@ -47,7 +47,7 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
           clearInterval(accelerateInterval.current);
           clearInterval(decelerateInterval.current);
           setSpeed(0);
-          sendCommand(`${COMMAND.INCREASE_SPEED}-0`); // Emergency stop
+          sendCommand(`${COMMAND.INCREASE_SPEED}-0`);
           break;
         case 'i':
         case 'I':
@@ -123,7 +123,7 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
         sendCommand(command);
         buzzTimeout.current = setTimeout(() => {
           sendCommand(COMMAND.CMD_BUZZER_STOP);
-        }, 10000); // Buzz for 10 seconds
+        }, 10000);
       } else {
         sendCommand(command);
       }

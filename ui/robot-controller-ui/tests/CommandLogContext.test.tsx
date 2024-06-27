@@ -1,5 +1,6 @@
 import React from 'react';
 import { render } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import { CommandLogProvider, useCommandLog } from '../src/components/CommandLogContext';
 
 // Dummy component to consume the context
