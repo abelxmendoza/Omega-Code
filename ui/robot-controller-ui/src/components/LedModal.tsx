@@ -53,6 +53,7 @@ const LedModal: React.FC<{ sendCommand: (command: string) => void, isOpen: boole
     <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex justify-center items-center z-50">
       <div className="bg-gray-900 rounded-lg p-4 w-full max-w-lg relative text-white">
         <button className="absolute top-0 right-0 m-4 text-white" onClick={onClose}>X</button>
+        <p className="text-sm text-gray-400 font-bold mb-4">⚠️ Double-click the "I" key to turn the lights on.</p> {/* Instruction text */}
         <SketchPicker color={color} onChange={handleColorChange} /> {/* Color picker component */}
         <div>
           <label className="block mt-4">Mode:</label>
