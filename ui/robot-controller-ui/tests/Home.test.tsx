@@ -9,25 +9,50 @@
  */
 
 import React from 'react';
-import { render, fireEvent, screen } from '@testing-library/react';
-import Home from '../components/Home'; // Adjust the import according to your file structure
+import { render, fireEvent, act } from '@testing-library/react';
+import '@testing-library/jest-dom';
+import Home from '../src/pages/index'; // Adjust the import according to your file structure
+import { COMMAND } from '../src/control_definitions';
+import { useCommandLog } from '../src/components/CommandLogContext';
+
+// Mock the useCommandLog hook
+jest.mock('../src/components/CommandLogContext', () => ({
+  useCommandLog: jest.fn(),
+  CommandLogProvider: ({ children }) => <div>{children}</div>,
+}));
 
 describe('Home Component', () => {
-  test('sends INCREASE_SPEED command when "p" key is pressed', () => {
-    render(<Home />);
+  const addCommandMock = jest.fn();
+
+  beforeEach(() => {
+    (useCommandLog as jest.Mock).mockReturnValue({ addCommand: addCommandMock });
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('sends INCREASE_SPEED command when "p" key is pressed', async () => {
+    await act(async () => {
+      render(<Home />);
+    });
     fireEvent.keyDown(window, { key: 'p' });
-    expect(screen.getByText(/INCREASE_SPEED/i)).toBeInTheDocument();
+    expect(addCommandMock).toHaveBeenCalledWith(expect.stringContaining(COMMAND.INCREASE_SPEED));
   });
 
-  test('sends DECREASE_SPEED command when "o" key is pressed', () => {
-    render(<Home />);
+  test('sends DECREASE_SPEED command when "o" key is pressed', async () => {
+    await act(async () => {
+      render(<Home />);
+    });
     fireEvent.keyDown(window, { key: 'o' });
-    expect(screen.getByText(/DECREASE_SPEED/i)).toBeInTheDocument();
+    expect(addCommandMock).toHaveBeenCalledWith(expect.stringContaining(COMMAND.DECREASE_SPEED));
   });
 
-  test('sends CMD_BUZZER command when space bar is pressed', () => {
-    render(<Home />);
+  test('sends CMD_BUZZER command when space bar is pressed', async () => {
+    await act(async () => {
+      render(<Home />);
+    });
     fireEvent.keyDown(window, { key: ' ' });
-    expect(screen.getByText(/CMD_BUZZER/i)).toBeInTheDocument();
+    expect(addCommandMock).toHaveBeenCalledWith(expect.stringContaining(COMMAND.CMD_BUZZER));
   });
 });

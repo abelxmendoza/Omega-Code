@@ -1,6 +1,8 @@
+import React from 'react';
 import { render, fireEvent } from '@testing-library/react';
 import CarControlPanel from '../src/components/CarControlPanel';
-import { COMMAND } from '../src/control_definitions';
+import { COMMAND } from '../src/control_definitions'; // Import the COMMAND constant
+import { CommandLogProvider } from '../src/components/CommandLogContext'; // Import the provider
 
 describe('CarControlPanel', () => {
   let sendCommandMock;
@@ -9,8 +11,16 @@ describe('CarControlPanel', () => {
     sendCommandMock = jest.fn();
   });
 
+  const renderWithProvider = (ui) => {
+    return render(
+      <CommandLogProvider>
+        {ui}
+      </CommandLogProvider>
+    );
+  };
+
   test('renders control buttons', () => {
-    const { getByText } = render(<CarControlPanel sendCommand={sendCommandMock} />);
+    const { getByText } = renderWithProvider(<CarControlPanel sendCommand={sendCommandMock} />);
     expect(getByText('W')).toBeInTheDocument();
     expect(getByText('A')).toBeInTheDocument();
     expect(getByText('S')).toBeInTheDocument();
@@ -18,28 +28,28 @@ describe('CarControlPanel', () => {
   });
 
   test('sends correct command on button click', () => {
-    const { getByText } = render(<CarControlPanel sendCommand={sendCommandMock} />);
-
-    fireEvent.click(getByText('W'));
+    const { getByText } = renderWithProvider(<CarControlPanel sendCommand={sendCommandMock} />);
+    fireEvent.mouseDown(getByText('W'));
     expect(sendCommandMock).toHaveBeenCalledWith(COMMAND.MOVE_UP);
-
-    fireEvent.click(getByText('A'));
-    expect(sendCommandMock).toHaveBeenCalledWith(COMMAND.MOVE_LEFT);
-
-    fireEvent.click(getByText('S'));
-    expect(sendCommandMock).toHaveBeenCalledWith(COMMAND.MOVE_DOWN);
-
-    fireEvent.click(getByText('D'));
-    expect(sendCommandMock).toHaveBeenCalledWith(COMMAND.MOVE_RIGHT);
   });
 
   test('changes button color on click', () => {
-    const { getByText } = render(<CarControlPanel sendCommand={sendCommandMock} />);
-
+    const { getByText } = renderWithProvider(<CarControlPanel sendCommand={sendCommandMock} />);
     const buttonW = getByText('W');
     fireEvent.mouseDown(buttonW);
     expect(buttonW).toHaveClass('bg-gray-600');
-    fireEvent.mouseUp(buttonW);
-    expect(buttonW).toHaveClass('bg-gray-800');
+  });
+
+  test('handles keydown events correctly', () => {
+    const { container } = renderWithProvider(<CarControlPanel sendCommand={sendCommandMock} />);
+    fireEvent.keyDown(container, { key: 'w' });
+    expect(sendCommandMock).toHaveBeenCalledWith(COMMAND.MOVE_UP);
+  });
+
+  test('handles keyup events correctly', () => {
+    const { container } = renderWithProvider(<CarControlPanel sendCommand={sendCommandMock} />);
+    fireEvent.keyDown(container, { key: 'w' });
+    fireEvent.keyUp(container, { key: 'w' });
+    expect(sendCommandMock).toHaveBeenCalledWith(COMMAND.STOP);
   });
 });

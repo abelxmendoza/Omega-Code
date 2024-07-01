@@ -1,7 +1,8 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import '@testing-library/jest-dom/extend-expect'; // for the extra matchers like toHaveClass and toHaveTextContent
+import '@testing-library/jest-dom'; // for the extra matchers like toHaveClass and toHaveTextContent
 import Header from '../src/components/Header'; // Ensure this path is correct
+
 
 describe('Header Component', () => {
   it('renders the application title', () => {

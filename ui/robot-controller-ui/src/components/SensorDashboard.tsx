@@ -58,3 +58,4 @@ const SensorDashboard: React.FC = () => {
 };
 
 export default SensorDashboard;
+

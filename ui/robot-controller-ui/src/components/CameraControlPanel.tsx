@@ -128,3 +128,4 @@ const CameraControlPanel: React.FC<{ sendCommand: (command: string, angle: numbe
 };
 
 export default CameraControlPanel;
+

@@ -2,6 +2,7 @@ import React from 'react';
 import { render, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import SpeedControl from '../src/components/SpeedControl';
+import { CommandLogProvider } from '../src/components/CommandLogContext';
 
 describe('SpeedControl', () => {
   it('opens LED modal on single click', () => {
@@ -9,7 +10,9 @@ describe('SpeedControl', () => {
     const mockOnOpenLedModal = jest.fn();
 
     const { getByTestId } = render(
-      <SpeedControl sendCommand={mockSendCommand} onOpenLedModal={mockOnOpenLedModal} />
+      <CommandLogProvider>
+        <SpeedControl sendCommand={mockSendCommand} onOpenLedModal={mockOnOpenLedModal} />
+      </CommandLogProvider>
     );
 
     const ledButton = getByTestId('led-button');
@@ -22,7 +25,9 @@ describe('SpeedControl', () => {
     const mockOnOpenLedModal = jest.fn();
 
     const { getByTestId } = render(
-      <SpeedControl sendCommand={mockSendCommand} onOpenLedModal={mockOnOpenLedModal} />
+      <CommandLogProvider>
+        <SpeedControl sendCommand={mockSendCommand} onOpenLedModal={mockOnOpenLedModal} />
+      </CommandLogProvider>
     );
 
     const ledButton = getByTestId('led-button');
@@ -30,3 +35,4 @@ describe('SpeedControl', () => {
     expect(mockSendCommand).toHaveBeenCalledWith('toggle-led');
   });
 });
+

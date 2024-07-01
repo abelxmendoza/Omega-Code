@@ -25,9 +25,9 @@ const Status: React.FC<StatusProps> = ({ status, battery }) => {
       {/* Display the status with an icon */}
       <div className="flex items-center">
         Status: {status === 'Connected' ? (
-          <FaCheckCircle className="text-green-500 ml-2" />
+          <FaCheckCircle data-testid="status-icon" className="text-green-500 ml-2" />
         ) : (
-          <FaTimesCircle className="text-red-500 ml-2" />
+          <FaTimesCircle data-testid="status-icon" className="text-red-500 ml-2" />
         )}
       </div>
       {/* Display the battery level as a bar and percentage */}

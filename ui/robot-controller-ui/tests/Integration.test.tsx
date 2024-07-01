@@ -46,3 +46,4 @@ test('Integration: CarControlPanel and CommandLog', () => {
   expect(screen.getByText('move-down')).toBeInTheDocument();
   // Add more checks if necessary for other commands
 });
+

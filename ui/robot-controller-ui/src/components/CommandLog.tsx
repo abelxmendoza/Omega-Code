@@ -2,7 +2,7 @@ import React from 'react';
 import { useCommandLog } from './CommandLogContext';
 
 const CommandLog: React.FC = () => {
-  const { commands } = useCommandLog();
+  const { commands = [] } = useCommandLog(); // Default to an empty array if commands is undefined
 
   console.log('Rendering CommandLog with commands:', commands);
 
@@ -19,3 +19,4 @@ const CommandLog: React.FC = () => {
 };
 
 export default CommandLog;
+

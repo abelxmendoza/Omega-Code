@@ -136,3 +136,4 @@ const CarControlPanel: React.FC<{ sendCommand: (command: string) => void }> = ({
 };
 
 export default CarControlPanel;
+
