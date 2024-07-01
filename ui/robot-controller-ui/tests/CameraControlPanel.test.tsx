@@ -1,9 +1,9 @@
 import { render, fireEvent } from '@testing-library/react';
-import CameraControlPanel from '../components/CameraControlPanel';
-import { COMMAND } from '../control_definitions';
+import CameraControlPanel from '../src/components/CameraControlPanel';
+import { COMMAND } from '../src/control_definitions';
 
 describe('CameraControlPanel', () => {
-  let sendCommandMock: jest.Mock;
+  let sendCommandMock;
 
   beforeEach(() => {
     sendCommandMock = jest.fn();

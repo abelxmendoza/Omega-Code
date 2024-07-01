@@ -8,6 +8,7 @@ const SensorDashboard: React.FC = () => {
     const fetchLineTrackingData = async () => {
       try {
         const response = await fetch('https://localhost:8080/line-tracking');
+        if (!response.ok) throw new Error('Network response was not ok');
         const data = await response.json();
         setLineTrackingData(data);
       } catch (error) {
@@ -18,8 +19,9 @@ const SensorDashboard: React.FC = () => {
     const fetchUltrasonicData = async () => {
       try {
         const response = await fetch('https://localhost:8080/ultrasonic-sensor');
+        if (!response.ok) throw new Error('Network response was not ok');
         const data = await response.json();
-        setUltrasonicDistance(data.distance);
+        setUltrasonicDistance(data.distance || 0);
       } catch (error) {
         console.error('Error fetching ultrasonic data:', error);
       }

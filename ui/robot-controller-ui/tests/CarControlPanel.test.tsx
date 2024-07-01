@@ -1,9 +1,9 @@
 import { render, fireEvent } from '@testing-library/react';
-import CarControlPanel from '../components/CarControlPanel';
-import { COMMAND } from '../control_definitions';
+import CarControlPanel from '../src/components/CarControlPanel';
+import { COMMAND } from '../src/control_definitions';
 
 describe('CarControlPanel', () => {
-  let sendCommandMock: jest.Mock;
+  let sendCommandMock;
 
   beforeEach(() => {
     sendCommandMock = jest.fn();

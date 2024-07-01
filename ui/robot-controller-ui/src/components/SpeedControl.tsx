@@ -1,17 +1,23 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import { COMMAND } from '../control_definitions';
+import { useCommandLog } from './CommandLogContext';
 
 interface SpeedControlProps {
   sendCommand: (command: string) => void;
   onOpenLedModal: () => void;
 }
 
+
 const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal }) => {
   const [speed, setSpeed] = useState(0);
   const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [isLedActive, setIsLedActive] = useState(false);
+  const [clickedButton, setClickedButton] = useState<string | null>(null);
+  const [isBuzzerActive, setIsBuzzerActive] = useState(false);
   const accelerateInterval = useRef<NodeJS.Timeout | undefined>(undefined);
   const decelerateInterval = useRef<NodeJS.Timeout | undefined>(undefined);
   const buzzTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
+  const { addCommand } = useCommandLog();
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -24,6 +30,7 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
               setSpeed((prevSpeed) => {
                 const newSpeed = Math.min(prevSpeed + 5, 100);
                 sendCommand(`${COMMAND.INCREASE_SPEED}-${newSpeed}`);
+                addCommand(`${COMMAND.INCREASE_SPEED}-${newSpeed}`);
                 return newSpeed;
               });
             }, 100);
@@ -37,6 +44,7 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
               setSpeed((prevSpeed) => {
                 const newSpeed = Math.max(prevSpeed - 10, 0);
                 sendCommand(`${COMMAND.DECREASE_SPEED}-${newSpeed}`);
+                addCommand(`${COMMAND.DECREASE_SPEED}-${newSpeed}`);
                 return newSpeed;
               });
             }, 100);
@@ -48,12 +56,23 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
           clearInterval(decelerateInterval.current);
           setSpeed(0);
           sendCommand(`${COMMAND.INCREASE_SPEED}-0`);
+          sendCommand(`${COMMAND.DECREASE_SPEED}-0`);
+          addCommand('emergency-stop');
           break;
         case 'i':
         case 'I':
           setActiveKey('i');
           sendCommand('toggle-led');
+          addCommand('toggle-led');
           onOpenLedModal();
+          break;
+        case '0':
+          if (!isBuzzerActive) {
+            setActiveKey('0');
+            setIsBuzzerActive(true);
+            sendCommand(COMMAND.CMD_BUZZER);
+            addCommand('buzzer on');
+          }
           break;
         default:
           break;
@@ -81,6 +100,12 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
         case 'I':
           setActiveKey(null);
           break;
+        case '0':
+          setActiveKey(null);
+          setIsBuzzerActive(false);
+          sendCommand(COMMAND.CMD_BUZZER_STOP);
+          addCommand('buzzer off');
+          break;
         default:
           break;
       }
@@ -95,7 +120,7 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
       clearInterval(accelerateInterval.current);
       clearInterval(decelerateInterval.current);
     };
-  }, [sendCommand, onOpenLedModal]);
+  }, [sendCommand, onOpenLedModal, addCommand, isBuzzerActive]);
 
   const getProgressColor = () => {
     if (speed <= 20) return 'bg-red-500';
@@ -104,13 +129,24 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
   };
 
   const getButtonClass = (key: string) => {
+    if (key === 'i' && isLedActive) return 'bg-yellow-500';
+    if (clickedButton === key) return 'bg-green-500';
     return activeKey === key ? 'bg-red-500' : 'bg-blue-500';
   };
 
-  const handleButtonClick = (command: string) => {
+  const handleButtonClick = (command: string, key: string) => {
     console.log(`Button click: ${command}`);
+    setClickedButton(key);
     try {
-      sendCommand(command);
+      if (command === 'toggle-led') {
+        setIsLedActive(!isLedActive); // Toggle the button color
+        sendCommand(command);
+        addCommand(command);
+        onOpenLedModal();
+      } else {
+        sendCommand(command);
+        addCommand(command);
+      }
     } catch (error) {
       console.error(`Error sending command ${command}:`, error);
     }
@@ -119,13 +155,21 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
   const handleButtonDoubleClick = (command: string) => {
     console.log(`Button double click: ${command}`);
     try {
-      if (command === COMMAND.CMD_BUZZER) {
+      if (command === 'toggle-led') {
+        setIsLedActive(true); // Turn the button yellow
         sendCommand(command);
+        addCommand(command);
+        onOpenLedModal();
+      } else if (command === COMMAND.CMD_BUZZER) {
+        sendCommand(command);
+        addCommand(command);
         buzzTimeout.current = setTimeout(() => {
           sendCommand(COMMAND.CMD_BUZZER_STOP);
+          addCommand(COMMAND.CMD_BUZZER_STOP);
         }, 10000);
       } else {
         sendCommand(command);
+        addCommand(command);
       }
     } catch (error) {
       console.error(`Error sending command ${command}:`, error);
@@ -134,12 +178,14 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
 
   const handleButtonRelease = (command: string) => {
     console.log(`Button release: ${command}`);
+    setClickedButton(null);
     try {
       if (buzzTimeout.current) {
         clearTimeout(buzzTimeout.current);
         buzzTimeout.current = undefined;
       }
       sendCommand(command);
+      addCommand(command);
     } catch (error) {
       console.error(`Error sending command ${command}:`, error);
     }
@@ -162,6 +208,7 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
       <div className="flex flex-col items-center">
         <div className="flex space-x-4">
           <button
+            data-testid="led-button"
             className={`w-16 h-16 rounded-lg ${getButtonClass('i')} text-white flex flex-col items-center justify-center`}
             onClick={() => {
               handleButtonClick('toggle-led');
@@ -196,6 +243,7 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
             clearInterval(decelerateInterval.current);
             setSpeed(0);
             handleButtonClick(`${COMMAND.INCREASE_SPEED}-0`);
+            handleButtonClick(`${COMMAND.DECREASE_SPEED}-0`);
           }}
           onDoubleClick={() => handleButtonDoubleClick(`${COMMAND.INCREASE_SPEED}-0`)}
         >
@@ -203,7 +251,10 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
         </button>
         <button
           className={`w-32 h-12 rounded-lg ${getButtonClass('0')} text-white mt-4 flex items-center justify-center`}
-          onClick={() => handleButtonClick(COMMAND.CMD_BUZZER)}
+          onClick={() => {
+            handleButtonClick(COMMAND.CMD_BUZZER);
+            setClickedButton('0');
+          }}
           onDoubleClick={() => handleButtonDoubleClick(COMMAND.CMD_BUZZER)}
           onMouseUp={() => handleButtonRelease(COMMAND.CMD_BUZZER_STOP)}
         >
