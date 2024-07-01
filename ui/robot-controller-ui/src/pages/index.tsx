@@ -3,13 +3,13 @@ import React, { useState, useEffect } from 'react';
 import SpeedControl from '../components/SpeedControl';
 import CommandLog from '../components/CommandLog';
 import SensorDashboard from '../components/SensorDashboard';
-import CarControlPanel from '../components/CarControlPanel'; // Import CarControlPanel
-import CameraControlPanel from '../components/CameraControlPanel'; // Import CameraControlPanel
+import CarControlPanel from '../components/CarControlPanel';
+import CameraControlPanel from '../components/CameraControlPanel';
 import { CommandLogProvider, useCommandLog } from '../components/CommandLogContext';
 import { COMMAND } from '../control_definitions';
 import Header from '../components/Header';
 import VideoFeed from '../components/VideoFeed';
-import LedModal from '../components/LedModal'; // Import LedModal
+import LedModal from '../components/LedModal';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -119,4 +119,3 @@ const Home: React.FC = () => {
 };
 
 export default Home;
-

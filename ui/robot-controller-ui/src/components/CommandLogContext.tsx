@@ -25,7 +25,7 @@ export const CommandLogProvider: React.FC<{ children: ReactNode }> = ({ children
   // Function to add a command to the log
   const addCommand = (command: string) => {
     console.log(`Adding command to log: ${command}`);
-    setCommands((prevCommands) => [command, ...prevCommands]);
+    setCommands((prevCommands) => [...prevCommands, command]);
   };
 
   return (
@@ -34,3 +34,5 @@ export const CommandLogProvider: React.FC<{ children: ReactNode }> = ({ children
     </CommandLogContext.Provider>
   );
 };
+
+export { CommandLogContext };

@@ -47,18 +47,22 @@ const CarControlPanel: React.FC<{ sendCommand: (command: string) => void }> = ({
       case 'w':
       case 'W':
         setButtonPressed('up', false);
+        sendCommand(COMMAND.STOP);
         break;
       case 'a':
       case 'A':
         setButtonPressed('left', false);
+        sendCommand(COMMAND.STOP);
         break;
       case 's':
       case 'S':
         setButtonPressed('down', false);
+        sendCommand(COMMAND.STOP);
         break;
       case 'd':
       case 'D':
         setButtonPressed('right', false);
+        sendCommand(COMMAND.STOP);
         break;
       default:
         break;
@@ -66,12 +70,14 @@ const CarControlPanel: React.FC<{ sendCommand: (command: string) => void }> = ({
   };
 
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('keyup', handleKeyUp);
+      return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
+      };
+    }
   }, []);
 
   const setButtonPressed = (direction: string, state: boolean) => {
@@ -92,6 +98,7 @@ const CarControlPanel: React.FC<{ sendCommand: (command: string) => void }> = ({
 
   const handleButtonRelease = (direction: string) => {
     setButtonPressed(direction, false);
+    sendCommand(COMMAND.STOP);
   };
 
   return (
@@ -136,4 +143,3 @@ const CarControlPanel: React.FC<{ sendCommand: (command: string) => void }> = ({
 };
 
 export default CarControlPanel;
-

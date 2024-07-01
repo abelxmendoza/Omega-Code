@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import { COMMAND } from '../control_definitions';
-import { useCommandLog } from './CommandLogContext';
+import { CommandLogContext } from './CommandLogContext'; // Adjust the path if necessary
 
 interface SpeedControlProps {
   sendCommand: (command: string) => void;
@@ -9,6 +9,7 @@ interface SpeedControlProps {
 
 
 const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal }) => {
+  const { addCommand } = useContext(CommandLogContext); // Use CommandLogContext here
   const [speed, setSpeed] = useState(0);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [isLedActive, setIsLedActive] = useState(false);
@@ -17,7 +18,6 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
   const accelerateInterval = useRef<NodeJS.Timeout | undefined>(undefined);
   const decelerateInterval = useRef<NodeJS.Timeout | undefined>(undefined);
   const buzzTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
-  const { addCommand } = useCommandLog();
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
