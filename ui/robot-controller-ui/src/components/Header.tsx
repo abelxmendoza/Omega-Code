@@ -16,6 +16,7 @@ const Header: React.FC<{ isConnected: boolean; batteryLevel: number }> = ({ isCo
           ) : (
             <FaTimesCircle data-testid="status-icon" className="text-red-500 ml-2" />
           )}
+          <span className="ml-2">{isConnected ? 'Connected' : 'Disconnected'}</span>
         </div>
         <div className="flex items-center">
           Battery:

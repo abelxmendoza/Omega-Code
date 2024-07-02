@@ -1,5 +1,5 @@
 import Head from 'next/head';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import SpeedControl from '../components/SpeedControl';
 import CommandLog from '../components/CommandLog';
 import SensorDashboard from '../components/SensorDashboard';
@@ -22,6 +22,34 @@ import { v4 as uuidv4 } from 'uuid';
 const Home: React.FC = () => {
   const { addCommand } = useCommandLog();
   const [isLedModalOpen, setIsLedModalOpen] = useState(false); // State to manage LED modal visibility
+  const ws = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    // Initialize WebSocket connection
+    ws.current = new WebSocket('ws://localhost:8080/ws');
+
+    ws.current.onopen = () => {
+      console.log('WebSocket connection established');
+    };
+
+    ws.current.onmessage = (event) => {
+      console.log('Received message:', event.data);
+    };
+
+    ws.current.onclose = () => {
+      console.log('WebSocket connection closed');
+    };
+
+    ws.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
+    };
+  }, []);
 
   /**
    * Sends a command to the robot.
@@ -30,24 +58,15 @@ const Home: React.FC = () => {
    */
   const sendCommand = (command: string, angle: number = 0) => {
     const requestId = uuidv4();
-    fetch('https://localhost:8080/command', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ command, angle, request_id: requestId }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          console.error('Error sending command:', response.statusText);
-        } else {
-          console.log(`Command sent: ${command}`);
-          addCommand(`${command} (ID: ${requestId})`);
-        }
-      })
-      .catch((error) => {
-        console.error('Error sending command:', error);
-      });
+    const message = JSON.stringify({ command, angle, request_id: requestId });
+
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(message);
+      console.log(`Command sent: ${command}`);
+      addCommand(`${command} (ID: ${requestId})`);
+    } else {
+      console.error('WebSocket is not open');
+    }
   };
 
   /**

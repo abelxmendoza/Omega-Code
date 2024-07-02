@@ -1,41 +1,43 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
 const SensorDashboard: React.FC = () => {
   const [lineTrackingData, setLineTrackingData] = useState({ IR01: 0, IR02: 0, IR03: 0 });
   const [ultrasonicDistance, setUltrasonicDistance] = useState(0);
+  const ws = useRef<WebSocket | null>(null);
+
 
   useEffect(() => {
-    const fetchLineTrackingData = async () => {
-      try {
-        const response = await fetch('https://localhost:8080/line-tracking');
-        if (!response.ok) throw new Error('Network response was not ok');
-        const data = await response.json();
-        setLineTrackingData(data);
-      } catch (error) {
-        console.error('Error fetching line tracking data:', error);
+    // Establish WebSocket connection
+    ws.current = new WebSocket('ws://localhost:8080/ws');
+
+    ws.current.onopen = () => {
+      console.log('WebSocket connection established');
+    };
+
+    ws.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.lineTracking) {
+        setLineTrackingData(data.lineTracking);
+      }
+      if (data.ultrasonicDistance !== undefined) {
+        setUltrasonicDistance(data.ultrasonicDistance);
       }
     };
 
-    const fetchUltrasonicData = async () => {
-      try {
-        const response = await fetch('https://localhost:8080/ultrasonic-sensor');
-        if (!response.ok) throw new Error('Network response was not ok');
-        const data = await response.json();
-        setUltrasonicDistance(data.distance || 0);
-      } catch (error) {
-        console.error('Error fetching ultrasonic data:', error);
-      }
+    ws.current.onclose = () => {
+      console.log('WebSocket connection closed');
     };
 
-    fetchLineTrackingData();
-    fetchUltrasonicData();
+    ws.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
 
-    const intervalId = setInterval(() => {
-      fetchLineTrackingData();
-      fetchUltrasonicData();
-    }, 1000);
-
-    return () => clearInterval(intervalId);
+    // Cleanup on unmount
+    return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
+    };
   }, []);
 
   return (
@@ -58,4 +60,3 @@ const SensorDashboard: React.FC = () => {
 };
 
 export default SensorDashboard;
-

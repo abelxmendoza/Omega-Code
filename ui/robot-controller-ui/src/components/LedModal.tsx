@@ -56,16 +56,16 @@ const LedModal: React.FC<{ sendCommand: (command: string) => void, isOpen: boole
         <p className="text-sm text-gray-400 font-bold mb-4">⚠️ Double-click the "I" key to turn the lights on.</p> {/* Instruction text */}
         <SketchPicker color={color} onChange={handleColorChange} /> {/* Color picker component */}
         <div>
-          <label className="block mt-4">Mode:</label>
-          <select value={mode} onChange={handleModeChange} className="bg-gray-800 text-white rounded p-1"> {/* Mode dropdown */}
+          <label htmlFor="mode" className="block mt-4">Mode:</label>
+          <select id="mode" value={mode} onChange={handleModeChange} className="bg-gray-800 text-white rounded p-1"> {/* Mode dropdown */}
             <option value="single">Single Color</option>
             <option value="multi">Multi Color</option>
             <option value="two">Two Color</option>
           </select>
         </div>
         <div>
-          <label className="block mt-4">Pattern:</label>
-          <select value={pattern} onChange={handlePatternChange} className="bg-gray-800 text-white rounded p-1"> {/* Pattern dropdown */}
+          <label htmlFor="pattern" className="block mt-4">Pattern:</label>
+          <select id="pattern" value={pattern} onChange={handlePatternChange} className="bg-gray-800 text-white rounded p-1"> {/* Pattern dropdown */}
             <option value="static">Static</option>
             <option value="blink">Blink</option>
             <option value="fade">Fade</option>
@@ -73,8 +73,8 @@ const LedModal: React.FC<{ sendCommand: (command: string) => void, isOpen: boole
         </div>
         {pattern !== 'static' && ( // Show interval input only if pattern is not static
           <div>
-            <label className="block mt-4">Interval (ms):</label>
-            <input type="number" value={interval} onChange={handleIntervalChange} className="bg-gray-800 text-white rounded p-1" /> {/* Interval input */}
+            <label htmlFor="interval" className="block mt-4">Interval (ms):</label>
+            <input id="interval" type="number" value={interval} onChange={handleIntervalChange} className="bg-gray-800 text-white rounded p-1" /> {/* Interval input */}
           </div>
         )}
         <button onClick={handleApply} className="bg-blue-500 text-white p-2 rounded mt-4">Apply</button> {/* Apply button */}

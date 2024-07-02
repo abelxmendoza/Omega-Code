@@ -19,7 +19,13 @@ const VideoFeed: React.FC = () => {
     <div className="relative w-2/5 bg-gray-200 flex items-center justify-center" style={{ height: 'calc(60vw * 0.6)' }}>
       {showGps ? (
         <div className="absolute top-0 right-0 w-full h-full">
-          <GpsLocation size="large" onSwitchToVideo={toggleView} />
+          <GpsLocation />
+          <button 
+            className="absolute top-2 right-2 bg-white p-2 rounded"
+            onClick={toggleView}
+          >
+            Back to Video
+          </button>
         </div>
       ) : (
         <>
@@ -33,7 +39,7 @@ const VideoFeed: React.FC = () => {
             onClick={toggleView}
             title="Click to enlarge"
           >
-            <GpsLocation size="small" onSwitchToVideo={toggleView} />
+            <GpsLocation />
           </div>
         </>
       )}

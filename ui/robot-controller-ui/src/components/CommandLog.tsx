@@ -1,8 +1,40 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useCommandLog } from './CommandLogContext';
 
 const CommandLog: React.FC = () => {
-  const { commands = [] } = useCommandLog(); // Default to an empty array if commands is undefined
+  const { commands = [], addCommand } = useCommandLog(); // Default to an empty array if commands is undefined
+  const ws = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    // Establish WebSocket connection
+    ws.current = new WebSocket('ws://localhost:8080/ws');
+
+    ws.current.onopen = () => {
+      console.log('WebSocket connection established');
+    };
+
+    ws.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.command) {
+        addCommand(data.command);
+      }
+    };
+
+    ws.current.onclose = () => {
+      console.log('WebSocket connection closed');
+    };
+
+    ws.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    // Cleanup on unmount
+    return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
+    };
+  }, [addCommand]);
 
   console.log('Rendering CommandLog with commands:', commands);
 
@@ -19,4 +51,3 @@ const CommandLog: React.FC = () => {
 };
 
 export default CommandLog;
-

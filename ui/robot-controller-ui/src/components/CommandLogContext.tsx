@@ -4,6 +4,7 @@ import React, { createContext, useState, useContext, ReactNode } from 'react';
 interface CommandLogContextType {
   commands: string[];
   addCommand: (command: string) => void;
+  popCommand: () => void;
 }
 
 // Create the context with an undefined initial value
@@ -25,11 +26,16 @@ export const CommandLogProvider: React.FC<{ children: ReactNode }> = ({ children
   // Function to add a command to the log
   const addCommand = (command: string) => {
     console.log(`Adding command to log: ${command}`);
-    setCommands((prevCommands) => [...prevCommands, command]);
+    setCommands((prevCommands) => [command, ...prevCommands]);
+  };
+
+  // Function to remove the most recent command from the log
+  const popCommand = () => {
+    setCommands((prevCommands) => prevCommands.slice(1));
   };
 
   return (
-    <CommandLogContext.Provider value={{ commands, addCommand }}>
+    <CommandLogContext.Provider value={{ commands, addCommand, popCommand }}>
       {children}
     </CommandLogContext.Provider>
   );

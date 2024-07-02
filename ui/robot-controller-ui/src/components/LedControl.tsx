@@ -42,7 +42,7 @@ const LedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ send
       color,
       mode,
       pattern,
-      interval,
+      interval: pattern !== 'static' ? interval : undefined, // Only include interval if pattern is not static
     }));
   };
 
@@ -67,10 +67,12 @@ const LedControl: React.FC<{ sendCommand: (command: string) => void }> = ({ send
             <option value="fade">Fade</option>
           </select>
         </div>
-        <div className="mt-4">
-          <label className="block text-green-300">Interval (ms):</label>
-          <input type="number" value={interval} onChange={handleIntervalChange} className="w-full p-2 rounded bg-gray-800 text-green-300" /> {/* Interval input */}
-        </div>
+        {pattern !== 'static' && ( // Show interval input only if pattern is not static
+          <div className="mt-4">
+            <label className="block text-green-300">Interval (ms):</label>
+            <input type="number" value={interval} onChange={handleIntervalChange} className="w-full p-2 rounded bg-gray-800 text-green-300" /> {/* Interval input */}
+          </div>
+        )}
         <button onClick={handleApply} className="mt-4 w-full bg-green-500 p-2 rounded text-white">Apply</button> {/* Apply button */}
       </div>
     </div>

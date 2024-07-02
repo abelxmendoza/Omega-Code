@@ -1,6 +1,6 @@
 // tests/CommandLog.test.tsx
 import React from 'react';
-import { render, act, screen } from '@testing-library/react';
+import { render, act, screen, waitFor } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import configureStore from 'redux-mock-store';
 import CommandLog from '../src/components/CommandLog';
@@ -49,6 +49,18 @@ describe('CommandLog', () => {
 
     store.dispatch = jest.fn(store.dispatch);
     (useCommandLog as jest.Mock).mockReturnValue({ addCommand: addCommandMock, commands: commandsMock });
+
+    // Mock WebSocket
+    global.WebSocket = jest.fn(() => ({
+      send: jest.fn(),
+      close: jest.fn(),
+      addEventListener: jest.fn((event, handler) => {
+        if (event === 'open') {
+          handler();
+        }
+      }),
+      removeEventListener: jest.fn(),
+    }));
   });
 
   afterEach(() => {
@@ -60,33 +72,61 @@ describe('CommandLog', () => {
     console.log('CommandLog tests completed.');
   });
 
-  it.only('renders command log with provided commands', async () => {
+  it('renders command log with provided commands', async () => {
     console.log('Test: renders command log with provided commands - Start');
 
-    try {
-      await act(async () => {
-        render(
-          <Provider store={store}>
-            <CommandLogProvider>
-              <AddCommands />
-              <CommandLog />
-            </CommandLogProvider>
-          </Provider>
-        );
+    await act(async () => {
+      render(
+        <Provider store={store}>
+          <CommandLogProvider>
+            <AddCommands />
+            <CommandLog />
+          </CommandLogProvider>
+        </Provider>
+      );
+    });
 
-        console.log('Test: Waiting for state updates');
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      });
-
-      console.log('Test: Checking if commands are rendered');
+    console.log('Test: Waiting for state updates');
+    await waitFor(() => {
       expect(screen.getByText('move-up')).toBeInTheDocument();
       console.log('Test: move-up command is in the document');
       expect(screen.getByText('move-down')).toBeInTheDocument();
       console.log('Test: move-down command is in the document');
-    } catch (error) {
-      console.error('Test: Error in renders command log with provided commands', error);
-      throw error;
-    }
+    });
+
     console.log('Test: renders command log with provided commands - End');
+  }, 5000); // Set timeout to 5 seconds
+
+  it('adds command from WebSocket message', async () => {
+    console.log('Test: adds command from WebSocket message - Start');
+
+    await act(async () => {
+      render(
+        <Provider store={store}>
+          <CommandLogProvider>
+            <CommandLog />
+          </CommandLogProvider>
+        </Provider>
+      );
+    });
+
+    const mockMessageEvent = new MessageEvent('message', {
+      data: JSON.stringify({ command: 'move-left' }),
+    });
+
+    await act(async () => {
+      const messageHandler = global.WebSocket.mock.instances[0].addEventListener.mock.calls.find(call => call[0] === 'message')[1];
+      if (messageHandler) {
+        messageHandler(mockMessageEvent);
+      }
+    });
+
+    console.log('Test: Waiting for state updates');
+    await waitFor(() => {
+      expect(screen.getByText('move-left')).toBeInTheDocument();
+      console.log('Test: move-left command is in the document');
+    });
+
+    console.log('Test: adds command from WebSocket message - End');
   }, 5000); // Set timeout to 5 seconds
 });

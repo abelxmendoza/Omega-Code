@@ -1,16 +1,18 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import SensorDashboard from '../src/components/SensorDashboard';
-import { act } from 'react'; // Ensure act is imported
 
 beforeAll(() => {
-  global.fetch = jest.fn();
+  global.WebSocket = jest.fn(() => ({
+    addEventListener: jest.fn(),
+    close: jest.fn(),
+  }));
 });
 
 describe('SensorDashboard Component', () => {
   beforeEach(() => {
-    fetch.mockClear();
+    global.WebSocket.mockClear();
   });
 
   it('renders the Line Tracking data', () => {
@@ -25,23 +27,23 @@ describe('SensorDashboard Component', () => {
     expect(ultrasonicDistanceElement).toBeInTheDocument();
   });
 
-  it('fetches data and updates state', async () => {
-    fetch
-      .mockImplementationOnce(() =>
-        Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ IR01: 1, IR02: 2, IR03: 3 }),
-        })
-      )
-      .mockImplementationOnce(() =>
-        Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ distance: 100 }),
-        })
-      );
-
+  it('updates data from WebSocket message', async () => {
     await act(async () => {
       render(<SensorDashboard />);
+    });
+
+    const mockMessageEvent = new MessageEvent('message', {
+      data: JSON.stringify({
+        lineTracking: { IR01: 1, IR02: 2, IR03: 3 },
+        ultrasonicDistance: 100,
+      }),
+    });
+
+    await act(async () => {
+      const messageHandler = global.WebSocket.mock.instances[0].addEventListener.mock.calls.find(call => call[0] === 'message')[1];
+      if (messageHandler) {
+        messageHandler(mockMessageEvent);
+      }
     });
 
     await waitFor(() => {

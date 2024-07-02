@@ -7,7 +7,6 @@ interface SpeedControlProps {
   onOpenLedModal: () => void;
 }
 
-
 const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal }) => {
   const { addCommand } = useContext(CommandLogContext); // Use CommandLogContext here
   const [speed, setSpeed] = useState(0);

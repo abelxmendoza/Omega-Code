@@ -29,6 +29,6 @@ describe('Header Component', () => {
 
     const batteryElement = screen.getByText(/Battery:/i);
     expect(batteryElement).toBeInTheDocument();
-    expect(batteryElement).toHaveTextContent('Battery: 75%');
+    expect(batteryElement).toHaveTextContent('Battery:75%');
   });
 });
