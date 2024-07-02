@@ -11,6 +11,29 @@ import (
     "github.com/stianeikeland/go-rpio"
 )
 
+// Rust integration
+/*
+#cgo LDFLAGS: -L./rust_module/target/release -lrust_module
+#include <stdlib.h>
+
+extern char* process_ultrasonic_data(char* input);
+*/
+import "C"
+import (
+    "fmt"
+    "unsafe"
+)
+
+func processUltrasonicData(input string) string {
+    cInput := C.CString(input)
+    defer C.free(unsafe.Pointer(cInput))
+
+    cOutput := C.process_ultrasonic_data(cInput)
+    defer C.free(unsafe.Pointer(cOutput))
+
+    return C.GoString(cOutput)
+}
+
 type UltrasonicData struct {
     Distance int `json:"distance"`
 }
@@ -48,6 +71,11 @@ func handleUltrasonicSensor(w http.ResponseWriter, r *http.Request) {
     distance := int(duration.Seconds() * 17150) // distance in cm
 
     data := UltrasonicData{Distance: distance}
+
+    // Process data using Rust
+    input := fmt.Sprintf("%d", data.Distance)
+    output := processUltrasonicData(input)
+    log.Printf("Processed data: %s", output)
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(data)

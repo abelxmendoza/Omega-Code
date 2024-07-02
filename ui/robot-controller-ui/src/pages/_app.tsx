@@ -8,7 +8,7 @@ import { AppProps } from 'next/app';
 import { Provider } from 'react-redux';
 import { CommandLogProvider } from '../components/CommandLogContext';
 import store from '../redux/store';
-import '../styles/globals.css';
+import '../styles/globals.scss';
 
 const MyApp = ({ Component, pageProps }: AppProps) => {
   return (
@@ -21,3 +21,4 @@ const MyApp = ({ Component, pageProps }: AppProps) => {
 };
 
 export default MyApp;
+

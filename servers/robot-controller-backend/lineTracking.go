@@ -10,6 +10,29 @@ import (
     "github.com/stianeikeland/go-rpio"
 )
 
+// Rust integration
+/*
+#cgo LDFLAGS: -L./rust_module/target/release -lrust_module
+#include <stdlib.h>
+
+extern char* process_line_tracking_data(char* input);
+*/
+import "C"
+import (
+    "fmt"
+    "unsafe"
+)
+
+func processLineTrackingData(input string) string {
+    cInput := C.CString(input)
+    defer C.free(unsafe.Pointer(cInput))
+
+    cOutput := C.process_line_tracking_data(cInput)
+    defer C.free(unsafe.Pointer(cOutput))
+
+    return C.GoString(cOutput)
+}
+
 type LineTrackingData struct {
     IR01 int `json:"ir01"`
     IR02 int `json:"ir02"`
@@ -39,6 +62,11 @@ func handleLineTracking(w http.ResponseWriter, r *http.Request) {
         IR02: int(ir02.Read()),
         IR03: int(ir03.Read()),
     }
+
+    // Process data using Rust
+    input := fmt.Sprintf("%d,%d,%d", data.IR01, data.IR02, data.IR03)
+    output := processLineTrackingData(input)
+    log.Printf("Processed data: %s", output)
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(data)

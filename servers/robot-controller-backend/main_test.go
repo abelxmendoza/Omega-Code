@@ -19,6 +19,7 @@ func mockCommand(command string, args ...string) *exec.Cmd {
 // Override execCommand for tests
 func TestMain(m *testing.M) {
     execCommand = mockCommand
+    gpio = &MockGPIO{} // Inject the mock implementation
     code := m.Run()
     os.Exit(code)
 }

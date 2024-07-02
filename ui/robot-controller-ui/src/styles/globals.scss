@@ -8,6 +8,29 @@
   background-color: #00f;
 }
 
+.bg-red-500 {
+  background-color: #f00;
+}
+
+.bg-yellow-500 {
+  background-color: #ff0;
+}
+
+.bg-green-500 {
+  background-color: #0f0;
+}
+
+.battery-empty {
+  border: 1px solid #ccc;
+  background-color: transparent;
+  min-width: 5px; /* Ensure the bar is visible even when empty */
+}
+
+.battery-container {
+  height: 1rem; /* Define a height for the container */
+  background-color: #e0e0e0; /* Light gray background for visibility */
+}
+
 .low {
   background-color: red;
 }
@@ -16,7 +39,7 @@
   background-color: #00f;
 }
 
-.sensor-dashboard {
+.sensor-dashboard, .component-a, .component-b {
   background-color: #1a1a1a;
   color: #ffffff;
   padding: 20px;

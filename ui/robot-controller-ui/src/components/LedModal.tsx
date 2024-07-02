@@ -6,14 +6,37 @@ It includes options to select the color, mode, pattern, and interval for the LED
 The selected settings are sent as a command to the server.
 */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SketchPicker } from 'react-color';
 
-const LedModal: React.FC<{ sendCommand: (command: string) => void, isOpen: boolean, onClose: () => void }> = ({ sendCommand, isOpen, onClose }) => {
+const LedModal: React.FC<{ isOpen: boolean, onClose: () => void }> = ({ isOpen, onClose }) => {
   const [color, setColor] = useState('#ffffff'); // State to store the selected color
   const [mode, setMode] = useState('single'); // State to store the selected mode
   const [pattern, setPattern] = useState('static'); // State to store the selected pattern
   const [interval, setInterval] = useState(1000); // State to store the interval in milliseconds
+  const ws = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    ws.current = new WebSocket('ws://localhost:8080/ws');
+
+    ws.current.onopen = () => {
+      console.log('WebSocket connection established');
+    };
+
+    ws.current.onclose = () => {
+      console.log('WebSocket connection closed');
+    };
+
+    ws.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
+    };
+  }, []);
 
   // Handle color change from the color picker
   const handleColorChange = (color: any) => {
@@ -37,13 +60,15 @@ const LedModal: React.FC<{ sendCommand: (command: string) => void, isOpen: boole
 
   // Handle apply button click to send the command with the selected settings
   const handleApply = () => {
-    sendCommand(JSON.stringify({
-      command: 'set-led',
-      color,
-      mode,
-      pattern,
-      interval: pattern !== 'static' ? interval : undefined, // Only include interval if pattern is not static
-    }));
+    if (ws.current) {
+      ws.current.send(JSON.stringify({
+        command: 'set-led',
+        color,
+        mode,
+        pattern,
+        interval: pattern !== 'static' ? interval : undefined, // Only include interval if pattern is not static
+      }));
+    }
   };
 
   // Do not render the modal if it is not open

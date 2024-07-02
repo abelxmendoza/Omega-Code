@@ -1,8 +1,44 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 
-const Header: React.FC<{ isConnected: boolean; batteryLevel: number }> = ({ isConnected, batteryLevel }) => {
-  const batteryClass = batteryLevel > 20 ? 'bg-blue-500' : 'bg-red-500';
+const Header: React.FC = () => {
+  const [isConnected, setIsConnected] = useState(false);
+  const [batteryLevel, setBatteryLevel] = useState(0);
+  const ws = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    ws.current = new WebSocket('ws://localhost:8080/ws');
+
+    ws.current.onopen = () => {
+      console.log('WebSocket connection established');
+      setIsConnected(true);
+    };
+
+    ws.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.battery !== undefined) {
+        setBatteryLevel(data.battery);
+      }
+    };
+
+    ws.current.onclose = () => {
+      console.log('WebSocket connection closed');
+      setIsConnected(false);
+    };
+
+    ws.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setIsConnected(false);
+    };
+
+    return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
+    };
+  }, []);
+
+  const batteryClass = batteryLevel > 20 ? 'bg-blue-500 neon-blue' : 'bg-red-500';
   const batteryStyle = batteryLevel > 20 ? 'neon-blue' : 'black';
   const batteryBarClass = `h-4 rounded ${batteryClass}`;
 
