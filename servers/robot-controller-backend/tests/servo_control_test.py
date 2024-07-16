@@ -1,16 +1,10 @@
-# tests/servo_control_test.py
-
-# File: /Omega-Code/servers/robot-controller-backend/tests/servo_control_test.py
-
-# File: /Omega-Code/servers/robot-controller-backend/tests/servo_control_test.py
-
 import unittest
 from unittest.mock import patch, MagicMock
-from servo_control import Servo
+from controllers.servo_control import Servo
 
 class TestServoControl(unittest.TestCase):
 
-    @patch('servo_control.PCA9685')
+    @patch('controllers.servo_control.PCA9685')
     def test_servo_initialization(self, MockPCA9685):
         # Create an instance of the mock PCA9685
         mock_pca9685_instance = MockPCA9685.return_value
@@ -26,7 +20,7 @@ class TestServoControl(unittest.TestCase):
         mock_pca9685_instance.setServoPulse.assert_any_call(8, 1500)
         mock_pca9685_instance.setServoPulse.assert_any_call(9, 1500)
 
-    @patch('servo_control.PCA9685')
+    @patch('controllers.servo_control.PCA9685')
     def test_set_servo_pwm_horizontal(self, MockPCA9685):
         # Create an instance of the mock PCA9685
         mock_pca9685_instance = MockPCA9685.return_value
@@ -40,7 +34,7 @@ class TestServoControl(unittest.TestCase):
         # Check if setServoPulse was called with the correct values
         mock_pca9685_instance.setServoPulse.assert_called_with(8, 2500 - int((10 + 10) / 0.09))
 
-    @patch('servo_control.PCA9685')
+    @patch('controllers.servo_control.PCA9685')
     def test_set_servo_pwm_vertical(self, MockPCA9685):
         # Create an instance of the mock PCA9685
         mock_pca9685_instance = MockPCA9685.return_value

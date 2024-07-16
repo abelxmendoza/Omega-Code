@@ -16,9 +16,9 @@ import sys
 
 # Try to import PCA9685. If it fails, use mock class for testing on macOS.
 try:
-    from PCA9685 import PCA9685
+    from utils.PCA9685 import PCA9685  # Updated import path
 except ImportError:
-    from mock_pca9685 import PCA9685
+    from utils.mock_pca9685 import PCA9685  # Updated import path
 
 class Servo:
     def __init__(self):

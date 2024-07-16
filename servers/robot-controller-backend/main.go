@@ -42,43 +42,6 @@ type GPIOPin interface {
 	Low()
 }
 
-// RealGPIO implements the GPIO interface for actual Raspberry Pi hardware
-type RealGPIO struct{}
-
-func (r RealGPIO) Open() error {
-	return rpio.Open()
-}
-
-func (r RealGPIO) Close() error {
-	return rpio.Close()
-}
-
-func (r RealGPIO) Pin(pin int) GPIOPin {
-	return RealGPIOPin(rpio.Pin(pin))
-}
-
-type RealGPIOPin rpio.Pin
-
-func (p RealGPIOPin) Input() {
-	rpio.Pin(p).Input()
-}
-
-func (p RealGPIOPin) Output() {
-	rpio.Pin(p).Output()
-}
-
-func (p RealGPIOPin) Read() rpio.State {
-	return rpio.Pin(p).Read()
-}
-
-func (p RealGPIOPin) High() {
-	rpio.Pin(p).High()
-}
-
-func (p RealGPIOPin) Low() {
-	rpio.Pin(p).Low()
-}
-
 // Initialize global variables
 var (
 	gpio        GPIO
@@ -108,12 +71,6 @@ func initGPIO() {
 	}
 }
 
-type Command struct {
-	Command   string `json:"command"`
-	Angle     int    `json:"angle,omitempty"`
-	RequestID string `json:"request_id"`
-}
-
 type LineTrackingData struct {
 	IR01 int `json:"ir01"`
 	IR02 int `json:"ir02"`
@@ -128,40 +85,8 @@ func logRequest(r *http.Request) {
 	log.Printf("Received %s request for %s from %s\n", r.Method, r.URL, r.RemoteAddr)
 }
 
-func logCommand(cmd Command) {
-	log.Printf("Executing command: %s with angle: %d and request_id: %s\n", cmd.Command, cmd.Angle, cmd.RequestID)
-}
-
-func executeServoCommand(cmd Command) {
-	logCommand(cmd)
-
-	var pin int
-	switch cmd.Command {
-	case "servo-horizontal":
-		pin = 17 // Example pin for horizontal servo
-	case "servo-vertical":
-		pin = 18 // Example pin for vertical servo
-	case "move-up":
-		// Add logic for move-up command
-	case "move-down":
-		// Add logic for move-down command
-	case "move-left":
-		// Add logic for move-left command
-	case "move-right":
-		// Add logic for move-right command
-	default:
-		log.Printf("Unknown servo command: %s\n", cmd.Command)
-		return
-	}
-
-	err := executePythonScript(pin, "HIGH")
-	if err != nil {
-		log.Printf("Error executing Python script: %s\n", err)
-	}
-}
-
-func executePythonScript(pin int, state string) error {
-	cmdArgs := []string{"gpio_mock.py", fmt.Sprintf("%d", pin), state}
+func executePythonScript(scriptType, param1, param2 string) error {
+	cmdArgs := []string{fmt.Sprintf("%s_control.py", scriptType), param1, param2}
 	command := execCommand("python3", cmdArgs...)
 	var out bytes.Buffer
 	var stderr bytes.Buffer
@@ -190,45 +115,6 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-func handleCommand(w http.ResponseWriter, r *http.Request) {
-	logRequest(r)
-
-	var body bytes.Buffer
-	_, err := body.ReadFrom(r.Body)
-	if err != nil {
-		log.Printf("Error reading body: %s\n", err)
-		http.Error(w, "Error reading body", http.StatusBadRequest)
-		return
-	}
-	r.Body = io.NopCloser(&body)
-
-	var cmd Command
-	decoder := json.NewDecoder(r.Body)
-	err = decoder.Decode(&cmd)
-	if err != nil {
-		log.Printf("Error decoding JSON: %s\n", err)
-		http.Error(w, "Error decoding JSON", http.StatusBadRequest)
-		return
-	}
-
-	log.Printf("Command received: %s", cmd.Command)
-
-	switch cmd.Command {
-	case "servo-horizontal", "servo-vertical":
-		executeServoCommand(cmd)
-	case "move-up", "move-down", "move-left", "move-right":
-		executeServoCommand(cmd)
-	case "increase-speed", "decrease-speed", "buzz", "buzz-stop":
-		log.Printf("Other command: %s", cmd.Command)
-	default:
-		log.Printf("Unknown command: %s\n", cmd.Command)
-		http.Error(w, "Unknown command", http.StatusBadRequest)
-	}
-
-	log.Printf("Command executed: %s", cmd.Command)
-	fmt.Fprintf(w, "Command executed: %s", cmd.Command)
 }
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
@@ -269,8 +155,8 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		// Handle commands here
 		if command, ok := msg["command"].(string); ok {
 			switch command {
-			case "servo-horizontal", "servo-vertical", "move-up", "move-down", "move-left", "move-right", "increase-speed", "decrease-speed", "buzz", "buzz-stop":
-				executeServoCommand(Command{
+			case "servo-horizontal", "servo-vertical", "move-up", "move-down", "move-left", "move-right":
+				executeMotorCommand(Command{
 					Command: command,
 					Angle:   int(msg["angle"].(float64)),
 					RequestID: msg["request_id"].(string),
@@ -427,7 +313,7 @@ func main() {
 	mux.HandleFunc("/ws", handleConnections) // Add WebSocket handler
 
 	server := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":8080,
 		Handler: corsMiddleware(mux),
 		TLSConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,

@@ -9,6 +9,14 @@ This project is the backend server for the Omega-Code robot controller. Written 
 The project is organized into several directories and files:
 
 - **certs**: Contains SSL certificates for secure communication.
+- **commands**: Command definitions and processors.
+- **gpio**: GPIO handling code.
+- **sensors**: Sensor interfacing code.
+- **controllers**: Controllers for motors, servos, and line tracking.
+- **video**: Video streaming server.
+- **utils**: Utility scripts and helper classes.
+- **tests**: Unit tests.
+- **rust_module**: Rust integration for performance-critical tasks.
 - **__pycache__**: Python bytecode cache.
 - **venv**: Python virtual environment for dependencies.
 - **main.go**: Entry point of the backend server (Go).
@@ -18,47 +26,46 @@ The project is organized into several directories and files:
 - **go.mod**: Go module definitions.
 - **go.sum**: Go module dependencies.
 
-### Key Files
+## Key Files
 
 ### PCA9685
 
-- **PCA9685 Control**: `PCA9685.py` - Controls the PCA9685 PWM driver.
+- **PCA9685 Control**: `utils/PCA9685.py` - Controls the PCA9685 PWM driver.
+- **Mock PCA9685**: `utils/mock_pca9685.py` - Mock implementation of PCA9685 for testing.
 
 ### LED Control
 
-- **LED Control**: `led_control.py` - Manages the LED lights on the robot.
+- **LED Control**: `utils/led_control.py` - Manages the LED lights on the robot.
 
 ### Servo Control
 
-- **Servo Control**: `servo_control.py` - Controls the servo motors.
+- **Servo Control**: `controllers/servo_control.py` - Controls the servo motors.
 
 ### ADC
 
-- **ADC**: `adc.py` - Handles analog to digital conversion.
+- **ADC**: `sensors/adc.py` - Handles analog to digital conversion.
 
 ### Line Tracking
 
-- **Line Tracking**: `line_tracking.py` - Manages the line tracking functionality.
+- **Line Tracking**: `controllers/line_tracking.py` - Manages the line tracking functionality.
 
 ### Threading Control
 
-- **Threading Control**: `threading_control.py` - Manages threading for concurrent tasks.
+- **Threading Control**: `utils/threading_control.py` - Manages threading for concurrent tasks.
 
 ### Ultrasonic Sensor
 
-- **Ultrasonic Sensor**: `ultrasonic_sensor.py` - Controls the ultrasonic sensor for distance measurement.
+- **Ultrasonic Sensor**: `sensors/ultrasonic_sensor.py` - Controls the ultrasonic sensor for distance measurement.
+- **Ultrasonic Sensor (Go)**: `sensors/ultrasonic_sensor.go` - Handles ultrasonic sensor integration in Go.
 
 ### Command Definitions
 
-- **Command Definitions**: `command_defintions.py` - Defines commands for the robot.
-
-### Mock PCA9685
-
-- **Mock PCA9685**: `mock_pca9685.py` - Mock implementation of PCA9685 for testing.
+- **Command Definitions**: `commands/command_definitions.py` - Defines commands for the robot.
+- **Command Processor**: `commands/command_processor.py` - Processes incoming commands.
 
 ### Video Server
 
-- **Video Server**: `video_server.py` - Handles video streaming from the robot.
+- **Video Server**: `video/video_server.py` - Handles video streaming from the robot.
 
 ## Getting Started
 

@@ -1,7 +1,7 @@
 # File: /Omega-Code/servers/robot-controller-backend/tests/mock_pca9685_test.py
 
 import unittest
-from mock_pca9685 import PCA9685
+from utils.mock_pca9685 import PCA9685
 
 class TestMockPCA9685(unittest.TestCase):
     def setUp(self):
