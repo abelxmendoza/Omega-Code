@@ -1,8 +1,8 @@
+// gpio/gpio_mock.go
+
 package gpio
 
-import (
-    "github.com/stianeikeland/go-rpio/v4"
-)
+import "github.com/stianeikeland/go-rpio/v4"
 
 // MockGPIO implements the GPIO interface for testing purposes
 type MockGPIO struct{}
@@ -56,4 +56,3 @@ func (p *MockGPIOPin) High() {
 func (p *MockGPIOPin) Low() {
     p.state = Low
 }
-
