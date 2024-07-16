@@ -24,25 +24,37 @@ const Home: React.FC = () => {
   const [isLedModalOpen, setIsLedModalOpen] = useState(false); // State to manage LED modal visibility
   const ws = useRef<WebSocket | null>(null);
 
-  useEffect(() => {
-    // Initialize WebSocket connection
+  const connectWebSocket = () => {
     ws.current = new WebSocket('wss://100.82.88.25:8080/ws');
 
     ws.current.onopen = () => {
       console.log('WebSocket connection established');
+
+      // Send a keep-alive message every 25 seconds
+      const interval = setInterval(() => {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+          ws.current.send(JSON.stringify({ type: 'keep-alive' }));
+        }
+      }, 25000); // 25 seconds
+
+      ws.current.onclose = () => {
+        clearInterval(interval);
+        console.log('WebSocket connection closed, reconnecting...');
+        setTimeout(connectWebSocket, 1000); // Retry connection after 1 second
+      };
+
+      ws.current.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
     };
 
     ws.current.onmessage = (event) => {
       console.log('Received message:', event.data);
     };
+  };
 
-    ws.current.onclose = () => {
-      console.log('WebSocket connection closed');
-    };
-
-    ws.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
+  useEffect(() => {
+    connectWebSocket();
 
     return () => {
       if (ws.current) {
