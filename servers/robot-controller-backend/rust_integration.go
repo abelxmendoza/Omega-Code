@@ -4,8 +4,8 @@ package main
 #cgo LDFLAGS: -L./rust_module/target/release -lrust_module
 #include <stdlib.h>
 
-extern char* process_ultrasonic_data(const char* input);
-extern char* process_line_tracking_data(const char* input);
+extern char* process_ultrasonic_data(char* input);
+extern char* process_line_tracking_data(char* input);
 */
 import "C"
 import (
@@ -17,9 +17,9 @@ func processUltrasonicData(input string) string {
     defer C.free(unsafe.Pointer(cInput))
 
     cOutput := C.process_ultrasonic_data(cInput)
-    defer C.free(unsafe.Pointer(cOutput))
-
-    return C.GoString(cOutput)
+    output := C.GoString(cOutput)
+    C.free(unsafe.Pointer(cOutput)) // Ensure this is only called once
+    return output
 }
 
 func processLineTrackingData(input string) string {
@@ -27,7 +27,7 @@ func processLineTrackingData(input string) string {
     defer C.free(unsafe.Pointer(cInput))
 
     cOutput := C.process_line_tracking_data(cInput)
-    defer C.free(unsafe.Pointer(cOutput))
-
-    return C.GoString(cOutput)
+    output := C.GoString(cOutput)
+    C.free(unsafe.Pointer(cOutput)) // Ensure this is only called once
+    return output
 }
