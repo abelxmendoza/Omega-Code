@@ -1,12 +1,12 @@
 package commands
 
 import (
-	"log"
-	"fmt"
-	"encoding/json"
-	"io"
-	"net/http"
 	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
 )
 
 type Command struct {

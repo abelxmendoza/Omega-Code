@@ -11,9 +11,7 @@ import "C"
 import (
 	"bytes"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -98,42 +96,6 @@ type LineTrackingData struct {
 
 type UltrasonicData struct {
 	Distance int `json:"distance"`
-}
-
-func logRequest(r *http.Request) {
-	log.Printf("Received %s request for %s from %s\n", r.Method, r.URL, r.RemoteAddr)
-}
-
-func executePythonScript(scriptType, param1, param2 string) error {
-	cmdArgs := []string{fmt.Sprintf("%s_control.py", scriptType), param1, param2}
-	command := execCommand("python3", cmdArgs...)
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-	command.Stdout = &out
-	command.Stderr = &stderr
-	err := command.Run()
-	if err != nil {
-		log.Printf("Error executing Python script: %s\n", stderr.String())
-		return err
-	}
-	log.Printf("Python script output: %s\n", out.String())
-	return nil
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		if r.Method == "OPTIONS" {
-			log.Printf("Received OPTIONS request from %s\n", r.RemoteAddr)
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
 }
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
