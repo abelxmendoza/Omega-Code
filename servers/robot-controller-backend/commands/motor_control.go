@@ -1,11 +1,11 @@
-package main
+package commands
 
 import (
 	"log"
 	"fmt"
 )
 
-func executeMotorCommand(cmd Command) {
+func ExecuteMotorCommand(cmd Command) {
     logCommand(cmd)
 
     var pin int
@@ -34,4 +34,3 @@ func executeMotorCommand(cmd Command) {
         log.Printf("Error executing Python script: %s\n", err)
     }
 }
-

@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"log"
@@ -19,7 +19,7 @@ func logCommand(cmd Command) {
 	log.Printf("Executing command: %s with angle: %d and request_id: %s\n", cmd.Command, cmd.Angle, cmd.RequestID)
 }
 
-func handleCommand(w http.ResponseWriter, r *http.Request) {
+func HandleCommand(w http.ResponseWriter, r *http.Request) {
 	logRequest(r)
 
 	var body bytes.Buffer
@@ -44,9 +44,9 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
 
 	switch cmd.Command {
 	case "servo-horizontal", "servo-vertical":
-		executeServoCommand(cmd)
+		ExecuteServoCommand(cmd)
 	case "move-up", "move-down", "move-left", "move-right":
-		executeMotorCommand(cmd)
+		ExecuteMotorCommand(cmd)
 	case "increase-speed", "decrease-speed", "buzz", "buzz-stop":
 		log.Printf("Other command: %s", cmd.Command)
 	default:
@@ -57,4 +57,3 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Command executed: %s", cmd.Command)
 	fmt.Fprintf(w, "Command executed: %s", cmd.Command)
 }
-

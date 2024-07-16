@@ -1,11 +1,11 @@
-package main
+package commands
 
 import (
 	"log"
 	"fmt"
 )
 
-func executeServoCommand(cmd Command) {
+func ExecuteServoCommand(cmd Command) {
     logCommand(cmd)
 
     var channel, angle string
