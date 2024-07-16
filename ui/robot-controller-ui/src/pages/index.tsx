@@ -26,7 +26,7 @@ const Home: React.FC = () => {
 
   useEffect(() => {
     // Initialize WebSocket connection
-    ws.current = new WebSocket('ws://localhost:8080/ws');
+    ws.current = new WebSocket('wss://100.82.88.25:8080/ws');
 
     ws.current.onopen = () => {
       console.log('WebSocket connection established');
