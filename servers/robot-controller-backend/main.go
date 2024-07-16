@@ -313,7 +313,7 @@ func main() {
 	mux.HandleFunc("/ws", handleConnections) // Add WebSocket handler
 
 	server := &http.Server{
-		Addr:    ":8080,
+		Addr:    ":8080",
 		Handler: corsMiddleware(mux),
 		TLSConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
