@@ -26,8 +26,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/stianeikeland/go-rpio/v4"
 
-	// Import the commands package
-	"/Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend/commands"
+	"robot-controller-backend/commands" // Corrected import path
 )
 
 // GPIO interface and types definition
