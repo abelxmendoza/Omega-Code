@@ -1,7 +1,7 @@
 package main
 
 /*
-#cgo LDFLAGS: -L./rust_module/target/release -lrust_module
+#cgo LDFLAGS: -L/Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend/rust_module/target/release -lrust_module
 #include <stdlib.h>
 
 extern char* process_ultrasonic_data(char* input);
@@ -17,9 +17,9 @@ func processUltrasonicData(input string) string {
     defer C.free(unsafe.Pointer(cInput))
 
     cOutput := C.process_ultrasonic_data(cInput)
-    output := C.GoString(cOutput)
-    C.free(unsafe.Pointer(cOutput)) // Ensure this is only called once
-    return output
+    defer C.free(unsafe.Pointer(cOutput))
+
+    return C.GoString(cOutput)
 }
 
 func processLineTrackingData(input string) string {
@@ -27,7 +27,7 @@ func processLineTrackingData(input string) string {
     defer C.free(unsafe.Pointer(cInput))
 
     cOutput := C.process_line_tracking_data(cInput)
-    output := C.GoString(cOutput)
-    C.free(unsafe.Pointer(cOutput)) // Ensure this is only called once
-    return output
+    defer C.free(unsafe.Pointer(cOutput))
+
+    return C.GoString(cOutput)
 }
