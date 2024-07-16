@@ -56,3 +56,4 @@ func (p *MockGPIOPin) High() {
 func (p *MockGPIOPin) Low() {
     p.state = Low
 }
+

@@ -9,7 +9,6 @@ extern char* process_line_tracking_data(char* input);
 */
 import "C"
 import (
-	"bytes"
 	"crypto/tls"
 	"fmt"
 	"log"
@@ -26,6 +25,7 @@ import (
 
 	// Import the commands package
 	"github.com/abelxmendoza/Omega-Code/servers/robot-controller-backend/commands"
+	"github.com/abelxmendoza/Omega-Code/servers/robot-controller-backend/gpio"
 )
 
 // GPIO interface and types definition
@@ -41,22 +41,6 @@ type GPIOPin interface {
 	Read() rpio.State
 	High()
 	Low()
-}
-
-// RealGPIO implementation for Raspberry Pi
-type RealGPIO struct{}
-
-func (r RealGPIO) Open() error {
-	return rpio.Open()
-}
-
-func (r RealGPIO) Close() error {
-	rpio.Close()
-	return nil
-}
-
-func (r RealGPIO) Pin(pin int) GPIOPin {
-	return rpio.Pin(pin)
 }
 
 // Initialize global variables
@@ -80,11 +64,13 @@ func isRunningOnRaspberryPi() bool {
 
 func initGPIO() {
 	if isRunningOnRaspberryPi() {
-		gpio = RealGPIO{}
+		gpio = gpio.RealGPIO{}
 		Low = rpio.Low
 		High = rpio.High
 	} else {
-		gpio = nil // No GPIO simulation in Go
+		gpio = gpio.MockGPIO{}
+		Low = gpio.Low
+		High = gpio.High
 	}
 }
 
@@ -96,6 +82,22 @@ type LineTrackingData struct {
 
 type UltrasonicData struct {
 	Distance int `json:"distance"`
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		if r.Method == "OPTIONS" {
+			log.Printf("Received OPTIONS request from %s\n", r.RemoteAddr)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
@@ -163,14 +165,14 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleWebSocketUltrasonicSensor(ws *websocket.Conn) {
-	if err := rpio.Open(); err != nil {
+	if err := gpio.Open(); err != nil {
 		log.Printf("Error opening GPIO: %s\n", err)
 		return
 	}
-	defer rpio.Close()
+	defer gpio.Close()
 
-	trigger := rpio.Pin(27)
-	echo := rpio.Pin(22)
+	trigger := gpio.Pin(27)
+	echo := gpio.Pin(22)
 
 	trigger.Output()
 	echo.Input()
@@ -183,11 +185,11 @@ func handleWebSocketUltrasonicSensor(ws *websocket.Conn) {
 		trigger.Low()
 
 		start := time.Now()
-		for echo.Read() == rpio.Low {
+		for echo.Read() == Low {
 		}
 		start = time.Now()
 
-		for echo.Read() == rpio.High {
+		for echo.Read() == High {
 		}
 		duration := time.Since(start)
 		distance := int(duration.Seconds() * 17150) // distance in cm
@@ -210,15 +212,15 @@ func handleWebSocketUltrasonicSensor(ws *websocket.Conn) {
 }
 
 func handleWebSocketLineTracking(ws *websocket.Conn) {
-	if err := rpio.Open(); err != nil {
+	if err := gpio.Open(); err != nil {
 		log.Printf("Error opening GPIO: %s\n", err)
 		return
 	}
-	defer rpio.Close()
+	defer gpio.Close()
 
-	ir01 := rpio.Pin(14)
-	ir02 := rpio.Pin(15)
-	ir03 := rpio.Pin(23)
+	ir01 := gpio.Pin(14)
+	ir02 := gpio.Pin(15)
+	ir03 := gpio.Pin(23)
 
 	ir01.Input()
 	ir02.Input()
