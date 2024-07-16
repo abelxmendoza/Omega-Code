@@ -25,6 +25,9 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
 	"github.com/stianeikeland/go-rpio/v4"
+
+	// Import the commands package
+	"/Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend/commands"
 )
 
 // GPIO interface and types definition
@@ -40,6 +43,22 @@ type GPIOPin interface {
 	Read() rpio.State
 	High()
 	Low()
+}
+
+// RealGPIO implementation for Raspberry Pi
+type RealGPIO struct{}
+
+func (r RealGPIO) Open() error {
+	return rpio.Open()
+}
+
+func (r RealGPIO) Close() error {
+	rpio.Close()
+	return nil
+}
+
+func (r RealGPIO) Pin(pin int) GPIOPin {
+	return rpio.Pin(pin)
 }
 
 // Initialize global variables
@@ -156,9 +175,9 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		if command, ok := msg["command"].(string); ok {
 			switch command {
 			case "servo-horizontal", "servo-vertical", "move-up", "move-down", "move-left", "move-right":
-				executeMotorCommand(Command{
-					Command: command,
-					Angle:   int(msg["angle"].(float64)),
+				commands.ExecuteMotorCommand(commands.Command{
+					Command:   command,
+					Angle:     int(msg["angle"].(float64)),
 					RequestID: msg["request_id"].(string),
 				})
 			case "ultrasonic-sensor":
@@ -283,6 +302,45 @@ func processLineTrackingData(input string) string {
 	defer C.free(unsafe.Pointer(cOutput))
 
 	return C.GoString(cOutput)
+}
+
+// Dummy handler function
+func handleCommand(w http.ResponseWriter, r *http.Request) {
+	logRequest(r)
+	var body bytes.Buffer
+	_, err := body.ReadFrom(r.Body)
+	if err != nil {
+		log.Printf("Error reading body: %s\n", err)
+		http.Error(w, "Error reading body", http.StatusBadRequest)
+		return
+	}
+	r.Body = io.NopCloser(&body)
+
+	var cmd commands.Command
+	decoder := json.NewDecoder(r.Body)
+	err = decoder.Decode(&cmd)
+	if err != nil {
+		log.Printf("Error decoding JSON: %s\n", err)
+		http.Error(w, "Error decoding JSON", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Command received: %s", cmd.Command)
+
+	switch cmd.Command {
+	case "servo-horizontal", "servo-vertical":
+		commands.ExecuteServoCommand(cmd)
+	case "move-up", "move-down", "move-left", "move-right":
+		commands.ExecuteMotorCommand(cmd)
+	case "increase-speed", "decrease-speed", "buzz", "buzz-stop":
+		log.Printf("Other command: %s", cmd.Command)
+	default:
+		log.Printf("Unknown command: %s\n", cmd.Command)
+		http.Error(w, "Unknown command", http.StatusBadRequest)
+	}
+
+	log.Printf("Command executed: %s", cmd.Command)
+	fmt.Fprintf(w, "Command executed: %s", cmd.Command)
 }
 
 func main() {
