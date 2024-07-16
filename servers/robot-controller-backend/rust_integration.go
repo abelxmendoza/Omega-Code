@@ -1,11 +1,11 @@
 package main
 
 /*
-#cgo LDFLAGS: -L/Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend/rust_module/target/release -lrust_module
+#cgo LDFLAGS: -L./rust_module/target/release -lrust_module
 #include <stdlib.h>
 
-extern char* process_ultrasonic_data(char* input);
-extern char* process_line_tracking_data(char* input);
+extern char* process_ultrasonic_data(const char* input);
+extern char* process_line_tracking_data(const char* input);
 */
 import "C"
 import (

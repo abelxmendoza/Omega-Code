@@ -4,8 +4,8 @@ package main
 #cgo LDFLAGS: -L./rust_module/target/release -lrust_module
 #include <stdlib.h>
 
-extern char* process_ultrasonic_data(char* input);
-extern char* process_line_tracking_data(char* input);
+extern char* process_ultrasonic_data(const char* input);
+extern char* process_line_tracking_data(const char* input);
 */
 import "C"
 import (
@@ -262,8 +262,8 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			switch command {
 			case "servo-horizontal", "servo-vertical", "move-up", "move-down", "move-left", "move-right", "increase-speed", "decrease-speed", "buzz", "buzz-stop":
 				executeServoCommand(Command{
-					Command: command,
-					Angle:   int(msg["angle"].(float64)),
+					Command:   command,
+					Angle:     int(msg["angle"].(float64)),
 					RequestID: msg["request_id"].(string),
 				})
 			case "ultrasonic-sensor":
