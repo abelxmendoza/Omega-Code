@@ -102,3 +102,4 @@ def video_feed():
 if __name__ == '__main__':
     # Run the Flask app on the Tailscale IP and port 5000
     app.run(host=TAILSCALE_IP_PI, port=5000)
+
