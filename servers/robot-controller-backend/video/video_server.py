@@ -1,4 +1,4 @@
-# File: /Omega-Code/servers/robot-controller-backend/video_server.py
+# File: /Omega-Code/servers/robot-controller-backend/video/video_server.py
 
 """
 This script sets up a video streaming server using Flask. It captures video from a camera,
@@ -11,6 +11,7 @@ Key functionalities:
 3. Capture video from a connected camera.
 4. Detect faces in the video frames using Haar Cascades.
 5. Stream the video frames to connected clients via a Flask route.
+6. Capture a still image and save it to a file via a Flask route.
 """
 
 import socket
@@ -83,7 +84,17 @@ class VideoStreaming:
             ret, buffer = cv2.imencode('.jpg', frame)
             frame = buffer.tobytes()
             yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+    def capture_image(self):
+        """
+        Capture a single image from the camera and save it to a file.
+        """
+        ret, frame = self.capture.read()
+        if ret:
+            cv2.imwrite('image.jpg', frame)
+            return True
+        return False
 
 # Create an instance of the VideoStreaming class
 video_stream = VideoStreaming()
@@ -99,7 +110,20 @@ def video_feed():
     return Response(video_stream.generate(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/capture_image')
+def capture_image():
+    """
+    Flask route to capture a single image.
+
+    Returns:
+        Response: A Flask response object indicating success or failure.
+    """
+    success = video_stream.capture_image()
+    if success:
+        return jsonify({"status": "success", "message": "Image captured successfully."}), 200
+    else:
+        return jsonify({"status": "failure", "message": "Failed to capture image."}), 500
+
 if __name__ == '__main__':
     # Run the Flask app on the Tailscale IP and port 5000
     app.run(host=TAILSCALE_IP_PI, port=5000)
-
