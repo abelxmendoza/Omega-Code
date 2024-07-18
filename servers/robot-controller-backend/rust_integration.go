@@ -1,4 +1,4 @@
-package main
+package rust_integration
 
 /*
 #cgo LDFLAGS: -L./rust_module/target/release -lrust_module
@@ -12,7 +12,7 @@ import (
     "unsafe"
 )
 
-func processUltrasonicData(input string) string {
+func ProcessUltrasonicData(input string) string {
     cInput := C.CString(input)
     defer C.free(unsafe.Pointer(cInput))
 
@@ -23,7 +23,7 @@ func processUltrasonicData(input string) string {
     return result
 }
 
-func processLineTrackingData(input string) string {
+func ProcessLineTrackingData(input string) string {
     cInput := C.CString(input)
     defer C.free(unsafe.Pointer(cInput))
 
