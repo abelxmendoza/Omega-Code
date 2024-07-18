@@ -14,13 +14,13 @@ Key functionalities:
 6. Capture a still image and save it to a file via a Flask route.
 """
 
+import os
+import cv2
 import socket
 import struct
 import numpy as np
-import cv2
 from flask import Flask, Response, jsonify
 from dotenv import load_dotenv
-import os
 
 # Load environment variables from .env file in the current directory and parent directory
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
@@ -44,6 +44,9 @@ class VideoStreaming:
         self.face_y = 0
         # Initialize the video capture object
         self.capture = cv2.VideoCapture(0)
+        # Set lower resolution
+        self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+        self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
 
     def face_detect(self, img):
         """
@@ -56,7 +59,7 @@ class VideoStreaming:
             numpy.ndarray: The image with detected faces highlighted.
         """
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        faces = self.face_cascade.detectMultiScale(gray, 1.3, 5)
+        faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=3)
         if len(faces) > 0:
             for (x, y, w, h) in faces:
                 self.face_x = float(x + w / 2.0)
@@ -74,27 +77,21 @@ class VideoStreaming:
         Yields:
             bytes: The next frame in the video stream encoded as JPEG.
         """
+        frame_counter = 0
         while True:
             ret, frame = self.capture.read()
             if not ret:
                 continue
-            if self.video_Flag:
-                frame = self.face_detect(frame)
-                self.video_Flag = False
+            # Process every 5th frame
+            if frame_counter % 5 == 0:
+                if self.video_Flag:
+                    frame = self.face_detect(frame)
+                    self.video_Flag = False
+            frame_counter += 1
             ret, buffer = cv2.imencode('.jpg', frame)
             frame = buffer.tobytes()
             yield (b'--frame\r\n'
-                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-
-    def capture_image(self):
-        """
-        Capture a single image from the camera and save it to a file.
-        """
-        ret, frame = self.capture.read()
-        if ret:
-            cv2.imwrite('image.jpg', frame)
-            return True
-        return False
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
 # Create an instance of the VideoStreaming class
 video_stream = VideoStreaming()
@@ -109,20 +106,6 @@ def video_feed():
     """
     return Response(video_stream.generate(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
-
-@app.route('/capture_image')
-def capture_image():
-    """
-    Flask route to capture a single image.
-
-    Returns:
-        Response: A Flask response object indicating success or failure.
-    """
-    success = video_stream.capture_image()
-    if success:
-        return jsonify({"status": "success", "message": "Image captured successfully."}), 200
-    else:
-        return jsonify({"status": "failure", "message": "Failed to capture image."}), 500
 
 if __name__ == '__main__':
     # Run the Flask app on the Tailscale IP and port 5000
