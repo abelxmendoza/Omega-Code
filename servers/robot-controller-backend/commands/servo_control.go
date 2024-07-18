@@ -11,18 +11,24 @@ func ExecuteServoCommand(cmd Command) {
 	var channel, angle string
 
 	switch cmd.Command {
-	case "servo-horizontal":
+	case "camera-left":
 		channel = "0"
-		angle = fmt.Sprintf("%d", cmd.Angle)
-	case "servo-vertical":
+		angle = "left" // Define specific angles or logic for left movement
+	case "camera-right":
+		channel = "0"
+		angle = "right" // Define specific angles or logic for right movement
+	case "camera-up":
 		channel = "1"
-		angle = fmt.Sprintf("%d", cmd.Angle)
+		angle = "up" // Define specific angles or logic for up movement
+	case "camera-down":
+		channel = "1"
+		angle = "down" // Define specific angles or logic for down movement
 	default:
 		log.Printf("Unknown servo command: %s\n", cmd.Command)
 		return
 	}
 
-	err := executePythonScript("servo", channel, angle)
+	err := executePythonScript("servo", channel, angle, "", "")
 	if err != nil {
 		log.Printf("Error executing Python script: %s\n", err)
 	}

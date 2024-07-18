@@ -28,6 +28,7 @@ import (
 
     "github.com/abelxmendoza/Omega-Code/servers/robot-controller-backend/commands"
     "github.com/abelxmendoza/Omega-Code/servers/robot-controller-backend/gpio"
+    "github.com/abelxmendoza/Omega-Code/servers/robot-controller-backend/rust_integration"
 )
 
 // Initialize global variables
@@ -73,8 +74,8 @@ func logRequest(r *http.Request) {
     log.Printf("Received %s request for %s from %s\n", r.Method, r.URL, r.RemoteAddr)
 }
 
-func executePythonScript(scriptType, param1, param2 string) error {
-    cmdArgs := []string{fmt.Sprintf("%s_control.py", scriptType), param1, param2}
+func executePythonScript(scriptType, param1, param2, param3, param4 string) error {
+    cmdArgs := []string{fmt.Sprintf("%s_control.py", scriptType), param1, param2, param3, param4}
     command := execCommand("python3", cmdArgs...)
     var out bytes.Buffer
     var stderr bytes.Buffer
@@ -143,8 +144,8 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
         // Handle commands here
         if command, ok := msg["command"].(string); ok {
             switch command {
-            case "servo-horizontal", "servo-vertical", "move-up", "move-down", "move-left", "move-right":
-                commands.ExecuteMotorCommand(commands.Command{
+            case "camera-left", "camera-right", "camera-up", "camera-down":
+                commands.ExecuteServoCommand(commands.Command{
                     Command:   command,
                     Angle:     int(msg["angle"].(float64)),
                     RequestID: msg["request_id"].(string),
@@ -153,6 +154,10 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
                 handleWebSocketUltrasonicSensor(ws)
             case "line-tracking":
                 handleWebSocketLineTracking(ws)
+            case "led-control":
+                handleWebSocketLEDControl(ws, msg)
+            case "camera-stream":
+                handleWebSocketCameraStream(ws)
             default:
                 log.Printf("Unknown command: %s\n", command)
             }
@@ -203,7 +208,7 @@ func handleWebSocketUltrasonicSensor(ws *websocket.Conn) {
 
         // Process data using Rust
         input := fmt.Sprintf("%d", data.Distance)
-        output := processUltrasonicData(input)
+        output := rust_integration.ProcessUltrasonicData(input)
         log.Printf("Processed data: %s", output)
 
         err := ws.WriteJSON(data)
@@ -240,7 +245,7 @@ func handleWebSocketLineTracking(ws *websocket.Conn) {
 
         // Process data using Rust
         input := fmt.Sprintf("%d,%d,%d", data.IR01, data.IR02, data.IR03)
-        output := processLineTrackingData(input)
+        output := rust_integration.ProcessLineTrackingData(input)
         log.Printf("Processed data: %s", output)
 
         err := ws.WriteJSON(data)
@@ -253,24 +258,26 @@ func handleWebSocketLineTracking(ws *websocket.Conn) {
     }
 }
 
-func processUltrasonicData(input string) string {
-    cInput := C.CString(input)
-    defer C.free(unsafe.Pointer(cInput))
+func handleWebSocketLEDControl(ws *websocket.Conn, msg map[string]interface{}) {
+    color := int(msg["color"].(float64))
+    mode := msg["mode"].(string)
+    pattern := msg["pattern"].(string)
+    interval := int(msg["interval"].(float64))
 
-    cOutput := C.process_ultrasonic_data(cInput)
-    defer C.free(unsafe.Pointer(cOutput))
-
-    return C.GoString(cOutput)
+    err := executePythonScript("led", fmt.Sprintf("%x", color), mode, pattern, fmt.Sprintf("%d", interval))
+    if err != nil {
+        log.Printf("Error executing LED control script: %s\n", err)
+    }
 }
 
-func processLineTrackingData(input string) string {
-    cInput := C.CString(input)
-    defer C.free(unsafe.Pointer(cInput))
-
-    cOutput := C.process_line_tracking_data(cInput)
-    defer C.free(unsafe.Pointer(cOutput))
-
-    return C.GoString(cOutput)
+func handleWebSocketCameraStream(ws *websocket.Conn) {
+    // The camera streaming is handled by the video_server.py
+    // You can start the Flask server from here if it's not already running
+    cmd := exec.Command("python3", "video/video_server.py")
+    err := cmd.Start()
+    if err != nil {
+        log.Printf("Error starting camera stream server: %s\n", err)
+    }
 }
 
 func main() {
