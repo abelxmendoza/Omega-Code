@@ -31,3 +31,4 @@ class PCA9685:
         :param pulse: Pulse width
         """
         print(f"Set servo pulse on channel {channel} to {pulse}")
+

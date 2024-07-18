@@ -78,3 +78,4 @@ func handleLineTracking(w http.ResponseWriter, r *http.Request) {
         log.Printf("Error executing line tracking Python script: %s\n", err)
     }
 }
+
