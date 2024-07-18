@@ -1,0 +1,3 @@
+[submodule "servers/robot-controller-backend/libcamera/libcamera/picamera2"]
+	path = servers/robot-controller-backend/libcamera/libcamera/picamera2
+	url = https://github.com/raspberrypi/picamera2.git
