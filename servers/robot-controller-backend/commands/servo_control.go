@@ -5,14 +5,8 @@ package commands
 import (
     "fmt"
     "log"
+    "bytes"
 )
-
-// Command struct to hold command details
-type Command struct {
-    Command   string
-    Angle     int
-    RequestID string
-}
 
 // ExecuteServoCommand executes a command to control a servo motor
 func ExecuteServoCommand(cmd Command) {
@@ -43,21 +37,3 @@ func ExecuteServoCommand(cmd Command) {
         log.Printf("Error executing Python script: %s\n", err)
     }
 }
-
-// executePythonScript runs a specified Python script with the given parameters
-func executePythonScript(scriptType, param1, param2 string) error {
-    cmdArgs := []string{fmt.Sprintf("%s_control.py", scriptType), param1, param2}
-    command := execCommand("python3", cmdArgs...)
-    var out bytes.Buffer
-    var stderr bytes.Buffer
-    command.Stdout = &out
-    command.Stderr = &stderr
-    err := command.Run()
-    if err != nil {
-        log.Printf("Error executing Python script: %s\n", stderr.String())
-        return err
-    }
-    log.Printf("Python script output: %s\n", out.String())
-    return nil
-}
-
