@@ -1,5 +1,3 @@
-# File: /Omega-Code/ros/tests/e2e/test_full_system.py
-
 import unittest
 import rospy
 from sensor_msgs.msg import Image, Range
