@@ -1,3 +1,10 @@
+# File: /Omega-Code/servers/robot-controller-backend/gpio/gpio_mock.py
+
+"""
+This script simulates GPIO actions for testing purposes.
+It provides a mock implementation of GPIO operations without requiring actual hardware.
+"""
+
 class GPIO:
     BCM = "BCM"
     OUT = "OUT"

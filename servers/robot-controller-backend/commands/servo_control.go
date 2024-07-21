@@ -1,14 +1,16 @@
 // File: /Omega-Code/servers/robot-controller-backend/commands/servo_control.go
 
+// Package commands handles the processing and execution of various commands for the robot controller.
 package commands
 
 import (
     "fmt"
     "log"
-    "bytes"
+
+    "github.com/abelxmendoza/Omega-Code/servers/robot-controller-backend/common"
 )
 
-// ExecuteServoCommand executes a command to control a servo motor
+// ExecuteServoCommand executes a command to control a servo motor.
 func ExecuteServoCommand(cmd Command) {
     logCommand(cmd)
 
@@ -32,7 +34,7 @@ func ExecuteServoCommand(cmd Command) {
         return
     }
 
-    err := executePythonScript("servo", channel, angle)
+    err := common.ExecutePythonScriptSimplified("servo", channel, angle)
     if err != nil {
         log.Printf("Error executing Python script: %s\n", err)
     }

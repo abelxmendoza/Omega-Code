@@ -1,3 +1,5 @@
+# File: /Omega-Code/servers/robot-controller-backend/sensors/ultrasonic_sensor.py
+
 """
 Ultrasonic Sensor Control
 
@@ -66,16 +68,3 @@ class Ultrasonic:
             distance_cm[i] = pulse_len / 0.000058
         distance_cm = sorted(distance_cm)
         return int(distance_cm[2])
-
-ultrasonic = Ultrasonic()
-
-# Main program logic follows:
-if __name__ == '__main__':
-    print('Program is starting ... ')
-    try:
-        while True:
-            distance = ultrasonic.get_distance()
-            print(f'Distance: {distance} cm')
-            time.sleep(1)
-    except KeyboardInterrupt:
-        GPIO.cleanup()

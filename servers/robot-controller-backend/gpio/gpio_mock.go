@@ -1,10 +1,15 @@
-// gpio/gpio_mock.go
+// File: /Omega-Code/servers/robot-controller-backend/gpio/gpio_mock.go
+
+/*
+Package gpio provides a mock implementation of GPIO for testing purposes.
+It simulates GPIO operations without requiring actual hardware.
+*/
 
 package gpio
 
 import "github.com/stianeikeland/go-rpio/v4"
 
-// MockGPIO implements the GPIO interface for testing purposes
+// MockGPIO implements the GPIO interface for testing purposes.
 type MockGPIO struct{}
 
 func (m MockGPIO) Open() error {
@@ -19,6 +24,7 @@ func (m MockGPIO) Pin(pin int) GPIOPin {
     return &MockGPIOPin{pin: pin}
 }
 
+// MockGPIOPin implements the GPIOPin interface for testing purposes.
 type MockGPIOPin struct {
     pin   int
     state rpio.State
