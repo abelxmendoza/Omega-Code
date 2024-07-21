@@ -1,5 +1,28 @@
 # File: /Omega-Code/ros/scripts/sensor_fusion.py
 
+"""
+Sensor Fusion Node
+
+This script fuses data from multiple sensors (camera, ultrasonic, line tracking) and publishes the fused data.
+It subscribes to sensor topics, processes the data, and publishes the fused information.
+
+Classes:
+- SensorFusion: Handles subscription to sensor topics and data fusion.
+
+Functions:
+- image_callback: Processes incoming camera images.
+- ultrasonic_callback: Processes incoming ultrasonic data.
+- line_tracking_callback: Processes incoming line tracking data.
+- fuse_sensors: Fuses data from all sensors and publishes it.
+
+Dependencies:
+- ROS: rospy, sensor_msgs, std_msgs, cv_bridge
+- OpenCV: cv2
+
+Usage:
+- Run this script to start the sensor fusion node.
+"""
+
 #!/usr/bin/env python
 
 import rospy
@@ -7,6 +30,7 @@ from sensor_msgs.msg import Image, Range
 from std_msgs.msg import Float32
 from cv_bridge import CvBridge
 import numpy as np
+import cv2
 
 class SensorFusion:
     def __init__(self):

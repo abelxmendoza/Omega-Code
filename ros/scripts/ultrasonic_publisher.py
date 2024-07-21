@@ -1,3 +1,23 @@
+# File: /Omega-Code/ros/scripts/ultrasonic_publisher.py
+
+"""
+Ultrasonic Publisher Node
+
+This script reads distance data from an ultrasonic sensor and publishes it as ROS Float32 messages.
+It continuously reads distance values from the sensor and publishes them to a specified ROS topic.
+
+Functions:
+- distance: Measures the distance using the ultrasonic sensor.
+- publish_ultrasonic: Reads distance data and publishes it as ROS messages.
+
+Dependencies:
+- ROS: rospy, std_msgs
+- RPi.GPIO: GPIO
+
+Usage:
+- Run this script to start the ultrasonic publisher node.
+"""
+
 #!/usr/bin/env python
 import rospy
 from std_msgs.msg import Float32

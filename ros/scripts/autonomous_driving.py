@@ -1,3 +1,24 @@
+# File: /Omega-Code/ros/scripts/autonomous_driving.py
+
+"""
+Autonomous Driving Node
+
+This script handles the autonomous driving of the robot using a pre-trained machine learning model.
+It subscribes to the camera image topic, processes the images, and controls the robot based on model predictions.
+
+Functions:
+- image_callback: Processes incoming camera images and makes predictions.
+- control_robot: Sends commands to control the robot based on predictions.
+- main: Initializes the ROS node and starts the image subscriber.
+
+Dependencies:
+- ROS: rospy, geometry_msgs, sensor_msgs, cv_bridge
+- TensorFlow: tf.keras
+
+Usage:
+- Run this script to start the autonomous driving node.
+"""
+
 #!/usr/bin/env python
 
 import rospy
@@ -37,5 +58,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

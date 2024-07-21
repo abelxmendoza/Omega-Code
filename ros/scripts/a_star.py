@@ -1,3 +1,24 @@
+# File: /Omega-Code/ros/scripts/a_star.py
+
+"""
+A* Pathfinding Algorithm
+
+This script implements the A* algorithm for finding the shortest path in a grid.
+It defines the Node class and necessary functions for the algorithm.
+
+Classes:
+- Node: Represents a node in the grid with x, y coordinates, cost, and parent.
+
+Functions:
+- a_star_search: Performs A* search from start to goal in the given grid.
+- get_neighbors: Returns the neighbors of a given position in the grid.
+- reconstruct_path: Reconstructs the path from start to goal.
+
+Example usage:
+- Defines a grid, start, and goal positions.
+- Finds the path using A* algorithm and prints it.
+"""
+
 import heapq
 
 class Node:

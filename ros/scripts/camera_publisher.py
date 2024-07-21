@@ -1,3 +1,22 @@
+# File: /Omega-Code/ros/scripts/camera_publisher.py
+
+"""
+Camera Publisher Node
+
+This script captures video from the camera and publishes the frames as ROS Image messages.
+It continuously reads frames from the camera and publishes them to a specified ROS topic.
+
+Functions:
+- publish_camera: Captures frames from the camera and publishes them as ROS Image messages.
+
+Dependencies:
+- ROS: rospy, sensor_msgs, cv_bridge
+- OpenCV: cv2
+
+Usage:
+- Run this script to start the camera publisher node.
+"""
+
 #!/usr/bin/env python
 import rospy
 from sensor_msgs.msg import Image
@@ -23,4 +42,3 @@ if __name__ == '__main__':
         publish_camera()
     except rospy.ROSInterruptException:
         pass
-

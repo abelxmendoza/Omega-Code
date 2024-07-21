@@ -1,3 +1,23 @@
+# File: /Omega-Code/ros/scripts/line_tracking_publisher.py
+
+"""
+Line Tracking Publisher Node
+
+This script reads line tracking sensor data and publishes it as ROS Int32MultiArray messages.
+It continuously reads sensor data from GPIO pins and publishes the values to a specified ROS topic.
+
+Functions:
+- read_line_sensors: Reads values from line tracking sensors.
+- publish_line_tracking: Reads sensor data and publishes it as ROS messages.
+
+Dependencies:
+- ROS: rospy, std_msgs
+- RPi.GPIO: GPIO
+
+Usage:
+- Run this script to start the line tracking publisher node.
+"""
+
 #!/usr/bin/env python
 import rospy
 from std_msgs.msg import Int32MultiArray
@@ -31,4 +51,3 @@ if __name__ == '__main__':
         publish_line_tracking()
     except rospy.ROSInterruptException:
         GPIO.cleanup()
-
