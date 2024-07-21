@@ -39,6 +39,7 @@ def start_jetson_nano_sensors():
     # Placeholder for starting Jetson Nano sensors
 
 def main():
+    rospy.init_node('start_sensors')
     scenario = int(input("Enter the scenario (1: MacBook only, 2: MacBook + Raspberry Pi, 3: MacBook + Raspberry Pi + Jetson Nano): "))
     
     if scenario == 1:
@@ -54,6 +55,5 @@ def main():
         print("Invalid scenario selected")
 
 if __name__ == "__main__":
-    rospy.init_node('start_sensors')
     main()
     rospy.spin()
