@@ -13,7 +13,12 @@ class PCA9685:
         :param address: I2C address of the PCA9685
         :param debug: If True, print debug information
         """
-        print(f"Initialized mock PCA9685 at address {address} with debug={debug}")
+        self.address = address
+        self.debug = debug
+        self.frequency = None
+        self.pulse_length = {}
+        if self.debug:
+            print(f"Initialized mock PCA9685 at address {address} with debug={debug}")
 
     def setPWMFreq(self, freq):
         """
@@ -21,7 +26,9 @@ class PCA9685:
 
         :param freq: Frequency in Hz
         """
-        print(f"Set PWM frequency to {freq}")
+        self.frequency = freq
+        if self.debug:
+            print(f"Set PWM frequency to {freq}")
 
     def setServoPulse(self, channel, pulse):
         """
@@ -30,5 +37,6 @@ class PCA9685:
         :param channel: Channel number
         :param pulse: Pulse width
         """
-        print(f"Set servo pulse on channel {channel} to {pulse}")
-
+        self.pulse_length[channel] = pulse
+        if self.debug:
+            print(f"Set servo pulse on channel {channel} to {pulse}")

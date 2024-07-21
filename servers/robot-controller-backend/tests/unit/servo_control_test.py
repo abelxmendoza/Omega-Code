@@ -1,3 +1,9 @@
+# File: /Omega-Code/servers/robot-controller-backend/tests/servo_control_test.py
+
+"""
+Unit tests for the servo control module using unittest and mock.
+"""
+
 import unittest
 from unittest.mock import patch, MagicMock
 from controllers.servo_control import Servo
@@ -6,6 +12,9 @@ class TestServoControl(unittest.TestCase):
 
     @patch('controllers.servo_control.PCA9685')
     def test_servo_initialization(self, MockPCA9685):
+        """
+        Test the initialization of the Servo class to ensure it sets up the PCA9685 correctly.
+        """
         # Create an instance of the mock PCA9685
         mock_pca9685_instance = MockPCA9685.return_value
         
@@ -22,6 +31,9 @@ class TestServoControl(unittest.TestCase):
 
     @patch('controllers.servo_control.PCA9685')
     def test_set_servo_pwm_horizontal(self, MockPCA9685):
+        """
+        Test the setServoPwm function for the horizontal servo to ensure it executes without errors.
+        """
         # Create an instance of the mock PCA9685
         mock_pca9685_instance = MockPCA9685.return_value
         
@@ -36,6 +48,9 @@ class TestServoControl(unittest.TestCase):
 
     @patch('controllers.servo_control.PCA9685')
     def test_set_servo_pwm_vertical(self, MockPCA9685):
+        """
+        Test the setServoPwm function for the vertical servo to ensure it executes without errors.
+        """
         # Create an instance of the mock PCA9685
         mock_pca9685_instance = MockPCA9685.return_value
         

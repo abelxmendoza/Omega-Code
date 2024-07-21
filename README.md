@@ -14,10 +14,12 @@ The project is organized into several directories:
 - **scripts**: Contains shell scripts for connecting to a hotspot.
 - **servers**: Contains the backend server code for handling robot commands.
 - **ui**: Contains the frontend user interface code for the robot controller.
+- **ros**: Contains ROS nodes and scripts for various functionalities including path planning, sensor fusion, and autonomous driving.
+- **machine_learning**: Contains machine learning models and scripts for robot navigation.
 
 ## Backend Server
 
-The backend server, written in Go, handles incoming HTTP requests to control the robot. It includes command execution for movements, speed control, servo control, and LED control.
+The backend server, written in Go, handles incoming HTTP and WebSocket requests to control the robot. It includes command execution for movements, speed control, servo control, and LED control.
 
 ## Key Backend Files
 
@@ -138,12 +140,71 @@ The frontend UI, built with Next.js and React, provides a web-based interface fo
 
 - **Command Definitions**: `control_definitions.ts` - Command definitions used throughout the project.
 
+## ROS Integration
+
+The ROS directory contains nodes and scripts for various functionalities including path planning, sensor fusion, and autonomous driving. Key functionalities include:
+
+### A* Path Planning
+
+- **A* Path Planning**: `a_star.py` - Implements the A* algorithm for path planning.
+- **A* ROS Node**: `a_star_ros.py` - ROS node for A* path planning.
+
+### RRT Path Planning
+
+- **RRT Path Planning**: `rrt.py` - Implements the RRT algorithm for path planning.
+- **RRT ROS Node**: `rrt_ros.py` - ROS node for RRT path planning.
+
+### D* Lite Path Planning
+
+- **D* Lite Path Planning**: `d_star_lite.py` - Implements the D* Lite algorithm for dynamic path planning.
+- **D* Lite ROS Node**: `d_star_lite_ros.py` - ROS node for D* Lite path planning.
+
+### Autonomous Driving
+
+- **Autonomous Driving**: `autonomous_driving.py` - Handles autonomous driving using machine learning.
+- **Autonomous Driving with A***: `autonomous_driving_with_astar.py` - Combines A* path planning with autonomous driving.
+
+### Sensor Fusion
+
+- **Sensor Fusion**: `sensor_fusion.py` - Fuses data from multiple sensors and publishes the fused data.
+
+### Sensor Publishing
+
+- **Camera Publisher**: `camera_publisher.py` - Captures video from the camera and publishes as ROS messages.
+- **Line Tracking Publisher**: `line_tracking_publisher.py` - Reads line tracking sensor data and publishes as ROS messages.
+- **Ultrasonic Publisher**: `ultrasonic_publisher.py` - Reads distance data from an ultrasonic sensor and publishes as ROS messages.
+
+### Miscellaneous
+
+- **Battery Monitor**: `battery_monitor.py` - Monitors battery status and sends alerts if low.
+- **Log Sensor Data**: `log_sensor_data.py` - Logs data from various sensors for later analysis.
+- **Start Sensors**: `start_sensors.py` - Manages the startup of sensor nodes based on configuration.
+- **Visualize Sensor Data**: `visualize_sensor_data.py` - Visualizes data from various sensors in real-time using Matplotlib.
+
+## Testing
+
+The repository includes a comprehensive set of tests organized into unit tests, integration tests, and end-to-end tests for both ROS nodes and scripts, as well as the robot controller frontend and backend.
+
+### Unit Tests
+
+- **Unit Tests**: Located in `tests/unit`, these tests cover individual components of the backend, frontend, and ROS nodes.
+
+### Integration Tests
+
+- **Integration Tests**: Located in `tests/integration`, these tests cover interactions between components of the backend, frontend, and ROS nodes.
+
+### End-to-End Tests
+
+- **End-to-End Tests**: Located in `tests/e2e`, these tests cover the full system functionality for the backend, frontend, and ROS nodes.
+
 ## Scripts
 
 ### Connect Laptop to Phone Hotspot Scripts
 
 - **Connect Hotspot v1**: `connect_hotspot_v1.sh` - Script for connecting the robot to a hotspot (version 1).
 - **Connect Hotspot v2**: `connect_hotspot_v2.sh` - Script for connecting the robot to a hotspot (version 2).
+- **Connect PAN**: `connect_pan.sh` - Script for connecting the robot to a PAN (Personal Area Network).
+- **Start Robot**: `start_robot.sh` - Script for starting the robot system.
 
 ## Getting Started
 
@@ -152,6 +213,9 @@ The frontend UI, built with Next.js and React, provides a web-based interface fo
 - Node.js
 - Go
 - Python
+- ROS
+
+
 
 ### Installation
 
