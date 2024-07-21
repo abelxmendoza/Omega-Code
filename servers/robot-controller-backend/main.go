@@ -1,3 +1,5 @@
+// File: /Omega-Code/servers/robot-controller-backend/main.go
+
 package main
 
 /*
@@ -9,11 +11,7 @@ extern char* process_line_tracking_data(char* input);
 */
 import "C"
 import (
-    "bytes"
     "crypto/tls"
-    "encoding/json"
-    "fmt"
-    "io"
     "log"
     "net/http"
     "os"
@@ -27,6 +25,7 @@ import (
     "github.com/stianeikeland/go-rpio/v4"
 
     "github.com/abelxmendoza/Omega-Code/servers/robot-controller-backend/commands"
+    "github.com/abelxmendoza/Omega-Code/servers/robot-controller-backend/common"
     "github.com/abelxmendoza/Omega-Code/servers/robot-controller-backend/gpio"
     "github.com/abelxmendoza/Omega-Code/servers/robot-controller-backend/rust_integration"
 )
@@ -60,52 +59,6 @@ func initGPIO() {
     }
 }
 
-type LineTrackingData struct {
-    IR01 int `json:"ir01"`
-    IR02 int `json:"ir02"`
-    IR03 int `json:"ir03"`
-}
-
-type UltrasonicData struct {
-    Distance int `json:"distance"`
-}
-
-func logRequest(r *http.Request) {
-    log.Printf("Received %s request for %s from %s\n", r.Method, r.URL, r.RemoteAddr)
-}
-
-func executePythonScript(scriptType, param1, param2, param3, param4 string) error {
-    cmdArgs := []string{fmt.Sprintf("%s_control.py", scriptType), param1, param2, param3, param4}
-    command := execCommand("python3", cmdArgs...)
-    var out bytes.Buffer
-    var stderr bytes.Buffer
-    command.Stdout = &out
-    command.Stderr = &stderr
-    err := command.Run()
-    if err != nil {
-        log.Printf("Error executing Python script: %s\n", stderr.String())
-        return err
-    }
-    log.Printf("Python script output: %s\n", out.String())
-    return nil
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Access-Control-Allow-Origin", "*")
-        w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-        w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-        if r.Method == "OPTIONS" {
-            log.Printf("Received OPTIONS request from %s\n", r.RemoteAddr)
-            w.WriteHeader(http.StatusOK)
-            return
-        }
-
-        next.ServeHTTP(w, r)
-    })
-}
-
 func handleConnections(w http.ResponseWriter, r *http.Request) {
     ws, err := upgrader.Upgrade(w, r, nil)
     if err != nil {
@@ -114,7 +67,6 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
     }
     defer ws.Close()
 
-    // Send periodic pings to keep the connection alive
     ticker := time.NewTicker(30 * time.Second)
     defer ticker.Stop()
 
@@ -141,7 +93,6 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
         }
         log.Printf("Received: %v", msg)
 
-        // Handle commands here
         if command, ok := msg["command"].(string); ok {
             switch command {
             case "camera-left", "camera-right", "camera-up", "camera-down":
@@ -163,7 +114,6 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
             }
         }
 
-        // Echo the message back to the client
         err = ws.WriteJSON(msg)
         if err != nil {
             log.Printf("WriteJSON error: %v", err)
@@ -202,11 +152,10 @@ func handleWebSocketUltrasonicSensor(ws *websocket.Conn) {
         for echo.Read() == High {
         }
         duration := time.Since(start)
-        distance := int(duration.Seconds() * 17150) // distance in cm
+        distance := int(duration.Seconds() * 17150)
 
         data := UltrasonicData{Distance: distance}
 
-        // Process data using Rust
         input := fmt.Sprintf("%d", data.Distance)
         output := rust_integration.ProcessUltrasonicData(input)
         log.Printf("Processed data: %s", output)
@@ -217,7 +166,7 @@ func handleWebSocketUltrasonicSensor(ws *websocket.Conn) {
             break
         }
 
-        time.Sleep(1 * time.Second) // Adjust the delay as needed
+        time.Sleep(1 * time.Second)
     }
 }
 
@@ -243,7 +192,6 @@ func handleWebSocketLineTracking(ws *websocket.Conn) {
             IR03: int(ir03.Read()),
         }
 
-        // Process data using Rust
         input := fmt.Sprintf("%d,%d,%d", data.IR01, data.IR02, data.IR03)
         output := rust_integration.ProcessLineTrackingData(input)
         log.Printf("Processed data: %s", output)
@@ -254,7 +202,7 @@ func handleWebSocketLineTracking(ws *websocket.Conn) {
             break
         }
 
-        time.Sleep(1 * time.Second) // Adjust the delay as needed
+        time.Sleep(1 * time.Second)
     }
 }
 
@@ -264,20 +212,29 @@ func handleWebSocketLEDControl(ws *websocket.Conn, msg map[string]interface{}) {
     pattern := msg["pattern"].(string)
     interval := int(msg["interval"].(float64))
 
-    err := executePythonScript("led", fmt.Sprintf("%x", color), mode, pattern, fmt.Sprintf("%d", interval))
+    err := common.ExecutePythonScript("led", fmt.Sprintf("%x", color), mode, pattern, fmt.Sprintf("%d", interval))
     if err != nil {
         log.Printf("Error executing LED control script: %s\n", err)
     }
 }
 
 func handleWebSocketCameraStream(ws *websocket.Conn) {
-    // The camera streaming is handled by the video_server.py
-    // You can start the Flask server from here if it's not already running
     cmd := exec.Command("python3", "video/video_server.py")
     err := cmd.Start()
     if err != nil {
         log.Printf("Error starting camera stream server: %s\n", err)
     }
+}
+
+func startPythonVideoServer() {
+    cmd := exec.Command("python3", "video/video_server.py")
+    cmd.Stdout = os.Stdout
+    cmd.Stderr = os.Stderr
+    err := cmd.Start()
+    if err != nil {
+        log.Fatalf("Error starting Python video server: %s", err)
+    }
+    log.Printf("Started Python video server with PID %d", cmd.Process.Pid)
 }
 
 func main() {
@@ -303,13 +260,15 @@ func main() {
     log.Printf("Using certificate: %s\n", certPath)
     log.Printf("Using key: %s\n", keyPath)
 
+    go startPythonVideoServer()
+
     mux := http.NewServeMux()
     mux.HandleFunc("/command", commands.HandleCommand)
-    mux.HandleFunc("/ws", handleConnections) // Add WebSocket handler
+    mux.HandleFunc("/ws", handleConnections)
 
     server := &http.Server{
         Addr:    ":8080",
-        Handler: corsMiddleware(mux),
+        Handler: common.CorsMiddleware(mux),
         TLSConfig: &tls.Config{
             MinVersion: tls.VersionTLS12,
         },
