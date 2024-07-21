@@ -1,17 +1,21 @@
 #!/bin/bash
 # File: /Omega-Code/scripts/start_robot.sh
 
+# This script initializes and starts various components for the Omega Robot project.
+# It starts the ROS core, launches ROS nodes on the Raspberry Pi, starts the Go backend server,
+# and launches the UI on the MacBook.
+
 # Function to start ROS core
 start_ros_core() {
     echo "Starting ROS core..."
     roscore &
-    sleep 5
+    sleep 5  # Allow some time for the ROS core to initialize
 }
 
 # Function to launch ROS nodes on Raspberry Pi
 start_raspberry_pi_nodes() {
     echo "Launching Raspberry Pi nodes..."
-    ssh pi@$TAILSCALE_IP_PI "source /opt/ros/noetic/setup.bash && roslaunch omega_robot robot_sensors.launch" &
+    ssh omega1@$TAILSCALE_IP_PI "source /opt/ros/noetic/setup.bash && roslaunch omega_robot robot_sensors.launch" &
 }
 
 # Function to start the UI on MacBook
@@ -28,7 +32,7 @@ start_go_backend() {
     go run main_combined.go &
 }
 
-# Load environment variables
+# Load environment variables from .env file
 source /Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend/.env
 
 # Main script execution
@@ -39,4 +43,5 @@ main() {
     start_ui
 }
 
+# Execute the main function
 main
