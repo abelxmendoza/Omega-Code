@@ -1,10 +1,25 @@
-# requirements.txt
+# File: /Omega-Code/servers/robot-controller-backend/requirements.txt
 
 # Core dependencies
-Adafruit-PCA9685
-RPi.GPIO
+Adafruit-PCA9685==1.0.1
+RPi.GPIO==0.7.0
+smbus2==0.4.1  # Added for I2C communication with ADC chips
 
-# Mocking and Testing
+# Flask and WebSocket dependencies for the video server
+Flask==2.1.1
+Flask-SocketIO==5.3.2
+eventlet==0.33.1
+
+# Testing dependencies
 pytest==8.2.2
 pytest-mock==3.14.0
 mock==4.0.3
+
+# dotenv for environment variable management
+python-dotenv==0.19.2
+
+# OpenCV for video processing
+opencv-python-headless==4.5.5.64
+
+# Additional utilities
+requests==2.27.1  # Added in case of external API requests
