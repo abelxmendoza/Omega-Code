@@ -1,21 +1,35 @@
+<!-- File: /Omega-Code/ros/robot_simulation/package.xml -->
+
 <package format="2">
+    <!-- Name of the package -->
     <name>robot_simulation</name>
+
+    <!-- Version of the package -->
     <version>0.0.1</version>
+
+    <!-- Description of the package -->
     <description>The robot_simulation package</description>
-  
-    <maintainer email="your_email@example.com">Your Name</maintainer>
-  
+
+    <!-- Maintainer of the package -->
+    <maintainer email="abelxmendoza@gmail.com">Abel Mendoza</maintainer>
+
+    <!-- License under which the package is distributed -->
     <license>BSD</license>
-  
+
+    <!-- Build tool dependency -->
     <buildtool_depend>catkin</buildtool_depend>
+
+    <!-- Build dependencies -->
     <build_depend>rospy</build_depend>
     <build_depend>std_msgs</build_depend>
     <build_depend>sensor_msgs</build_depend>
+
+    <!-- Execution dependencies -->
     <exec_depend>rospy</exec_depend>
     <exec_depend>std_msgs</exec_depend>
     <exec_depend>sensor_msgs</exec_depend>
-  
+
+    <!-- Export tags can be used to communicate information to other packages -->
     <export>
     </export>
-  </package>
-  
+</package>

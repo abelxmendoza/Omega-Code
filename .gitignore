@@ -1,6 +1,8 @@
 # Root .gitignore
 config/.env
 config/.env.script2
+*.env
+
 # Ignore certificate files
 servers/robot-controller-backend/certs/*.pem
 servers/robot-controller-backend/certs/*.key

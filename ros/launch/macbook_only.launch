@@ -1,5 +1,9 @@
-<!-- File: /Omega-Code/ros/launch/robot_processing.launch -->
+<!-- File: /Omega-Code/ros/launch/macbook_only.launch -->
+
 <launch>
+    <!-- Launch simulated sensors -->
+    <node pkg="omega_robot" type="simulated_sensors.py" name="simulated_sensors" output="screen"/>
+
     <!-- Launch the sensor fusion node -->
     <node pkg="omega_robot" type="sensor_fusion.py" name="sensor_fusion" output="screen">
         <param name="fused_data_topic" value="/sensor_fusion/data"/>
@@ -15,3 +19,4 @@
         <param name="driving_commands_topic" value="/autonomous_driving/commands"/>
     </node>
 </launch>
+

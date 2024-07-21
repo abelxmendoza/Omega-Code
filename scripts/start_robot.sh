@@ -2,8 +2,8 @@
 # File: /Omega-Code/scripts/start_robot.sh
 
 # This script initializes and starts various components for the Omega Robot project.
-# It starts the ROS core, launches ROS nodes on the Raspberry Pi, starts the Go backend server,
-# and launches the UI on the MacBook.
+# It handles different hardware setups by starting the ROS core, launching ROS nodes 
+# on the Raspberry Pi, starting the Go backend server, and launching the UI on the MacBook.
 
 # Function to start ROS core
 start_ros_core() {
@@ -16,6 +16,12 @@ start_ros_core() {
 start_raspberry_pi_nodes() {
     echo "Launching Raspberry Pi nodes..."
     ssh omega1@$TAILSCALE_IP_PI "source /opt/ros/noetic/setup.bash && roslaunch omega_robot robot_sensors.launch" &
+}
+
+# Function to launch ROS nodes on Jetson Nano
+start_jetson_nano_nodes() {
+    echo "Launching Jetson Nano nodes..."
+    ssh omega1@$TAILSCALE_IP_NANO "source /opt/ros/noetic/setup.bash && roslaunch omega_robot robot_sensors.launch" &
 }
 
 # Function to start the UI on MacBook
@@ -38,7 +44,16 @@ source /Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend/
 # Main script execution
 main() {
     start_ros_core
-    start_raspberry_pi_nodes
+
+    # Check the hardware setup and launch nodes accordingly
+    if [ "$USE_RPI" = "true" ]; then
+        start_raspberry_pi_nodes
+    fi
+
+    if [ "$USE_JETSON_NANO" = "true" ]; then
+        start_jetson_nano_nodes
+    fi
+
     start_go_backend
     start_ui
 }

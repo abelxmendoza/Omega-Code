@@ -1,0 +1,48 @@
+<!-- File: /Omega-Code/ros/launch/full_setup.launch -->
+
+<launch>
+    <env from_env="TAILSCALE_IP_PI" name="TAILSCALE_IP_PI" />
+    <env from_env="OMEGA1_USER" name="OMEGA1_USER" />
+    <env from_env="OMEGA1_PASSWORD" name="OMEGA1_PASSWORD" />
+
+    <!-- Define the machine -->
+    <machine name="omega1" address="$(env TAILSCALE_IP_PI)" user="$(env OMEGA1_USER)" password="$(env OMEGA1_PASSWORD)" env-loader="/opt/ros/noetic/setup.bash"/>
+
+    <!-- Start SLAM on MacBook -->
+    <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" output="screen"/>
+
+    <!-- Start Raspberry Pi nodes -->
+    <node pkg="omega_robot" type="camera_publisher.py" name="camera_publisher" output="screen" machine="omega1">
+        <param name="camera_topic" value="/camera/image_raw"/>
+    </node>
+
+    <node pkg="omega_robot" type="ultrasonic_publisher.py" name="ultrasonic_publisher" output="screen" machine="omega1">
+        <param name="ultrasonic_topic" value="/ultrasonic/distance"/>
+    </node>
+
+    <node pkg="omega_robot" type="line_tracking_publisher.py" name="line_tracking_publisher" output="screen" machine="omega1">
+        <param name="line_tracking_topic" value="/line_tracking/sensors"/>
+    </node>
+
+    <!-- Start Jetson Nano nodes (when available) -->
+    <!--
+    <node pkg="omega_robot" type="additional_node_1.py" name="additional_node_1" output="screen" machine="jetsonnano"/>
+    <node pkg="omega_robot" type="additional_node_2.py" name="additional_node_2" output="screen" machine="jetsonnano"/>
+    -->
+
+    <!-- Launch the sensor fusion node -->
+    <node pkg="omega_robot" type="sensor_fusion.py" name="sensor_fusion" output="screen">
+        <param name="fused_data_topic" value="/sensor_fusion/data"/>
+    </node>
+
+    <!-- Launch the A* path planning node -->
+    <node pkg="omega_robot" type="a_star.py" name="a_star" output="screen">
+        <param name="path_topic" value="/a_star/path"/>
+    </node>
+
+    <!-- Launch the autonomous driving node -->
+    <node pkg="omega_robot" type="autonomous_driving.py" name="autonomous_driving" output="screen">
+        <param name="driving_commands_topic" value="/autonomous_driving/commands"/>
+    </node>
+</launch>
+
