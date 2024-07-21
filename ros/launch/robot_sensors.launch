@@ -1,0 +1,17 @@
+<!-- File: /Omega-Code/ros/launch/robot_sensors.launch -->
+<launch>
+    <!-- Launch the camera publisher node -->
+    <node pkg="omega_robot" type="camera_publisher.py" name="camera_publisher" output="screen">
+        <param name="camera_topic" value="/camera/image_raw"/>
+    </node>
+
+    <!-- Launch the ultrasonic sensor publisher node -->
+    <node pkg="omega_robot" type="ultrasonic_publisher.py" name="ultrasonic_publisher" output="screen">
+        <param name="ultrasonic_topic" value="/ultrasonic/distance"/>
+    </node>
+
+    <!-- Launch the line tracking sensor publisher node -->
+    <node pkg="omega_robot" type="line_tracking_publisher.py" name="line_tracking_publisher" output="screen">
+        <param name="line_tracking_topic" value="/line_tracking/sensors"/>
+    </node>
+</launch>

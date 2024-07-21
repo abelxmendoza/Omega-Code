@@ -1,0 +1,17 @@
+<!-- File: /Omega-Code/ros/launch/robot_processing.launch -->
+<launch>
+    <!-- Launch the sensor fusion node -->
+    <node pkg="omega_robot" type="sensor_fusion.py" name="sensor_fusion" output="screen">
+        <param name="fused_data_topic" value="/sensor_fusion/data"/>
+    </node>
+
+    <!-- Launch the A* path planning node -->
+    <node pkg="omega_robot" type="a_star.py" name="a_star" output="screen">
+        <param name="path_topic" value="/a_star/path"/>
+    </node>
+
+    <!-- Launch the autonomous driving node -->
+    <node pkg="omega_robot" type="autonomous_driving.py" name="autonomous_driving" output="screen">
+        <param name="driving_commands_topic" value="/autonomous_driving/commands"/>
+    </node>
+</launch>
