@@ -1,33 +1,30 @@
 import cv2
 
 def test_camera():
-    # Initialize the camera
-    cap = cv2.VideoCapture(0)
+    # List of video device paths
+    video_devices = ['/dev/video10', '/dev/video11', '/dev/video12', '/dev/video13', '/dev/video14', '/dev/video15', '/dev/video16']
 
-    if not cap.isOpened():
-        print("Error: Could not open camera.")
-        return
+    for device in video_devices:
+        cap = cv2.VideoCapture(device)
+        if cap.isOpened():
+            print(f"Successfully opened camera at {device}")
+            print("Press 'q' to quit.")
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    print("Error: Could not read frame.")
+                    break
+                cv2.imshow('Camera Feed', frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+            cap.release()
+            cv2.destroyAllWindows()
+            return
+        else:
+            print(f"Error: Could not open camera at {device}")
 
-    print("Press 'q' to quit.")
-
-    while True:
-        # Capture frame-by-frame
-        ret, frame = cap.read()
-
-        if not ret:
-            print("Error: Could not read frame.")
-            break
-
-        # Display the resulting frame
-        cv2.imshow('Camera Feed', frame)
-
-        # Press 'q' on the keyboard to exit
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    # Release the camera and close windows
-    cap.release()
-    cv2.destroyAllWindows()
+    print("Error: Could not open any camera.")
 
 if __name__ == "__main__":
     test_camera()
+
