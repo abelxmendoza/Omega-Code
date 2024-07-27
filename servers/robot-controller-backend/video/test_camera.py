@@ -2,18 +2,12 @@ import cv2
 
 def test_camera():
     device = '/dev/video14'
-    cap = cv2.VideoCapture(device)
+    gst_str = f"v4l2src device={device} ! videoconvert ! appsink"
+    cap = cv2.VideoCapture(gst_str, cv2.CAP_GSTREAMER)
 
     if not cap.isOpened():
         print(f"Error: Could not open camera at {device}")
         return
-
-    # Set camera parameters
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    cap.set(cv2.CAP_PROP_FPS, 30)
-    cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)  # disable autofocus
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
 
     print(f"Successfully opened camera at {device}")
     print("Press 'q' to quit.")
