@@ -8,9 +8,12 @@ def test_camera():
         print(f"Error: Could not open camera at {device}")
         return
 
-    # Set the resolution
+    # Set camera parameters
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)  # disable autofocus
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
 
     print(f"Successfully opened camera at {device}")
     print("Press 'q' to quit.")
