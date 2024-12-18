@@ -25,9 +25,13 @@ def run_ultrasonic():
     try:
         while not stop_event.is_set():
             distance = ultrasonic.get_distance()
-            print(f'Distance: {distance} cm')
+            if distance == -1:
+                print("Error: Check sensor connections or power.")
+            else:
+                print(f'Distance: {distance} cm')
             time.sleep(1)
     except KeyboardInterrupt:
+        print("Stopping ultrasonic sensor runner.")
         GPIO.cleanup()
 
 if __name__ == "__main__":
@@ -38,3 +42,4 @@ if __name__ == "__main__":
     stop_event.set()
     ultrasonic_thread.join()
     GPIO.cleanup()  # Ensure GPIO is cleaned up when the thread stops
+

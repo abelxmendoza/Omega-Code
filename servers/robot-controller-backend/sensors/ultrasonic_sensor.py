@@ -29,6 +29,18 @@ class Ultrasonic:
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(self.trigger_pin, GPIO.OUT)
         GPIO.setup(self.echo_pin, GPIO.IN)
+        self.check_gpio_state()
+
+    def check_gpio_state(self):
+        """
+        Validates the initial GPIO pin states.
+        """
+        trigger_state = GPIO.input(self.trigger_pin)
+        echo_state = GPIO.input(self.echo_pin)
+        print(f"Initial Trigger Pin State: {trigger_state}")
+        print(f"Initial Echo Pin State: {echo_state}")
+        if echo_state not in [GPIO.HIGH, GPIO.LOW]:
+            print("Warning: Echo pin not responding correctly. Check connections.")
 
     def send_trigger_pulse(self):
         """
@@ -45,26 +57,37 @@ class Ultrasonic:
         Parameters:
         value (bool): The expected value from the echo pin.
         timeout (int): The maximum count to wait for the response.
+
+        Returns:
+        bool: True if echo received, False otherwise.
         """
         count = timeout
         while GPIO.input(self.echo_pin) != value and count > 0:
             count -= 1
+        return count > 0
 
     def get_distance(self):
         """
         Measures the distance using the ultrasonic sensor.
 
         Returns:
-        int: The measured distance in centimeters.
+        int: The measured distance in centimeters, or -1 if an error occurs.
         """
-        distance_cm = [0] * 5
+        distance_cm = []
         for i in range(3):
             self.send_trigger_pulse()
-            self.wait_for_echo(True, 10000)
+            if not self.wait_for_echo(True, 10000):
+                print("Error: No echo received (HIGH). Check connections or sensor power.")
+                return -1
             start = time.time()
-            self.wait_for_echo(False, 10000)
+            if not self.wait_for_echo(False, 10000):
+                print("Error: No echo received (LOW). Check connections or sensor power.")
+                return -1
             finish = time.time()
             pulse_len = finish - start
-            distance_cm[i] = pulse_len / 0.000058
+            if pulse_len <= 0 or pulse_len > 0.04:  # Check for valid pulse length
+                print("Error: Invalid pulse length detected. Possible connection issue.")
+                return -1
+            distance_cm.append(pulse_len / 0.000058)  # Calculate distance in cm
         distance_cm = sorted(distance_cm)
-        return int(distance_cm[2])
+        return int(distance_cm[1])  # Return the median of the three readings
