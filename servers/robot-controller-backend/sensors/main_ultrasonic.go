@@ -11,110 +11,111 @@ sending the data through WebSockets.
 package main
 
 import (
-	"encoding/json"
-	"log"
-	"net/http"
-	"os"
-	"time"
-
-	"github.com/gorilla/websocket"
-	"github.com/stianeikeland/go-rpio"
-)
-
-/*
-#cgo LDFLAGS: -L/home/omega1/Documents/code/Omega-Code/servers/robot-controller-backend/rust_module/target/release -lrust_module
-#include <stdlib.h>
-
-extern char* process_ultrasonic_data(char* input);
-*/
-import "C"
-import (
-	"fmt"
-	"unsafe"
+    "log"
+    "net/http"
+    "time"
+    "github.com/gorilla/websocket"
+    "github.com/stianeikeland/go-rpio/v4"
+    "fmt"
+    "math"
 )
 
 type UltrasonicData struct {
-	Distance int `json:"distance"`
-}
-
-func processUltrasonicData(input string) string {
-	cInput := C.CString(input)
-	defer C.free(unsafe.Pointer(cInput))
-
-	cOutput := C.process_ultrasonic_data(cInput)
-	defer C.free(unsafe.Pointer(cOutput))
-
-	return C.GoString(cOutput)
+    DistanceCM    int     `json:"distance_cm"`
+    DistanceM     float64 `json:"distance_m"`
+    DistanceInch  float64 `json:"distance_inch"`
+    DistanceFeet  float64 `json:"distance_feet"`
 }
 
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Adjust this according to your CORS policy
-	},
+    ReadBufferSize:  1024,
+    WriteBufferSize: 1024,
+    CheckOrigin: func(r *http.Request) bool {
+        return true // Adjust this according to your CORS policy
+    },
 }
 
 func handleUltrasonicSensor(ws *websocket.Conn) {
-	if err := rpio.Open(); err != nil {
-		log.Printf("Error opening GPIO: %s\n", err)
-		return
-	}
-	defer rpio.Close()
+    // Open GPIO for reading sensor data
+    if err := rpio.Open(); err != nil {
+        log.Printf("Error opening GPIO: %s\n", err)
+        return
+    }
+    defer rpio.Close() // Ensure GPIO is closed after the function completes
 
-	trigger := rpio.Pin(27)
-	echo := rpio.Pin(22)
+    // Define GPIO pins for trigger and echo
+    trigger := rpio.Pin(27)
+    echo := rpio.Pin(22)
 
-	trigger.Output()
-	echo.Input()
+    trigger.Output() // Set trigger pin as output
+    echo.Input()     // Set echo pin as input
 
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
+    ticker := time.NewTicker(1 * time.Second) // Adjust the interval as needed
+    defer ticker.Stop()
 
-	for range ticker.C {
-		trigger.Low()
-		time.Sleep(2 * time.Microsecond)
-		trigger.High()
-		time.Sleep(10 * time.Microsecond)
-		trigger.Low()
+    for {
+        select {
+        case <-ticker.C:
+            // Send trigger pulse
+            trigger.Low()
+            time.Sleep(2 * time.Microsecond)
+            trigger.High()
+            time.Sleep(10 * time.Microsecond)
+            trigger.Low()
 
-		start := time.Now()
-		for echo.Read() == rpio.Low {
-		}
-		start = time.Now()
+            // Measure the duration of the echo pulse
+            start := time.Now()
+            for echo.Read() == rpio.Low {
+            }
+            start = time.Now()
 
-		for echo.Read() == rpio.High {
-		}
-		duration := time.Since(start)
-		distance := int(duration.Seconds() * 17150)
+            for echo.Read() == rpio.High {
+            }
+            duration := time.Since(start)
+            distanceCM := int(duration.Seconds() * 17150) // Calculate distance in cm
 
-		data := UltrasonicData{Distance: distance}
-		log.Printf("Distance: %d cm", data.Distance)
+            // Convert to other units
+            distanceM := float64(distanceCM) / 100
+            distanceInch := float64(distanceCM) / 2.54
+            distanceFeet := distanceInch / 12
 
-		err := ws.WriteJSON(data)
-		if err != nil {
-			log.Printf("WriteJSON error: %v", err)
-			return
-		}
-	}
+            // Log distances
+            log.Printf("Measured distance: %d cm, %.2f m, %.2f inches, %.2f feet", distanceCM, distanceM, distanceInch, distanceFeet)
+
+            // Create a data struct with the measured distances
+            data := UltrasonicData{
+                DistanceCM:    distanceCM,
+                DistanceM:     distanceM,
+                DistanceInch:  math.Round(distanceInch*100) / 100, // Round to 2 decimal places
+                DistanceFeet:  math.Round(distanceFeet*100) / 100, // Round to 2 decimal places
+            }
+
+            // Send the data through WebSocket
+            err := ws.WriteJSON(data)
+            if err != nil {
+                log.Printf("WriteJSON error: %v", err)
+                return
+            }
+        }
+    }
 }
 
 func main() {
-	log.SetOutput(os.Stdout)
-	log.Printf("Starting ultrasonic sensor WebSocket server")
+    log.SetOutput(os.Stdout)
+    log.Printf("Starting ultrasonic sensor WebSocket server at %s\n", time.Now().Format(time.RFC3339))
 
-	http.HandleFunc("/ultrasonic", func(w http.ResponseWriter, r *http.Request) {
-		ws, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Printf("Upgrade error: %v", err)
-			return
-		}
-		defer ws.Close()
+    http.HandleFunc("/ultrasonic", func(w http.ResponseWriter, r *http.Request) {
+        ws, err := upgrader.Upgrade(w, r, nil)
+        if err != nil {
+            log.Printf("Upgrade error: %v", err)
+            return
+        }
+        defer ws.Close()
 
-		handleUltrasonicSensor(ws)
-	})
+        handleUltrasonicSensor(ws)
+    })
 
-	addr := ":8080"
-	log.Printf("Starting server on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, nil))
+    addr := ":8080"
+    log.Printf("Starting server on %s\n", addr)
+    log.Fatal(http.ListenAndServe(addr, nil))
 }
