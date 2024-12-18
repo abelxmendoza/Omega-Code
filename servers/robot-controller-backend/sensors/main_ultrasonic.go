@@ -16,8 +16,8 @@ import (
     "time"
     "github.com/gorilla/websocket"
     "github.com/stianeikeland/go-rpio/v4"
-    "fmt"
     "math"
+    "os"
 )
 
 type UltrasonicData struct {
@@ -85,9 +85,9 @@ func handleUltrasonicSensor(ws *websocket.Conn) {
             // Create a data struct with the measured distances
             data := UltrasonicData{
                 DistanceCM:    distanceCM,
-                DistanceM:     distanceM,
-                DistanceInch:  math.Round(distanceInch*100) / 100, // Round to 2 decimal places
-                DistanceFeet:  math.Round(distanceFeet*100) / 100, // Round to 2 decimal places
+                DistanceM:     math.Round(distanceM*100) / 100,      // Round to 2 decimal places
+                DistanceInch:  math.Round(distanceInch*100) / 100,  // Round to 2 decimal places
+                DistanceFeet:  math.Round(distanceFeet*100) / 100,  // Round to 2 decimal places
             }
 
             // Send the data through WebSocket
