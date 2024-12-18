@@ -1,5 +1,6 @@
 // File: /Omega-Code/servers/robot-controller-backend/main_ultrasonic.go
 
+
 /*
 Ultrasonic Sensor Control and Data Processing with WebSockets
 
@@ -28,7 +29,7 @@ import (
 
 // Rust integration
 /*
-#cgo LDFLAGS: -L./rust_module/target/release -lrust_module
+#cgo LDFLAGS: -L/home/omega1/Documents/code/Omega-Code/servers/robot-controller-backend/rust_module/target/release -lrust_module
 #include <stdlib.h>
 
 extern char* process_ultrasonic_data(char* input);
