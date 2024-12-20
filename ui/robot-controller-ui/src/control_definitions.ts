@@ -5,7 +5,6 @@ This file defines a set of constant command strings used throughout the robot co
 These commands are used to control various aspects of the robot's functionality, such as movement, speed, and LED settings.
 */
 
-
 export const COMMAND = {
     CMD_MOTOR: 'CMD_MOTOR',                   // Command to control the motors
     CMD_LED: 'CMD_LED',                       // Command to control the LEDs
@@ -25,4 +24,6 @@ export const COMMAND = {
     INCREASE_SPEED: 'increase-speed',         // Command to increase the robot's speed
     DECREASE_SPEED: 'decrease-speed',         // Command to decrease the robot's speed
     SET_LED: 'set-led',                       // Command to set the LED color and pattern
+    STOP: 'stop',                             // Command to stop all movement
+    MOVE_STOP: 'move-stop',                   // Command to stop specific directional movement
 };

@@ -1,3 +1,9 @@
+/*
+# File: src/pages/index.tsx
+# Summary:
+Main entry point for the robot controller application, providing UI for controlling the robot, viewing sensor data, and managing commands.
+*/
+
 import Head from 'next/head';
 import React, { useState, useEffect, useRef } from 'react';
 import SpeedControl from '../components/SpeedControl';
@@ -12,35 +18,27 @@ import VideoFeed from '../components/VideoFeed';
 import LedModal from '../components/LedModal';
 import { v4 as uuidv4 } from 'uuid';
 
-/**
- * Home Component
- * 
- * This component is the main entry point for the robot controller application.
- * It provides the UI for controlling the robot, viewing sensor data, and managing command logs.
- * The component handles sending commands to the robot and integrates multiple sub-components.
- */
 const Home: React.FC = () => {
   const { addCommand } = useCommandLog();
-  const [isLedModalOpen, setIsLedModalOpen] = useState(false); // State to manage LED modal visibility
+  const [isLedModalOpen, setIsLedModalOpen] = useState(false);
   const ws = useRef<WebSocket | null>(null);
 
+  // WebSocket connection logic
   const connectWebSocket = () => {
     ws.current = new WebSocket('wss://100.82.88.25:8080/ws');
 
     ws.current.onopen = () => {
       console.log('WebSocket connection established');
-
-      // Send a keep-alive message every 25 seconds
       const interval = setInterval(() => {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        if (ws.current?.readyState === WebSocket.OPEN) {
           ws.current.send(JSON.stringify({ type: 'keep-alive' }));
         }
-      }, 25000); // 25 seconds
+      }, 25000);
 
       ws.current.onclose = () => {
         clearInterval(interval);
         console.log('WebSocket connection closed, reconnecting...');
-        setTimeout(connectWebSocket, 1000); // Retry connection after 1 second
+        setTimeout(connectWebSocket, 1000);
       };
 
       ws.current.onerror = (error) => {
@@ -55,52 +53,34 @@ const Home: React.FC = () => {
 
   useEffect(() => {
     connectWebSocket();
-
     return () => {
-      if (ws.current) {
-        ws.current.close();
-      }
+      ws.current?.close();
     };
   }, []);
 
-  /**
-   * Sends a command to the robot.
-   * @param {string} command - The command to send.
-   * @param {number} [angle=0] - Optional angle parameter for certain commands.
-   */
   const sendCommand = (command: string, angle: number = 0) => {
     const requestId = uuidv4();
-    const message = JSON.stringify({ command, angle, request_id: requestId });
-
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(message);
-      console.log(`Command sent: ${command}`);
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ command, angle, request_id: requestId }));
       addCommand(`${command} (ID: ${requestId})`);
     } else {
       console.error('WebSocket is not open');
     }
   };
 
-  /**
-   * Handles key down events to trigger commands.
-   * @param {KeyboardEvent} event - The keyboard event.
-   */
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      switch (event.key) {
+      switch (event.key.toLowerCase()) {
         case 'p':
-        case 'P':
           sendCommand(COMMAND.INCREASE_SPEED);
           break;
         case 'o':
-        case 'O':
           sendCommand(COMMAND.DECREASE_SPEED);
           break;
         case ' ':
           sendCommand(COMMAND.CMD_BUZZER);
           break;
         case 'i':
-        case 'I':
           setIsLedModalOpen(true);
           break;
         default:
@@ -109,7 +89,6 @@ const Home: React.FC = () => {
     };
 
     window.addEventListener('keydown', handleKeyDown);
-
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
@@ -126,6 +105,7 @@ const Home: React.FC = () => {
 
         <Header isConnected={true} batteryLevel={75} />
         <main className="p-4 space-y-4">
+          {/* Top Control Panel */}
           <div className="flex justify-center items-center space-x-8">
             <div className="flex-shrink-0">
               <CarControlPanel sendCommand={sendCommand} />
@@ -135,15 +115,25 @@ const Home: React.FC = () => {
               <CameraControlPanel sendCommand={sendCommand} />
             </div>
           </div>
-          <div className="flex justify-center items-center space-x-8 mt-4">
-            <SensorDashboard />
-            <SpeedControl sendCommand={sendCommand} onOpenLedModal={() => setIsLedModalOpen(true)} />
+
+          {/* SensorDashboard and SpeedControl - Adjusted Size */}
+          <div className="flex justify-center items-center space-x-6 mt-6">
+            <div className="w-1/3">
+              <SensorDashboard />
+            </div>
+            <div className="w-1/4">
+              <SpeedControl sendCommand={sendCommand} onOpenLedModal={() => setIsLedModalOpen(true)} />
+            </div>
           </div>
+
+          {/* CommandLog */}
           <div className="flex flex-col items-center space-y-4 mt-4">
             <CommandLog />
           </div>
         </main>
-        {isLedModalOpen && <LedModal isOpen={isLedModalOpen} sendCommand={sendCommand} onClose={() => setIsLedModalOpen(false)} />}
+        {isLedModalOpen && (
+          <LedModal isOpen={isLedModalOpen} onClose={() => setIsLedModalOpen(false)} />
+        )}
       </div>
     </CommandLogProvider>
   );

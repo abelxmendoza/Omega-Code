@@ -1,109 +1,80 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+/*
+# File: /Omega-Code/ui/robot-controller-ui/src/components/SpeedControl.tsx
+# Summary:
+This component provides a UI for controlling the robot's speed and additional features such as activating LEDs and a buzzer.
+It handles speed changes, emergency stops, and toggling LED states. Commands are sent to the backend via WebSocket.
+*/
+
+import React, { useState, useEffect, useContext } from 'react';
 import { COMMAND } from '../control_definitions';
-import { CommandLogContext } from './CommandLogContext'; // Adjust the path if necessary
+import { CommandLogContext } from './CommandLogContext';
 
 interface SpeedControlProps {
-  sendCommand: (command: string) => void;
-  onOpenLedModal: () => void;
+  sendCommand: (command: string) => void; // Function to send commands to the backend
+  onOpenLedModal: () => void; // Function to open the LED configuration modal
 }
 
 const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal }) => {
-  const { addCommand } = useContext(CommandLogContext); // Use CommandLogContext here
-  const [speed, setSpeed] = useState(0);
-  const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [isLedActive, setIsLedActive] = useState(false);
-  const [clickedButton, setClickedButton] = useState<string | null>(null);
-  const [isBuzzerActive, setIsBuzzerActive] = useState(false);
-  const accelerateInterval = useRef<NodeJS.Timeout | undefined>(undefined);
-  const decelerateInterval = useRef<NodeJS.Timeout | undefined>(undefined);
-  const buzzTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
+  const commandLogContext = useContext(CommandLogContext);
+  if (!commandLogContext) {
+    throw new Error('CommandLogContext must be used within its provider');
+  }
+  const { addCommand } = commandLogContext;
 
+  const [speed, setSpeed] = useState(0);
+  const [isLedActive, setIsLedActive] = useState(false);
+
+  const increaseSpeed = () => {
+    const newSpeed = Math.min(speed + 10, 100);
+    setSpeed(newSpeed);
+    sendCommand(`${COMMAND.INCREASE_SPEED}-${newSpeed}`);
+    addCommand(`Speed increased to ${newSpeed}%`);
+  };
+
+  const decreaseSpeed = () => {
+    const newSpeed = Math.max(speed - 10, 0);
+    setSpeed(newSpeed);
+    sendCommand(`${COMMAND.DECREASE_SPEED}-${newSpeed}`);
+    addCommand(`Speed decreased to ${newSpeed}%`);
+  };
+
+  const emergencyStop = () => {
+    setSpeed(0);
+    sendCommand('emergency-stop');
+    addCommand('Emergency stop activated');
+  };
+
+  const toggleLed = () => {
+    setIsLedActive(!isLedActive);
+    sendCommand('toggle-led');
+    addCommand('LED toggled');
+    onOpenLedModal();
+  };
+
+  const activateBuzzer = () => {
+    sendCommand(COMMAND.CMD_BUZZER);
+    addCommand('Buzzer activated');
+    setTimeout(() => sendCommand(COMMAND.CMD_BUZZER_STOP), 5000); // Stop buzzer after 5 seconds
+  };
+
+  // Keyboard event handlers
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      switch (event.key) {
-        case 'p':
-        case 'P':
-          if (!accelerateInterval.current) {
-            setActiveKey('p');
-            accelerateInterval.current = setInterval(() => {
-              setSpeed((prevSpeed) => {
-                const newSpeed = Math.min(prevSpeed + 5, 100);
-                sendCommand(`${COMMAND.INCREASE_SPEED}-${newSpeed}`);
-                addCommand(`${COMMAND.INCREASE_SPEED}-${newSpeed}`);
-                return newSpeed;
-              });
-            }, 100);
-          }
+      switch (event.key.toLowerCase()) {
+        case 'p': // Gas pedal
+          increaseSpeed();
           break;
-        case 'o':
-        case 'O':
-          if (!decelerateInterval.current) {
-            setActiveKey('o');
-            decelerateInterval.current = setInterval(() => {
-              setSpeed((prevSpeed) => {
-                const newSpeed = Math.max(prevSpeed - 10, 0);
-                sendCommand(`${COMMAND.DECREASE_SPEED}-${newSpeed}`);
-                addCommand(`${COMMAND.DECREASE_SPEED}-${newSpeed}`);
-                return newSpeed;
-              });
-            }, 100);
-          }
+        case 'o': // Brake
+          decreaseSpeed();
           break;
-        case ' ':
-          setActiveKey(' ');
-          clearInterval(accelerateInterval.current);
-          clearInterval(decelerateInterval.current);
-          setSpeed(0);
-          sendCommand(`${COMMAND.INCREASE_SPEED}-0`);
-          sendCommand(`${COMMAND.DECREASE_SPEED}-0`);
-          addCommand('emergency-stop');
+        case ' ': // Emergency stop
+          emergencyStop();
           break;
-        case 'i':
-        case 'I':
-          setActiveKey('i');
-          sendCommand('toggle-led');
-          addCommand('toggle-led');
-          onOpenLedModal();
+        case 'i': // LED toggle
+          toggleLed();
           break;
-        case '0':
-          if (!isBuzzerActive) {
-            setActiveKey('0');
-            setIsBuzzerActive(true);
-            sendCommand(COMMAND.CMD_BUZZER);
-            addCommand('buzzer on');
-          }
-          break;
-        default:
-          break;
-      }
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      switch (event.key) {
-        case 'p':
-        case 'P':
-          clearInterval(accelerateInterval.current);
-          accelerateInterval.current = undefined;
-          setActiveKey(null);
-          break;
-        case 'o':
-        case 'O':
-          clearInterval(decelerateInterval.current);
-          decelerateInterval.current = undefined;
-          setActiveKey(null);
-          break;
-        case ' ':
-          setActiveKey(null);
-          break;
-        case 'i':
-        case 'I':
-          setActiveKey(null);
-          break;
-        case '0':
-          setActiveKey(null);
-          setIsBuzzerActive(false);
-          sendCommand(COMMAND.CMD_BUZZER_STOP);
-          addCommand('buzzer off');
+        case '0': // Buzzer
+          activateBuzzer();
           break;
         default:
           break;
@@ -111,153 +82,67 @@ const SpeedControl: React.FC<SpeedControlProps> = ({ sendCommand, onOpenLedModal
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      clearInterval(accelerateInterval.current);
-      clearInterval(decelerateInterval.current);
     };
-  }, [sendCommand, onOpenLedModal, addCommand, isBuzzerActive]);
-
-  const getProgressColor = () => {
-    if (speed <= 20) return 'bg-red-500';
-    if (speed <= 60) return 'bg-yellow-500';
-    return 'bg-green-500';
-  };
-
-  const getButtonClass = (key: string) => {
-    if (key === 'i' && isLedActive) return 'bg-yellow-500';
-    if (clickedButton === key) return 'bg-green-500';
-    return activeKey === key ? 'bg-red-500' : 'bg-blue-500';
-  };
-
-  const handleButtonClick = (command: string, key: string) => {
-    console.log(`Button click: ${command}`);
-    setClickedButton(key);
-    try {
-      if (command === 'toggle-led') {
-        setIsLedActive(!isLedActive); // Toggle the button color
-        sendCommand(command);
-        addCommand(command);
-        onOpenLedModal();
-      } else {
-        sendCommand(command);
-        addCommand(command);
-      }
-    } catch (error) {
-      console.error(`Error sending command ${command}:`, error);
-    }
-  };
-
-  const handleButtonDoubleClick = (command: string) => {
-    console.log(`Button double click: ${command}`);
-    try {
-      if (command === 'toggle-led') {
-        setIsLedActive(true); // Turn the button yellow
-        sendCommand(command);
-        addCommand(command);
-        onOpenLedModal();
-      } else if (command === COMMAND.CMD_BUZZER) {
-        sendCommand(command);
-        addCommand(command);
-        buzzTimeout.current = setTimeout(() => {
-          sendCommand(COMMAND.CMD_BUZZER_STOP);
-          addCommand(COMMAND.CMD_BUZZER_STOP);
-        }, 10000);
-      } else {
-        sendCommand(command);
-        addCommand(command);
-      }
-    } catch (error) {
-      console.error(`Error sending command ${command}:`, error);
-    }
-  };
-
-  const handleButtonRelease = (command: string) => {
-    console.log(`Button release: ${command}`);
-    setClickedButton(null);
-    try {
-      if (buzzTimeout.current) {
-        clearTimeout(buzzTimeout.current);
-        buzzTimeout.current = undefined;
-      }
-      sendCommand(command);
-      addCommand(command);
-    } catch (error) {
-      console.error(`Error sending command ${command}:`, error);
-    }
-  };
+  }, [speed, isLedActive]); // Dependencies ensure the latest state is used
 
   return (
-    <div className="flex flex-col items-center space-y-4">
-      <div className="flex items-center space-x-2 w-full">
-        <span>Speed:</span>
-        <div className="w-full bg-gray-300 rounded h-4 flex items-center relative">
+    <div className="bg-gray-800 text-white p-3 rounded-md shadow-md w-full max-w-sm flex flex-col items-center">
+      <h2 className="text-md font-bold mb-3">Speed Control</h2>
+
+      {/* Speed Progress Bar */}
+      <div className="w-full mb-3">
+        <label className="block text-sm font-semibold mb-1">Speed:</label>
+        <div className="w-full bg-gray-300 rounded h-3 relative">
           <div
-            className={`h-full rounded ${getProgressColor()} transition-all duration-500 ease-in-out`}
+            className={`h-full rounded ${
+              speed <= 20 ? 'bg-red-500' : speed <= 60 ? 'bg-yellow-500' : 'bg-green-500'
+            }`}
             style={{ width: `${speed}%` }}
           ></div>
-          <div className="absolute inset-0 flex justify-center items-center text-white font-bold">
+          <div className="absolute inset-0 flex justify-center items-center text-white text-xs font-bold">
             {speed}%
           </div>
         </div>
       </div>
-      <div className="flex flex-col items-center">
-        <div className="flex space-x-4">
-          <button
-            data-testid="led-button"
-            className={`w-16 h-16 rounded-lg ${getButtonClass('i')} text-white flex flex-col items-center justify-center`}
-            onClick={() => {
-              handleButtonClick('toggle-led');
-              onOpenLedModal();
-            }}
-            onDoubleClick={() => handleButtonDoubleClick('toggle-led')}
-          >
-            <span>I</span>
-            <span>(LED)</span>
-          </button>
-          <button
-            className={`w-16 h-16 rounded-lg ${getButtonClass('o')} text-white flex flex-col items-center justify-center`}
-            onClick={() => handleButtonClick(COMMAND.DECREASE_SPEED)}
-            onDoubleClick={() => handleButtonDoubleClick(COMMAND.DECREASE_SPEED)}
-          >
-            <span>O</span>
-            <span>(brake)</span>
-          </button>
-          <button
-            className={`w-16 h-16 rounded-lg ${getButtonClass('p')} text-white flex flex-col items-center justify-center`}
-            onClick={() => handleButtonClick(COMMAND.INCREASE_SPEED)}
-            onDoubleClick={() => handleButtonDoubleClick(COMMAND.INCREASE_SPEED)}
-          >
-            <span>P</span>
-            <span>(gas)</span>
-          </button>
-        </div>
+
+      {/* Control Buttons */}
+      <div className="grid grid-cols-2 gap-2 w-full">
         <button
-          className={`w-32 h-12 rounded-lg ${getButtonClass(' ')} text-white mt-4 flex items-center justify-center`}
-          onClick={() => {
-            clearInterval(accelerateInterval.current);
-            clearInterval(decelerateInterval.current);
-            setSpeed(0);
-            handleButtonClick(`${COMMAND.INCREASE_SPEED}-0`);
-            handleButtonClick(`${COMMAND.DECREASE_SPEED}-0`);
-          }}
-          onDoubleClick={() => handleButtonDoubleClick(`${COMMAND.INCREASE_SPEED}-0`)}
+          className="bg-blue-600 text-white py-1 rounded hover:bg-blue-700 flex flex-col items-center"
+          onClick={decreaseSpeed}
         >
-          Space (E-stop)
+          <span>O</span>
+          <span>(Brake)</span>
         </button>
         <button
-          className={`w-32 h-12 rounded-lg ${getButtonClass('0')} text-white mt-4 flex items-center justify-center`}
-          onClick={() => {
-            handleButtonClick(COMMAND.CMD_BUZZER);
-            setClickedButton('0');
-          }}
-          onDoubleClick={() => handleButtonDoubleClick(COMMAND.CMD_BUZZER)}
-          onMouseUp={() => handleButtonRelease(COMMAND.CMD_BUZZER_STOP)}
+          className="bg-blue-600 text-white py-1 rounded hover:bg-blue-700 flex flex-col items-center"
+          onClick={increaseSpeed}
         >
-          0 (Buzz)
+          <span>P</span>
+          <span>(Gas)</span>
+        </button>
+        <button
+          className="bg-red-600 text-white py-1 rounded hover:bg-red-700 flex flex-col items-center col-span-2"
+          onClick={emergencyStop}
+        >
+          <span>Space</span>
+          <span>(Stop)</span>
+        </button>
+        <button
+          className="bg-yellow-600 text-white py-1 rounded hover:bg-yellow-700 flex flex-col items-center"
+          onDoubleClick={toggleLed}
+        >
+          <span>I</span>
+          <span>(LED)</span>
+        </button>
+        <button
+          className="bg-purple-600 text-white py-1 rounded hover:bg-purple-700 flex flex-col items-center"
+          onClick={activateBuzzer}
+        >
+          <span>0</span>
+          <span>(Buzzer)</span>
         </button>
       </div>
     </div>

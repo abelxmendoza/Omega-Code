@@ -1,57 +1,42 @@
-// File: /Omega-Code/ui/robot-controller-ui/src/components/VideoFeed.tsx
-
 /*
+# File: /src/components/VideoFeed.tsx
+# Summary:
 This component displays a video feed from a specified URL.
-It renders the video stream inside a div container with predefined styles for width and height.
+It toggles between the video stream and GPS location view using a button.
 */
 
 import React, { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import GpsLocation from './GpsLocation';
 
 const VideoFeed: React.FC = () => {
   const [showGps, setShowGps] = useState(false);
   const ws = useRef<WebSocket | null>(null);
+  const wsUrl = process.env.NEXT_PUBLIC_BACKEND_WS_URL || 'ws://localhost:8080/ws';
 
   useEffect(() => {
-    // Establish WebSocket connection
-    ws.current = new WebSocket('ws://localhost:8080/ws');
+    ws.current = new WebSocket(wsUrl);
 
-    ws.current.onopen = () => {
-      console.log('WebSocket connection established');
-    };
-
+    ws.current.onopen = () => console.log('WebSocket connection established');
     ws.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      // Handle incoming WebSocket messages if needed
+      console.log('WebSocket message received:', data);
     };
+    ws.current.onclose = () => console.log('WebSocket connection closed');
+    ws.current.onerror = (error) => console.error('WebSocket error:', error);
 
-    ws.current.onclose = () => {
-      console.log('WebSocket connection closed');
-    };
+    return () => ws.current?.close();
+  }, [wsUrl]);
 
-    ws.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    // Cleanup on unmount
-    return () => {
-      if (ws.current) {
-        ws.current.close();
-      }
-    };
-  }, []);
-
-  const toggleView = () => {
-    setShowGps(!showGps);
-  };
+  const toggleView = () => setShowGps((prev) => !prev);
 
   return (
     <div className="relative w-2/5 bg-gray-200 flex items-center justify-center" style={{ height: 'calc(60vw * 0.6)' }}>
       {showGps ? (
         <div className="absolute top-0 right-0 w-full h-full">
           <GpsLocation />
-          <button 
-            className="absolute top-2 right-2 bg-white p-2 rounded"
+          <button
+            className="absolute top-2 right-2 bg-white text-black p-2 rounded shadow"
             onClick={toggleView}
           >
             Back to Video
@@ -59,12 +44,14 @@ const VideoFeed: React.FC = () => {
         </div>
       ) : (
         <>
-          <img 
-            src="http://100.68.201.128:5000/video_feed" 
-            alt="Video Feed" 
-            className="w-full h-full object-cover" 
+          <Image
+            src="http://100.68.201.128:5000/video_feed"
+            alt="Video Feed"
+            layout="fill"
+            objectFit="cover"
+            priority
           />
-          <div 
+          <div
             className="absolute top-2 right-2 w-24 h-24 cursor-pointer"
             onClick={toggleView}
             title="Click to enlarge"
