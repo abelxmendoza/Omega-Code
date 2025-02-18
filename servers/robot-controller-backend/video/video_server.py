@@ -69,22 +69,38 @@ def start_tracking():
     """ Start tracking an object by selecting a bounding box. """
     global tracking_enabled
     frame = camera.get_frame()
+    
     if frame is None:
-        return "Camera not available", 400
+        logging.error("❌ Camera not available")
+        return "❌ Camera not available", 400
 
-    bbox = cv2.selectROI("Select Object to Track", frame, fromCenter=False)
-    if bbox:
-        tracker.start_tracking(frame, bbox)
-        tracking_enabled = True
-        logging.info("Tracking started.")
-        return "Tracking started", 200
-    return "Failed to start tracking", 400
+    try:
+        logging.info("📌 Waiting for object selection...")
+
+        # Check if running with a GUI
+        if os.environ.get("DISPLAY"):
+            bbox = cv2.selectROI("Select Object to Track", frame, fromCenter=False)
+            if bbox and all(i > 0 for i in bbox):  # Ensure a valid bounding box
+                tracker.start_tracking(frame, bbox)
+                tracking_enabled = True
+                logging.info("✅ Tracking started.")
+                return "Tracking started", 200
+            else:
+                logging.warning("⚠️ No object selected.")
+                return "❌ No object selected", 400
+        else:
+            logging.warning("⚠️ No DISPLAY environment found, cannot use ROI selection.")
+            return "❌ No GUI available for object selection", 500
+
+    except Exception as e:
+        logging.error(f"⚠️ Error in object tracking: {e}")
+        return f"❌ Tracking failed: {e}", 500
 
 if __name__ == '__main__':
-    logging.info(f"🚀 Video server starting...")
-    logging.info(f"   🌐 Local: http://YOUR_LOCAL_IP:5000/video_feed")
+    logging.info("🚀 Video server starting...")
+    logging.info(f"   🌐 Local: http://{PI_IP}:5000/video_feed")
     if TAILSCALE_IP_PI:
-        logging.info(f"   🏴‍☠️ Tailscale: http://YOUR_TAILSCALE_IP:5000/video_feed")
+        logging.info(f"   🏴‍☠️ Tailscale: http://{TAILSCALE_IP_PI}:5000/video_feed")
 
     # Start Flask server
     try:
