@@ -12,14 +12,19 @@ import cv2
 import logging
 from flask import Flask, Response, request
 from dotenv import load_dotenv
-from video.camera import Camera
-from video.motion_detection import MotionDetector
-from video.object_tracking import ObjectTracker
+from video import Camera, MotionDetector, ObjectTracker
 
 # Load environment variables
 load_dotenv('.env')
 PI_IP = os.getenv("PI_IP", "0.0.0.0")  # Fixed closing quote
 TAILSCALE_IP_PI = os.getenv("TAILSCALE_IP_PI", None)
+
+# SSL Configuration
+CERT_PATH = os.getenv("CERT_PATH", None)
+KEY_PATH = os.getenv("KEY_PATH", None)
+
+# Determine which IP to use
+HOST_IP = TAILSCALE_IP_PI if TAILSCALE_IP_PI else PI_IP
 
 # Flask App
 app = Flask(__name__)
@@ -102,8 +107,13 @@ if __name__ == '__main__':
     if TAILSCALE_IP_PI:
         logging.info(f"   🏴‍☠️ Tailscale: http://{TAILSCALE_IP_PI}:5000/video_feed")
 
-    # Start Flask server
+    # Start Flask server with optional SSL
     try:
-        app.run(host="0.0.0.0", port=5000)
+        if CERT_PATH and KEY_PATH and os.path.exists(CERT_PATH) and os.path.exists(KEY_PATH):
+            logging.info("🔒 Running with SSL enabled!")
+            app.run(host=HOST_IP, port=5000, ssl_context=(CERT_PATH, KEY_PATH))
+        else:
+            logging.info("⚡ Running without SSL.")
+            app.run(host=HOST_IP, port=5000)
     except Exception as e:
-        logging.error(f"Error starting video server: {e}")
+        logging.error(f"🔥 Error starting video server: {e}")
