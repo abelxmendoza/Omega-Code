@@ -1,9 +1,14 @@
 """
-📌 Motion Detection for Raspberry Pi Camera
+📌 File: video/motion_detection.py
 
-✅ Detects motion by comparing consecutive frames
-✅ Highlights areas where movement occurs
-✅ Can trigger actions (e.g., alerts, logging)
+💪 Summary:
+This module implements motion detection for a video stream using OpenCV.
+It compares consecutive frames to identify motion and highlights areas where movement occurs.
+
+🛠️ Features:
+- Detects motion by analyzing frame differences.
+- Highlights detected motion with bounding boxes.
+- Adjustable sensitivity for motion detection.
 """
 
 import cv2
@@ -16,6 +21,17 @@ class MotionDetector:
 
     def detect_motion(self, frame):
         """ Detect motion by comparing current frame with the previous one. """
+        if frame is None:
+            print("❌ No frame captured")
+            return frame, False  # Return original frame with no motion detected
+
+        print(f"✅ Frame received: shape={frame.shape}")  # DEBUG: Print frame shape
+        
+        # Ensure the frame has the correct dimensions
+        if len(frame.shape) < 3 or frame.shape[2] != 3:
+            print("⚠️ Invalid frame format, skipping motion detection.")
+            return frame, False
+
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # Convert to grayscale
         gray = cv2.GaussianBlur(gray, (21, 21), 0)  # Smooth to reduce noise
 
