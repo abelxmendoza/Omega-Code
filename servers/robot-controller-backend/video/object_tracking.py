@@ -15,7 +15,7 @@ class ObjectTracker:
             "CSRT": cv2.TrackerCSRT_create,
             "KCF": cv2.TrackerKCF_create,
             "MIL": cv2.TrackerMIL_create,
-            "MOSSE": cv2.TrackerMOSSE_create,
+            "MOSSE": cv2.legacy.TrackerMOSSE_create,
         }
         self.tracker = OPENCV_OBJECT_TRACKERS[tracker_type]()
         self.bounding_box = None  # Bounding box of the object being tracked
