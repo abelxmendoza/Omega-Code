@@ -1,10 +1,21 @@
 """
-📌 Video Streaming with Motion Detection & Object Tracking
+📌 File: video/video_server.py
 
-✅ Streams video from the Raspberry Pi camera
-✅ Detects motion and highlights moving objects
-✅ Allows object tracking
-✅ Supports local & Tailscale access
+💡 Summary:
+This module provides a Flask-based video streaming server that integrates:
+✅ Real-time video feed from the Raspberry Pi camera
+✅ Motion detection using frame difference analysis (see: video/motion_detection.py)
+✅ Object tracking with OpenCV (see: video/object_tracking.py)
+✅ Secure access via SSL (if enabled)
+✅ Local and Tailscale support for remote access
+
+🛠️ Features:
+- Streams video via an MJPEG stream
+- Highlights detected motion in real-time
+- Allows object tracking on a selected region
+- Supports SSL encryption for secure streaming
+- Runs efficiently on Raspberry Pi hardware
+
 """
 
 import os
@@ -12,31 +23,34 @@ import cv2
 import logging
 from flask import Flask, Response, request
 from dotenv import load_dotenv
-from video import Camera, MotionDetector, ObjectTracker
+from video.camera import Camera
+from video.motion_detection import MotionDetector
+from video.object_tracking import ObjectTracker
 
 # Load environment variables
 load_dotenv('.env')
-PI_IP = os.getenv("PI_IP", "0.0.0.0")  # Fixed closing quote
+PI_IP = os.getenv("PI_IP", "0.0.0.0")  # Default to 0.0.0.0 if not specified
 TAILSCALE_IP_PI = os.getenv("TAILSCALE_IP_PI", None)
 
 # SSL Configuration
 CERT_PATH = os.getenv("CERT_PATH", None)
 KEY_PATH = os.getenv("KEY_PATH", None)
 
-# Determine which IP to use
+# Determine the appropriate IP to use
 HOST_IP = TAILSCALE_IP_PI if TAILSCALE_IP_PI else PI_IP
 
-# Flask App
+# Flask Application
 app = Flask(__name__)
-camera = Camera(device=0, width=640, height=480)
+camera = Camera(device="/dev/video0", width=640, height=480)  # Explicitly define the device
 motion_detector = MotionDetector()
 tracker = ObjectTracker()
 
-# User selects a bounding box to track
+# Tracking state
 tracking_enabled = False
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
+
 
 def generate_frames():
     """ Video streaming generator function. """
@@ -54,27 +68,30 @@ def generate_frames():
         if tracking_enabled:
             frame, tracking_active = tracker.update_tracking(frame)
 
-        # Encode frame
+        # Encode frame in JPEG format
         ret, buffer = cv2.imencode('.jpg', frame)
         if not ret:
+            logging.error("❌ Error encoding frame to JPEG format.")
             continue
 
         frame = buffer.tobytes()
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
+
 @app.route('/video_feed')
 def video_feed():
-    """ Stream video with motion detection & tracking. """
+    """ Streams the video feed with motion detection & tracking. """
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
+
 @app.route('/start_tracking', methods=['POST'])
 def start_tracking():
-    """ Start tracking an object by selecting a bounding box. """
+    """ Enables object tracking by selecting a bounding box. """
     global tracking_enabled
     frame = camera.get_frame()
-    
+
     if frame is None:
         logging.error("❌ Camera not available")
         return "❌ Camera not available", 400
@@ -82,10 +99,10 @@ def start_tracking():
     try:
         logging.info("📌 Waiting for object selection...")
 
-        # Check if running with a GUI
+        # Ensure a GUI is available for selection
         if os.environ.get("DISPLAY"):
             bbox = cv2.selectROI("Select Object to Track", frame, fromCenter=False)
-            if bbox and all(i > 0 for i in bbox):  # Ensure a valid bounding box
+            if bbox and all(i > 0 for i in bbox):  # Validate bounding box
                 tracker.start_tracking(frame, bbox)
                 tracking_enabled = True
                 logging.info("✅ Tracking started.")
@@ -100,6 +117,7 @@ def start_tracking():
     except Exception as e:
         logging.error(f"⚠️ Error in object tracking: {e}")
         return f"❌ Tracking failed: {e}", 500
+
 
 if __name__ == '__main__':
     logging.info("🚀 Video server starting...")
