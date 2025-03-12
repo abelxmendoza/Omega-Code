@@ -29,23 +29,23 @@ func (m MockGPIO) Pin(pin int) GPIOPin {
 // MockGPIOPin simulates GPIO pin behavior.
 type MockGPIOPin struct {
     pin   int
-    state bool
+    state rpio.State
 }
 
 func (p *MockGPIOPin) Input() {}
 
 func (p *MockGPIOPin) Output() {}
 
-func (p *MockGPIOPin) Read() bool {
+func (p *MockGPIOPin) Read() rpio.State {
     return p.state
 }
 
 func (p *MockGPIOPin) High() {
     log.Printf("⚡ [MOCK] Pin %d set to HIGH\n", p.pin)
-    p.state = true
+    p.state = High
 }
 
 func (p *MockGPIOPin) Low() {
     log.Printf("⚡ [MOCK] Pin %d set to LOW\n", p.pin)
-    p.state = false
+    p.state = Low
 }
