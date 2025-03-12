@@ -8,20 +8,22 @@ This module provides a Flask-based video streaming server that integrates:
 ✅ Object tracking with OpenCV (see: video/object_tracking.py)
 ✅ Secure access via SSL (if enabled)
 ✅ Local and Tailscale support for remote access
+✅ Optimized to handle CORS and Mixed Content issues
 
 🛠️ Features:
 - Streams video via an MJPEG stream
 - Highlights detected motion in real-time
 - Allows object tracking on a selected region
 - Supports SSL encryption for secure streaming
+- Enables CORS for frontend access
 - Runs efficiently on Raspberry Pi hardware
-
 """
 
 import os
 import cv2
 import logging
 from flask import Flask, Response, request
+from flask_cors import CORS  # Added for CORS support
 from dotenv import load_dotenv
 from video.camera import Camera
 from video.motion_detection import MotionDetector
@@ -41,6 +43,9 @@ HOST_IP = TAILSCALE_IP_PI if TAILSCALE_IP_PI else PI_IP
 
 # Flask Application
 app = Flask(__name__)
+CORS(app)  # Enable CORS to allow frontend access
+
+# Initialize camera and modules
 camera = Camera(device="/dev/video0", width=640, height=480)  # Explicitly define the device
 motion_detector = MotionDetector()
 tracker = ObjectTracker()
@@ -53,7 +58,10 @@ logging.basicConfig(level=logging.INFO)
 
 
 def generate_frames():
-    """ Video streaming generator function. """
+    """ 
+    Video streaming generator function.
+    Continuously captures frames, applies processing, and encodes them for streaming.
+    """
     global tracking_enabled
 
     while True:
@@ -81,14 +89,20 @@ def generate_frames():
 
 @app.route('/video_feed')
 def video_feed():
-    """ Streams the video feed with motion detection & tracking. """
+    """ 
+    Streams the video feed with motion detection & tracking.
+    The stream is accessible via an MJPEG-compatible player or browser.
+    """
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
 @app.route('/start_tracking', methods=['POST'])
 def start_tracking():
-    """ Enables object tracking by selecting a bounding box. """
+    """ 
+    Enables object tracking by selecting a bounding box. 
+    Requires a GUI display to manually select a tracking region.
+    """
     global tracking_enabled
     frame = camera.get_frame()
 
