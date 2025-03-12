@@ -23,9 +23,11 @@ type GPIOPin interface {
     Read() rpio.State
     High()
     Low()
+    SetState(state rpio.State) // Allows setting a specific state (useful for mocks)
 }
 
-var (
-    Low  rpio.State = rpio.Low // Low state for GPIO pin
-    High rpio.State = rpio.High // High state for GPIO pin
+// Ensure the correct Low and High states are used from rpio
+const (
+    Low  = rpio.Low  // GPIO Low state
+    High = rpio.High // GPIO High state
 )
