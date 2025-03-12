@@ -2,7 +2,7 @@
 # File: /Omega-Code/servers/robot-controller-backend/movement/movement.go
 # Summary:
 Handles WebSocket commands for the car's bi-directional movement (forward, backward, stop).
-Also manages speed adjustments.
+Also manages speed adjustments and buzzer control.
 */
 
 package main
@@ -11,6 +11,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/gorilla/websocket"
 	"github.com/abelxmendoza/Omega-Code/servers/robot-controller-backend/gpio"
@@ -18,7 +21,7 @@ import (
 
 // MovementCommand represents a movement command received via WebSocket.
 type MovementCommand struct {
-	Command string `json:"command"` // "move-up", "move-down", "emergency-stop", "increase-speed", "decrease-speed"
+	Command string `json:"command"` // "move-up", "move-down", "emergency-stop", "increase-speed", "decrease-speed", "buzz"
 	Speed   int    `json:"speed"`   // Speed percentage (0-100)
 }
 
@@ -40,59 +43,84 @@ func (sc *SpeedController) AdjustSpeed(delta int) {
 	} else if sc.speed < 0 {
 		sc.speed = 0
 	}
-	log.Printf("Speed set to %d%%", sc.speed)
+	log.Printf("⚡ Speed set to %d%%", sc.speed)
 }
 
 // Handle WebSocket commands for movement
-func handleMovementCommands(ws *websocket.Conn, speedController *SpeedController) {
+func handleMovementCommands(ws *websocket.Conn, speedController *SpeedController, motor *gpio.MotorController) {
+	defer ws.Close()
+
 	for {
 		var cmd MovementCommand
 		err := ws.ReadJSON(&cmd)
 		if err != nil {
-			log.Printf("Error reading JSON: %v", err)
+			log.Printf("❌ Error reading JSON: %v", err)
 			break
 		}
 
-		log.Printf("Received command: %s, Speed: %d", cmd.Command, cmd.Speed)
+		log.Printf("📩 Received command: %s, Speed: %d", cmd.Command, cmd.Speed)
 
 		switch cmd.Command {
 		case "move-up":
 			log.Println("🚗 Moving forward")
-			gpio.ActivateMotor("forward")
+			motor.ActivateMotor("forward")
 		case "move-down":
 			log.Println("🚗 Moving backward")
-			gpio.ActivateMotor("backward")
+			motor.ActivateMotor("backward")
 		case "increase-speed":
 			speedController.AdjustSpeed(10)
 		case "decrease-speed":
 			speedController.AdjustSpeed(-10)
 		case "emergency-stop":
 			log.Println("🛑 Emergency Stop!")
-			gpio.StopMotor()
+			motor.StopMotor()
+		case "buzz":
+			log.Println("🔊 Toggling buzzer (TODO: Implement buzzer control)")
 		default:
-			log.Printf("Unknown command: %s", cmd.Command)
+			log.Printf("⚠️ Unknown command: %s", cmd.Command)
 		}
 	}
 }
 
 // Start the movement WebSocket server
 func main() {
-	log.Println("🚀 Starting movement WebSocket server...")
+	log.Println("🚀 Initializing GPIO...")
+	gpio.InitGPIO() // Ensure GPIO is initialized
 
+	// Create motor controller
+	motor := gpio.InitMotor()
+
+	// Create speed controller
 	speedController := &SpeedController{speed: 0}
 
+	// Handle graceful shutdown
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+
+	// WebSocket server handler
 	http.HandleFunc("/movement", func(w http.ResponseWriter, r *http.Request) {
 		ws, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			log.Printf("Upgrade error: %v", err)
+			log.Printf("❌ WebSocket upgrade error: %v", err)
 			return
 		}
-		defer ws.Close()
 
-		handleMovementCommands(ws, speedController)
+		handleMovementCommands(ws, speedController, motor)
 	})
 
 	addr := ":8081"
-	log.Printf("Listening on %s...", addr)
-	log.Fatal(http.ListenAndServe(addr, nil))
+	server := &http.Server{Addr: addr}
+
+	go func() {
+		log.Printf("📡 Listening on %s...", addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("❌ Server error: %v", err)
+		}
+	}()
+
+	// Wait for shutdown signal
+	<-sigs
+	log.Println("🛑 Shutting down server...")
+	server.Close()
+	log.Println("✅ Server shut down successfully.")
 }
