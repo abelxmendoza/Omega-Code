@@ -7,45 +7,48 @@ Simulates GPIO operations without requiring actual hardware.
 
 package gpio
 
-import "log"
+import (
+	"log"
+	"github.com/stianeikeland/go-rpio/v4" // Required for rpio.State
+)
 
 // MockGPIO implements the GPIO interface for testing.
 type MockGPIO struct{}
 
 func (m MockGPIO) Open() error {
-    log.Println("⚡ [MOCK] GPIO Opened")
-    return nil
+	log.Println("⚡ [MOCK] GPIO Opened")
+	return nil
 }
 
 func (m MockGPIO) Close() error {
-    log.Println("⚡ [MOCK] GPIO Closed")
-    return nil
+	log.Println("⚡ [MOCK] GPIO Closed")
+	return nil
 }
 
 func (m MockGPIO) Pin(pin int) GPIOPin {
-    return &MockGPIOPin{pin: pin}
+	return &MockGPIOPin{pin: pin}
 }
 
 // MockGPIOPin simulates GPIO pin behavior.
 type MockGPIOPin struct {
-    pin   int
-    state rpio.State
+	pin   int
+	state rpio.State // ✅ Changed from bool to rpio.State
 }
 
 func (p *MockGPIOPin) Input() {}
 
 func (p *MockGPIOPin) Output() {}
 
-func (p *MockGPIOPin) Read() rpio.State {
-    return p.state
+func (p *MockGPIOPin) Read() rpio.State { // ✅ Fixed return type
+	return p.state
 }
 
 func (p *MockGPIOPin) High() {
-    log.Printf("⚡ [MOCK] Pin %d set to HIGH\n", p.pin)
-    p.state = High
+	log.Printf("⚡ [MOCK] Pin %d set to HIGH\n", p.pin)
+	p.state = rpio.High // ✅ Fixed from "High" to "rpio.High"
 }
 
 func (p *MockGPIOPin) Low() {
-    log.Printf("⚡ [MOCK] Pin %d set to LOW\n", p.pin)
-    p.state = Low
+	log.Printf("⚡ [MOCK] Pin %d set to LOW\n", p.pin)
+	p.state = rpio.Low // ✅ Fixed from "Low" to "rpio.Low"
 }
