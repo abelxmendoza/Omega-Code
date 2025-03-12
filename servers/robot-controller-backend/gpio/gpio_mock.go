@@ -9,7 +9,7 @@ package gpio
 
 import "log"
 
-// MockGPIO implements the GPIO interface for testing purposes.
+// MockGPIO implements the GPIO interface for testing.
 type MockGPIO struct{}
 
 func (m MockGPIO) Open() error {

@@ -1,51 +1,35 @@
 /*
-# File: /Omega-Code/servers/robot-controller-backend/gpio/motor.go
+# File: /Omega-Code/servers/robot-controller-backend/gpio/init.go
 # Summary:
-Controls the car's motors for forward and backward movement.
+Initializes GPIO interface for Raspberry Pi or a mock version for testing.
 */
 
 package gpio
 
 import (
-	"log"
+	"runtime"
+
 	"github.com/stianeikeland/go-rpio/v4"
 )
 
+// Global variables for GPIO interface and states
 var (
-	// Define GPIO pins for forward and backward movement
-	forwardPin  = rpio.Pin(19)
-	backwardPin = rpio.Pin(20)
+	GpioInterface GPIO
+	Low           rpio.State = rpio.Low
+	High          rpio.State = rpio.High
 )
 
-// InitMotor initializes GPIO pins for motor control.
-func InitMotor() error {
-	err := rpio.Open()
-	if err != nil {
-		return err
-	}
-	forwardPin.Output()
-	backwardPin.Output()
-	return nil
-}
-
-// ActivateMotor moves the car forward or backward.
-func ActivateMotor(direction string) {
-	if direction == "forward" {
-		forwardPin.High()
-		backwardPin.Low()
-		log.Println("✅ Motor: Forward")
-	} else if direction == "backward" {
-		forwardPin.Low()
-		backwardPin.High()
-		log.Println("✅ Motor: Backward")
+// InitGPIO initializes the GPIO interface based on the hardware type.
+func InitGPIO() {
+	if isRunningOnRaspberryPi() {
+		GpioInterface = RealGPIO{}
+	} else {
+		GpioInterface = MockGPIO{}
 	}
 }
 
-// StopMotor stops the car.
-func StopMotor() {
-	forwardPin.Low()
-	backwardPin.Low()
-	log.Println("🛑 Motor: Stopped")
+// isRunningOnRaspberryPi detects if the code is running on a Raspberry Pi.
+func isRunningOnRaspberryPi() bool {
+	return runtime.GOARCH == "arm" || runtime.GOARCH == "arm64"
 }
-
 
