@@ -1,10 +1,5 @@
 // File: /Omega-Code/servers/robot-controller-backend/gpio/common.go
 
-/*
-Package gpio provides common interfaces and types for GPIO operations.
-It includes interfaces for GPIO and GPIO pins, and common constants.
-*/
-
 package gpio
 
 import "github.com/stianeikeland/go-rpio/v4"
@@ -23,11 +18,10 @@ type GPIOPin interface {
     Read() rpio.State
     High()
     Low()
-    SetState(state rpio.State) // Allows setting a specific state (useful for mocks)
+    SetState(state rpio.State) // ✅ Added SetState method
 }
 
-// Ensure the correct Low and High states are used from rpio
-const (
-    Low  = rpio.Low  // GPIO Low state
-    High = rpio.High // GPIO High state
+var (
+    Low  rpio.State = rpio.Low
+    High rpio.State = rpio.High
 )

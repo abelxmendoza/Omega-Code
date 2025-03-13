@@ -1,10 +1,5 @@
 // File: /Omega-Code/servers/robot-controller-backend/gpio/gpio_real.go
 
-/*
-Package gpio provides a real implementation of GPIO for Raspberry Pi hardware.
-It uses the go-rpio library to interact with the GPIO pins.
-*/
-
 package gpio
 
 import "github.com/stianeikeland/go-rpio/v4"
@@ -21,28 +16,38 @@ func (r RealGPIO) Close() error {
 }
 
 func (r RealGPIO) Pin(pin int) GPIOPin {
-    return RealGPIOPin(rpio.Pin(pin))
+    return &RealGPIOPin{rpio.Pin(pin)} // ✅ Fixed RealGPIOPin reference
 }
 
 // RealGPIOPin wraps the rpio.Pin type to implement the GPIOPin interface.
-type RealGPIOPin rpio.Pin
-
-func (p RealGPIOPin) Input() {
-    rpio.Pin(p).Input()
+type RealGPIOPin struct {
+    pin rpio.Pin
 }
 
-func (p RealGPIOPin) Output() {
-    rpio.Pin(p).Output()
+func (p *RealGPIOPin) Input() {
+    p.pin.Input()
 }
 
-func (p RealGPIOPin) Read() rpio.State {
-    return rpio.Pin(p).Read()
+func (p *RealGPIOPin) Output() {
+    p.pin.Output()
 }
 
-func (p RealGPIOPin) High() {
-    rpio.Pin(p).High()
+func (p *RealGPIOPin) Read() rpio.State {
+    return p.pin.Read()
 }
 
-func (p RealGPIOPin) Low() {
-    rpio.Pin(p).Low()
+func (p *RealGPIOPin) High() {
+    p.pin.High()
+}
+
+func (p *RealGPIOPin) Low() {
+    p.pin.Low()
+}
+
+func (p *RealGPIOPin) SetState(state rpio.State) { // ✅ Implemented SetState
+    if state == High {
+        p.pin.High()
+    } else {
+        p.pin.Low()
+    }
 }

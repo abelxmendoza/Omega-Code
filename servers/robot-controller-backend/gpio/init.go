@@ -1,44 +1,22 @@
-/*
-# File: /Omega-Code/servers/robot-controller-backend/gpio/init.go
-# Summary:
-Initializes GPIO interface for Raspberry Pi or a mock version for testing.
-*/
+// File: /Omega-Code/servers/robot-controller-backend/gpio/init.go
 
 package gpio
 
-import (
-	"fmt"
-	"log"
-	"runtime"
+import "runtime"
 
-	"github.com/stianeikeland/go-rpio/v4"
-)
+// Global variable for GPIO interface
+var GpioInterface GPIO
 
 // InitGPIO initializes the GPIO interface based on the hardware type.
 func InitGPIO() {
-	if isRunningOnRaspberryPi() {
-		log.Println("🟢 Running on Raspberry Pi - Using Real GPIO")
-		if err := rpio.Open(); err != nil {
-			log.Fatalf("❌ Failed to initialize GPIO: %v", err)
-		}
-		GpioInterface = RealGPIO{}
-	} else {
-		log.Println("⚠️ Running on non-Raspberry Pi system - Using Mock GPIO")
-		GpioInterface = MockGPIO{}
-	}
-}
-
-// CleanupGPIO ensures the GPIO pins are properly closed before shutting down.
-func CleanupGPIO() {
-	if isRunningOnRaspberryPi() {
-		log.Println("🔴 Cleaning up GPIO...")
-		if err := rpio.Close(); err != nil {
-			log.Printf("⚠️ Error closing GPIO: %v", err)
-		}
-	}
+    if isRunningOnRaspberryPi() {
+        GpioInterface = &RealGPIO{} // ✅ Fixed reference to RealGPIO
+    } else {
+        GpioInterface = &MockGPIO{} // ✅ Fixed reference to MockGPIO
+    }
 }
 
 // isRunningOnRaspberryPi detects if the code is running on a Raspberry Pi.
 func isRunningOnRaspberryPi() bool {
-	return runtime.GOARCH == "arm" || runtime.GOARCH == "arm64"
+    return runtime.GOARCH == "arm" || runtime.GOARCH == "arm64"
 }
