@@ -18,34 +18,34 @@ func (m MockGPIO) Close() error {
 }
 
 func (m MockGPIO) Pin(pin int) GPIOPin {
-    return &MockGPIOPin{pin: pin}
+    return &MockGPIOPin{pin: pin, state: false} // ✅ Default state set to false (LOW)
 }
 
 // MockGPIOPin simulates GPIO pin behavior.
 type MockGPIOPin struct {
     pin   int
-    state rpio.State
+    state bool // ✅ Changed from `rpio.State` to `bool`
 }
 
 func (p *MockGPIOPin) Input() {}
 
 func (p *MockGPIOPin) Output() {}
 
-func (p *MockGPIOPin) Read() rpio.State {
+func (p *MockGPIOPin) Read() bool { // ✅ Changed return type to `bool`
     return p.state
 }
 
 func (p *MockGPIOPin) High() {
     log.Printf("⚡ [MOCK] Pin %d set to HIGH\n", p.pin)
-    p.state = High
+    p.state = true // ✅ High is now `true`
 }
 
 func (p *MockGPIOPin) Low() {
     log.Printf("⚡ [MOCK] Pin %d set to LOW\n", p.pin)
-    p.state = Low
+    p.state = false // ✅ Low is now `false`
 }
 
-func (p *MockGPIOPin) SetState(state rpio.State) { // ✅ Implemented SetState
+func (p *MockGPIOPin) SetState(state bool) { // ✅ Added `SetState()` implementation
     p.state = state
     log.Printf("⚡ [MOCK] Pin %d set to state %v\n", p.pin, state)
 }
