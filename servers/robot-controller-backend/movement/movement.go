@@ -8,7 +8,6 @@ Also manages speed adjustments and buzzer control.
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"os"
