@@ -1,3 +1,18 @@
+#!/usr/bin/env python3
+# File Location: ~/Omega-Code/servers/robot-controller-backend/diagnostics.py
+
+"""
+Omega 1 Diagnostic Utility
+--------------------------
+This script performs a full diagnostics check of Omega 1's hardware and system environment.
+It tests sensors, actuators (e.g. buzzer, LEDs), and logs system info like CPU load and memory.
+
+🧪 Features:
+- Rich terminal output (with color, emoji, and layout)
+- Flags: --silent (no console), --log (save to diagnostics_report.txt)
+- GPIO hardware testing (ultrasonic, IR sensors, buzzer, LEDs)
+- System info summary (RAM, CPU, uptime, etc.)
+"""
 
 # diagnostics.py
 
@@ -13,6 +28,7 @@ from rich.panel import Panel
 from rich.text import Text
 from rich import box
 import RPi.GPIO as GPIO
+from io import StringIO
 
 console = Console()
 LOG_FILE = "diagnostics_report.txt"
@@ -24,7 +40,14 @@ def log_or_print(msg):
         console.print(msg)
     if LOG:
         with open(LOG_FILE, "a") as f:
-            f.write(f"{msg if isinstance(msg, str) else msg.plain}\n")
+            if isinstance(msg, str):
+                f.write(f"{msg}\n")
+            else:
+                temp_buf = StringIO()
+                temp_console = Console(file=temp_buf, force_terminal=False, color_system=None, width=80)
+                temp_console.print(msg)
+                plain_text = temp_buf.getvalue()
+                f.write(plain_text + "\n")
 
 def run_section(name, func):
     log_or_print(f"\n[bold cyan]🧪 Running {name}...[/bold cyan]")
