@@ -2,18 +2,18 @@
 # File: /Omega-Code/servers/robot-controller-backend/sensors/ultrasonic_sensor_runner.py
 
 """
-Ultrasonic Sensor Runner (Pi 5-Compatible – using pigpio)
+Ultrasonic Sensor Runner (Pi 5-Compatible – using lgpio)
 
-This script runs the ultrasonic sensor in a separate thread using the pigpio library.
+This script runs the ultrasonic sensor in a separate thread using the lgpio library.
 It continuously measures and prints distance readings for monitoring or debugging.
 
 Requirements:
-- pigpio daemon running: `sudo pigpiod`
+- lgpio installed (`pip install lgpio`)
+- Script must be run with sufficient permissions (or via `newgrp gpio` + correct /dev/gpiomem access).
 """
 
 import threading
 import time
-import pigpio
 from ultrasonic_sensor import Ultrasonic
 
 ultrasonic = Ultrasonic()
@@ -34,7 +34,8 @@ def run_ultrasonic():
     except Exception as e:
         print(f"⚠️ Runner interrupted: {e}")
     finally:
-        ultrasonic.pi.stop()  # Properly shut down pigpio interface
+        ultrasonic.chip.close()
+        print("🧹 GPIO cleaned up")
 
 if __name__ == "__main__":
     ultrasonic_thread = threading.Thread(target=run_ultrasonic)
@@ -46,4 +47,4 @@ if __name__ == "__main__":
     print("🛑 Stopping ultrasonic thread")
     stop_event.set()
     ultrasonic_thread.join()
-    ultrasonic.pi.stop()
+    ultrasonic.chip.close()

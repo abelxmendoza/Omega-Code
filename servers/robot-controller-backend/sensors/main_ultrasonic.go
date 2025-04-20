@@ -1,11 +1,10 @@
-// File: /Omega-Code/servers/robot-controller-backend/sensors/main_ultrasonic.go
-// Summary: Ultrasonic Sensor Control and Data Streaming using pigpiod via WebSockets
+// File: main_ultrasonic.go
+// Summary: WebSocket ultrasonic server using periph.io (daemonless, Pi 5-compatible)
 
 package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -13,12 +12,12 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/mitchellh/go-ps"
-	"github.com/zeromq/goczmq"
-	"github.com/joan2937/pigpio-client-go/pigpio"
+	"periph.io/x/conn/v3/gpio"
+	"periph.io/x/conn/v3/physic"
+	"periph.io/x/host/v3"
+	"periph.io/x/host/v3/rpi"
 )
 
-// UltrasonicData holds sensor output in multiple units
 type UltrasonicData struct {
 	Status       string  `json:"status"`
 	DistanceCM   int     `json:"distance_cm"`
@@ -32,99 +31,73 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-const (
-	TRIG = 27
-	ECHO = 22
-	TIMEOUT = 1000000 // 1 second in microseconds
-)
-
-func startPigpiodIfNeeded() {
-	found := false
-	processes, err := ps.Processes()
-	if err == nil {
-		for _, proc := range processes {
-			if proc.Executable() == "pigpiod" {
-				found = true
-				break
-			}
-		}
-	}
-	if !found {
-		log.Println("[INFO] pigpiod not running. Starting pigpiod...")
-		err := os.StartProcess("/usr/local/bin/pigpiod", []string{"pigpiod"}, &os.ProcAttr{
-			Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
-		})
-		if err != nil {
-			log.Fatalf("[ERROR] Failed to start pigpiod: %v", err)
-		}
-		time.Sleep(2 * time.Second) // give pigpiod time to initialize
-	}
-}
-
-func measureDistance(pi *pigpio.Pigpio) (int, error) {
-	_ = pi.Write(TRIG, pigpio.Low)
+func measureDistance(trigger gpio.PinOut, echo gpio.PinIn) (int, error) {
+	trigger.Out(gpio.Low)
 	time.Sleep(2 * time.Microsecond)
-	_ = pi.Write(TRIG, pigpio.High)
+	trigger.Out(gpio.High)
 	time.Sleep(10 * time.Microsecond)
-	_ = pi.Write(TRIG, pigpio.Low)
+	trigger.Out(gpio.Low)
 
-	startTick := time.Now()
-	for pi.Read(ECHO) == 0 {
-		if time.Since(startTick) > time.Second {
-			return -1, fmt.Errorf("echo start timeout")
-		}
-	}
+	// Wait for echo to go high
 	start := time.Now()
-
-	for pi.Read(ECHO) == 1 {
+	for echo.Read() == gpio.Low {
 		if time.Since(start) > time.Second {
-			return -1, fmt.Errorf("echo end timeout")
+			return -1, os.ErrDeadlineExceeded
 		}
 	}
-	end := time.Now()
-	pulseDuration := end.Sub(start).Seconds()
-	distanceCM := int(pulseDuration * 17150)
+	start = time.Now()
+
+	// Wait for echo to go low
+	for echo.Read() == gpio.High {
+		if time.Since(start) > time.Second {
+			return -1, os.ErrDeadlineExceeded
+		}
+	}
+	duration := time.Since(start)
+	distanceCM := int(float64(duration.Nanoseconds()) / 1e3 / 58.0)
 
 	if distanceCM <= 0 || distanceCM > 400 {
-		return -1, fmt.Errorf("invalid distance: %d cm", distanceCM)
+		return -1, os.ErrInvalid
 	}
 	return distanceCM, nil
 }
 
 func handleUltrasonicSensor(ws *websocket.Conn) {
-	startPigpiodIfNeeded()
-	pi, err := pigpio.NewPigpio("localhost", "8888")
-	if err != nil {
-		log.Printf("[ERROR] Pigpio connection: %v", err)
-		_ = ws.WriteJSON(UltrasonicData{Status: "error", Error: "Failed to connect to pigpiod"})
+	if _, err := host.Init(); err != nil {
+		log.Printf("Failed to initialize periph: %v", err)
+		ws.WriteJSON(UltrasonicData{Status: "error", Error: "Periph init failed"})
 		return
 	}
-	defer pi.Close()
 
-	_ = pi.SetMode(TRIG, pigpio.Output)
-	_ = pi.SetMode(ECHO, pigpio.Input)
+	trigger := rpi.P1_13 // GPIO27
+	echo := rpi.P1_15    // GPIO22
+
+	if err := trigger.Out(gpio.Low); err != nil {
+		ws.WriteJSON(UltrasonicData{Status: "error", Error: "Trigger init failed"})
+		return
+	}
+	if err := echo.In(gpio.PullNoChange, gpio.NoEdge); err != nil {
+		ws.WriteJSON(UltrasonicData{Status: "error", Error: "Echo init failed"})
+		return
+	}
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		distanceCM, err := measureDistance(pi)
+		distanceCM, err := measureDistance(trigger, echo)
 		if err != nil {
-			_ = ws.WriteJSON(UltrasonicData{Status: "error", Error: err.Error()})
+			ws.WriteJSON(UltrasonicData{Status: "error", Error: err.Error()})
 			continue
 		}
-		distanceM := float64(distanceCM) / 100
-		distanceInch := float64(distanceCM) / 2.54
-		distanceFeet := distanceInch / 12
-
 		payload := UltrasonicData{
 			Status:       "success",
 			DistanceCM:   distanceCM,
-			DistanceM:    math.Round(distanceM*100) / 100,
-			DistanceInch: math.Round(distanceInch*100) / 100,
-			DistanceFeet: math.Round(distanceFeet*100) / 100,
+			DistanceM:    math.Round(float64(distanceCM)/100*100) / 100,
+			DistanceInch: math.Round(float64(distanceCM)/2.54*100) / 100,
+			DistanceFeet: math.Round(float64(distanceCM)/30.48*100) / 100,
 		}
-		_ = ws.WriteJSON(payload)
+		ws.WriteJSON(payload)
 	}
 }
 
@@ -135,7 +108,7 @@ func main() {
 	http.HandleFunc("/ultrasonic", func(w http.ResponseWriter, r *http.Request) {
 		ws, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			log.Printf("[ERROR] WebSocket upgrade: %v", err)
+			log.Printf("WebSocket upgrade error: %v", err)
 			return
 		}
 		defer ws.Close()

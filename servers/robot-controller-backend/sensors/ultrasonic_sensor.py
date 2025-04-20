@@ -2,9 +2,9 @@
 # File: /Omega-Code/servers/robot-controller-backend/sensors/ultrasonic_sensor.py
 
 """
-Ultrasonic Sensor Control (Pi 5-Compatible – using pigpio)
+Ultrasonic Sensor Control (Pi 5-Compatible – using lgpio)
 
-This script controls an ultrasonic sensor using the pigpio library.
+This script controls an ultrasonic sensor using the lgpio library.
 It measures distances and helps with obstacle detection.
 
 Class:
@@ -14,54 +14,59 @@ Hardware:
 - Raspberry Pi 5
 - HC-SR04 Ultrasonic Sensor
 - GPIO Trigger (e.g. 27), Echo (e.g. 22)
-- pigpio daemon must be running: `sudo pigpiod`
 """
 
 import time
-import pigpio
+import lgpio
 
 TRIG = 27
 ECHO = 22
 
 class Ultrasonic:
     def __init__(self):
-        self.pi = pigpio.pi()
-        if not self.pi.connected:
-            raise IOError("❌ pigpio daemon not running. Start it with: sudo pigpiod")
-        self.pi.set_mode(TRIG, pigpio.OUTPUT)
-        self.pi.set_mode(ECHO, pigpio.INPUT)
-        self.pi.write(TRIG, 0)
+        self.h = lgpio.gpiochip_open(0)
+        lgpio.gpio_claim_output(self.h, TRIG, 0)
+        lgpio.gpio_claim_input(self.h, ECHO)
         time.sleep(0.5)
 
     def get_distance(self):
-        self.pi.gpio_trigger(TRIG, 10)  # Send 10μs pulse
-        start_time = time.time()
-        timeout = start_time + 1
+        # Send 10μs pulse
+        lgpio.gpio_write(self.h, TRIG, 1)
+        time.sleep(10e-6)
+        lgpio.gpio_write(self.h, TRIG, 0)
 
-        # Wait for ECHO to go HIGH
-        while self.pi.read(ECHO) == 0:
-            if time.time() > timeout:
+        # Wait for echo HIGH
+        tick_start = lgpio.tick()
+        timeout = tick_start + 1000000  # 1 second timeout in μs
+
+        while lgpio.gpio_read(self.h, ECHO) == 0:
+            if lgpio.tick() - tick_start > 1000000:
                 print("⚠️ Timeout waiting for ECHO to go HIGH")
                 return -1
-        start_tick = self.pi.get_current_tick()
+        start = lgpio.tick()
 
-        # Wait for ECHO to go LOW
-        while self.pi.read(ECHO) == 1:
-            if time.time() > timeout:
+        while lgpio.gpio_read(self.h, ECHO) == 1:
+            if lgpio.tick() - start > 1000000:
                 print("⚠️ Timeout waiting for ECHO to go LOW")
                 return -1
-        end_tick = self.pi.get_current_tick()
+        end = lgpio.tick()
 
-        duration = pigpio.tickDiff(start_tick, end_tick)  # microseconds
-        distance_cm = duration / 58.0  # Convert to cm
+        pulse_len = lgpio.tick_diff(start, end)
+        distance_cm = pulse_len / 58.0
         return round(distance_cm, 2)
+
+    def cleanup(self):
+        lgpio.gpiochip_close(self.h)
 
 if __name__ == "__main__":
     sensor = Ultrasonic()
-    for _ in range(3):
-        dist = sensor.get_distance()
-        if dist != -1:
-            print(f"📏 Distance: {dist} cm")
-        else:
-            print("❌ Measurement failed")
-        time.sleep(1)
+    try:
+        for _ in range(3):
+            dist = sensor.get_distance()
+            if dist != -1:
+                print(f"📏 Distance: {dist} cm")
+            else:
+                print("❌ Measurement failed")
+            time.sleep(1)
+    finally:
+        sensor.cleanup()
