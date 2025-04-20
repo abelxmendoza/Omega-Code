@@ -18,6 +18,7 @@ import (
 	"github.com/abelxmendoza/Omega-Code/servers/robot-controller-backend/gpio"
 )
 
+
 // MovementCommand represents a movement command received via WebSocket.
 type MovementCommand struct {
 	Command string `json:"command"` // "move-up", "move-down", "emergency-stop", "increase-speed", "decrease-speed", "buzz"
