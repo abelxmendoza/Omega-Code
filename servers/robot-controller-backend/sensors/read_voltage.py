@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # File: sensors/read_voltage.py
 # Location: ~/Omega-Code/servers/robot-controller-backend/sensors/
 # Summary: 
@@ -41,7 +42,6 @@ MODE = 0x0100
 DR = 0x0080
 COMP = 0x0003
 
-
 def find_valid_address():
     for addr in POSSIBLE_ADDRESSES:
         try:
@@ -51,7 +51,6 @@ def find_valid_address():
         except:
             continue
     raise IOError("No valid ADS1115 I2C device found.")
-
 
 def read_channel(ch, addr):
     config = 0x8000 | MUX[ch] | PGA | MODE | DR | COMP
@@ -64,7 +63,6 @@ def read_channel(ch, addr):
             raw -= 65536
         voltage = raw * 6.144 / 32768.0
         return round(voltage, 3)
-
 
 if __name__ == "__main__":
     try:
@@ -85,4 +83,3 @@ if __name__ == "__main__":
         console.print(table)
     except Exception as e:
         console.print(Panel(f"❌ [bold red]Voltage scan failed:[/] {e}", border_style="red"))
-
