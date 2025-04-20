@@ -9,7 +9,7 @@ It continuously measures and prints distance readings for monitoring or debuggin
 
 Requirements:
 - lgpio installed (`pip install lgpio`)
-- Script must be run with sufficient permissions (or via `newgrp gpio` + correct /dev/gpiomem access).
+- Script must be run with sufficient permissions (e.g., `newgrp gpio` or via `sudo`)
 """
 
 import threading
@@ -34,17 +34,17 @@ def run_ultrasonic():
     except Exception as e:
         print(f"⚠️ Runner interrupted: {e}")
     finally:
-        ultrasonic.chip.close()
-        print("🧹 GPIO cleaned up")
+        ultrasonic.close()
+        print("🧹 GPIO closed")
 
 if __name__ == "__main__":
     ultrasonic_thread = threading.Thread(target=run_ultrasonic)
     ultrasonic_thread.start()
     try:
-        time.sleep(10)  # Run for 10 seconds
+        time.sleep(10)  # Run for 10 seconds or until interrupted
     except KeyboardInterrupt:
         print("🔴 Keyboard interrupt received.")
     print("🛑 Stopping ultrasonic thread")
     stop_event.set()
     ultrasonic_thread.join()
-    ultrasonic.chip.close()
+    ultrasonic.close()

@@ -30,32 +30,31 @@ class Ultrasonic:
         time.sleep(0.5)
 
     def get_distance(self):
-        # Send 10μs pulse
+        lgpio.gpio_write(self.h, TRIG, 0)
+        time.sleep(0.000002)  # 2 µs
         lgpio.gpio_write(self.h, TRIG, 1)
-        time.sleep(10e-6)
+        time.sleep(0.00001)   # 10 µs
         lgpio.gpio_write(self.h, TRIG, 0)
 
-        # Wait for echo HIGH
-        tick_start = lgpio.tick()
-        timeout = tick_start + 1000000  # 1 second timeout in μs
-
+        timeout_ns = 1_000_000_000  # 1 second in nanoseconds
+        wait_start = time.monotonic_ns()
         while lgpio.gpio_read(self.h, ECHO) == 0:
-            if lgpio.tick() - tick_start > 1000000:
+            if time.monotonic_ns() - wait_start > timeout_ns:
                 print("⚠️ Timeout waiting for ECHO to go HIGH")
                 return -1
-        start = lgpio.tick()
+        start = time.monotonic_ns()
 
         while lgpio.gpio_read(self.h, ECHO) == 1:
-            if lgpio.tick() - start > 1000000:
+            if time.monotonic_ns() - start > timeout_ns:
                 print("⚠️ Timeout waiting for ECHO to go LOW")
                 return -1
-        end = lgpio.tick()
+        end = time.monotonic_ns()
 
-        pulse_len = lgpio.tick_diff(start, end)
-        distance_cm = pulse_len / 58.0
+        pulse_len_us = (end - start) / 1000.0
+        distance_cm = pulse_len_us / 58.0
         return round(distance_cm, 2)
 
-    def cleanup(self):
+    def close(self):
         lgpio.gpiochip_close(self.h)
 
 if __name__ == "__main__":
@@ -69,4 +68,4 @@ if __name__ == "__main__":
                 print("❌ Measurement failed")
             time.sleep(1)
     finally:
-        sensor.cleanup()
+        sensor.close()
