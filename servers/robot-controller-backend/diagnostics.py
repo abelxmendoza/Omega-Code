@@ -10,31 +10,37 @@ It tests sensors, actuators (e.g. buzzer, LEDs), and logs system info like CPU l
 🧪 Features:
 - Rich terminal output (with color, emoji, and layout)
 - Flags: --silent (no console), --log (save to diagnostics_report.txt)
-- GPIO hardware testing (ultrasonic, IR sensors, buzzer, LEDs)
+- GPIO hardware testing (ultrasonic, IR sensors, buzzer, LEDs) via pigpio
 - System info summary (RAM, CPU, uptime, etc.)
-"""
 
-# diagnostics.py
+🔧 Requires:
+- pigpio daemon running (launch with `sudo pigpiod`)
+"""
 
 import os
 import sys
 import time
 import importlib.util
-import platform
 from datetime import datetime
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 from rich import box
-import RPi.GPIO as GPIO
+import pigpio
 from io import StringIO
 
+# === Config ===
 console = Console()
 LOG_FILE = "diagnostics_report.txt"
 SILENT = "--silent" in sys.argv
 LOG = "--log" in sys.argv
+pi = pigpio.pi()
 
+if not pi.connected:
+    raise RuntimeError("❌ Failed to connect to pigpiod. Run `sudo pigpiod` first.")
+
+# === Output Handler ===
 def log_or_print(msg):
     if not SILENT:
         console.print(msg)
@@ -57,18 +63,14 @@ def run_section(name, func):
     except Exception as e:
         log_or_print(f"[red]❌ {name} failed: {e}[/red]")
 
-# === GPIO Setup ===
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
-
-# Example pin mappings (adjust to match your bot's hardware)
+# === Pin Mapping (Adjust for your bot) ===
 ULTRASONIC_TRIG = 23
 ULTRASONIC_ECHO = 24
 IR_LINE_PINS = [17, 27, 22]
 BUZZER_PIN = 18
 LED_PINS = [5, 6, 13]
 
-# === SECTION: Voltage Test ===
+# === Voltage Sensor Test (calls external script) ===
 def test_voltage():
     path = os.path.join("sensors", "read_voltage.py")
     if not os.path.exists(path):
@@ -78,61 +80,65 @@ def test_voltage():
     voltage = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(voltage)
 
-# === SECTION: Hardware Tests ===
+# === Ultrasonic Distance Test ===
 def test_ultrasonic():
-    GPIO.setup(ULTRASONIC_TRIG, GPIO.OUT)
-    GPIO.setup(ULTRASONIC_ECHO, GPIO.IN)
+    pi.set_mode(ULTRASONIC_TRIG, pigpio.OUTPUT)
+    pi.set_mode(ULTRASONIC_ECHO, pigpio.INPUT)
 
-    GPIO.output(ULTRASONIC_TRIG, False)
+    pi.write(ULTRASONIC_TRIG, 0)
     time.sleep(0.5)
-
-    GPIO.output(ULTRASONIC_TRIG, True)
+    pi.write(ULTRASONIC_TRIG, 1)
     time.sleep(0.00001)
-    GPIO.output(ULTRASONIC_TRIG, False)
+    pi.write(ULTRASONIC_TRIG, 0)
 
-    pulse_start, pulse_end = time.time(), time.time()
-    timeout = time.time() + 1
+    start = time.time()
+    timeout = start + 1
+    pulse_start = pulse_end = time.time()
 
-    while GPIO.input(ULTRASONIC_ECHO) == 0 and time.time() < timeout:
+    while pi.read(ULTRASONIC_ECHO) == 0 and time.time() < timeout:
         pulse_start = time.time()
-    while GPIO.input(ULTRASONIC_ECHO) == 1 and time.time() < timeout:
+    while pi.read(ULTRASONIC_ECHO) == 1 and time.time() < timeout:
         pulse_end = time.time()
 
     pulse_duration = pulse_end - pulse_start
-    distance = pulse_duration * 17150
-    distance = round(distance, 2)
-
+    distance = round(pulse_duration * 17150, 2)
     log_or_print(f"[Ultrasonic] 📡 Distance: {distance} cm")
 
+# === IR Line Tracker Test ===
 def test_ir_line():
+    states = []
     for pin in IR_LINE_PINS:
-        GPIO.setup(pin, GPIO.IN)
-    states = [f"{pin}:{'🔘' if GPIO.input(pin) else '⚫'}" for pin in IR_LINE_PINS]
+        pi.set_mode(pin, pigpio.INPUT)
+        state = "🔘" if pi.read(pin) else "⚫"
+        states.append(f"{pin}:{state}")
     log_or_print(f"[IR Tracker] 🔦 Sensor states: {' | '.join(states)}")
 
+# === Camera Detection ===
 def test_camera():
     if os.path.exists('/dev/video0'):
         log_or_print("[Camera] 🎥 Detected")
     else:
         log_or_print("[Camera] ❌ Not connected")
 
+# === Buzzer Output Test ===
 def test_buzzer():
-    GPIO.setup(BUZZER_PIN, GPIO.OUT)
-    GPIO.output(BUZZER_PIN, True)
+    pi.set_mode(BUZZER_PIN, pigpio.OUTPUT)
+    pi.write(BUZZER_PIN, 1)
     time.sleep(0.3)
-    GPIO.output(BUZZER_PIN, False)
+    pi.write(BUZZER_PIN, 0)
     log_or_print("[Buzzer] 🔊 Buzzed")
 
+# === LED Blinker Test ===
 def test_leds():
     for pin in LED_PINS:
-        GPIO.setup(pin, GPIO.OUT)
-        GPIO.output(pin, True)
+        pi.set_mode(pin, pigpio.OUTPUT)
+        pi.write(pin, 1)
     time.sleep(0.5)
     for pin in LED_PINS:
-        GPIO.output(pin, False)
+        pi.write(pin, 0)
     log_or_print("[LEDs] 💡 Flashed")
 
-# === SECTION: System Info ===
+# === System Info Summary ===
 def system_info():
     from subprocess import getoutput
 
@@ -149,7 +155,7 @@ def system_info():
 
     log_or_print(table)
 
-# === MAIN DIAGNOSTIC LOOP ===
+# === Main Diagnostics Loop ===
 if __name__ == "__main__":
     if LOG:
         with open(LOG_FILE, "w") as f:
@@ -166,7 +172,7 @@ if __name__ == "__main__":
         run_section("LED Check", test_leds)
         run_section("System Info Summary", system_info)
     finally:
-        GPIO.cleanup()
+        pi.stop()
         log_or_print(Panel.fit(Text("⚙️ All systems tested. Diagnostics complete.\n", justify="center"), border_style="green"))
         if LOG:
             log_or_print(f"[yellow]📁 Report saved to:[/] [bold white]{os.path.abspath(LOG_FILE)}[/bold white]")
