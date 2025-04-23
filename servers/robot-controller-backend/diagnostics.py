@@ -98,29 +98,31 @@ def test_ultrasonic():
     """Trigger the ultrasonic rangefinder and read distance."""
     lgpio.gpio_claim_output(h, TRIG, 0)
     lgpio.gpio_claim_input(h, ECHO)
+    time.sleep(0.05)  # Allow GPIO state to settle
 
+    # Send 10μs pulse
     lgpio.gpio_write(h, TRIG, 0)
-    time.sleep(0.000002)
+    time.sleep(2e-6)
     lgpio.gpio_write(h, TRIG, 1)
-    time.sleep(0.00001)
+    time.sleep(10e-6)
     lgpio.gpio_write(h, TRIG, 0)
 
-    start = lgpio.tick()
-    timeout = start + 1_000_000  # 1 second timeout in microseconds
-
+    timeout_ns = 1_000_000_000  # 1 second
+    wait_start = time.monotonic_ns()
     while lgpio.gpio_read(h, ECHO) == 0:
-        if lgpio.tick() - start > 1_000_000:
+        if time.monotonic_ns() - wait_start > timeout_ns:
             raise TimeoutError("Timeout waiting for ECHO to go HIGH")
-    t_start = lgpio.tick()
+    start = time.monotonic_ns()
 
     while lgpio.gpio_read(h, ECHO) == 1:
-        if lgpio.tick() - t_start > 1_000_000:
+        if time.monotonic_ns() - start > timeout_ns:
             raise TimeoutError("Timeout waiting for ECHO to go LOW")
-    t_end = lgpio.tick()
+    end = time.monotonic_ns()
 
-    pulse_us = lgpio.tick_diff(t_start, t_end)
+    pulse_us = (end - start) / 1000.0
     distance_cm = round(pulse_us / 58.0, 2)
     log_or_print(f"[Ultrasonic] 📡 Distance: {distance_cm} cm")
+
 
 def test_ir_line():
     """Read IR sensors and show their logic state."""
