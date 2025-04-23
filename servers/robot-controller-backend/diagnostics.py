@@ -2,20 +2,34 @@
 # File Location: ~/Omega-Code/servers/robot-controller-backend/diagnostics.py
 
 """
-Omega 1 Diagnostic Utility (Pi 5 Compatible – using lgpio)
+Omega 1 Diagnostic Utility (Pi 5-Compatible – using lgpio)
 -----------------------------------------------------------
-This script performs a full diagnostics check of Omega 1's hardware and system environment.
-It tests sensors, actuators (e.g. buzzer, LEDs), and logs system info like CPU load and memory.
+This script performs a full diagnostics check of Omega 1's onboard systems including GPIO-controlled
+sensors, actuators, and general device health using `lgpio`, a Pi 5-compatible GPIO library.
+
+✅ Tested on:
+- Raspberry Pi 5
+- Ubuntu 24.04 LTS (64-bit)
+- Hardware: HC-SR04, IR Sensors, Buzzer, LEDs, Camera, ADC (via I2C)
 
 🧪 Features:
-- Rich terminal output (with emoji and layout)
-- Flags: --silent (no console), --log (save to diagnostics_report.txt)
-- GPIO hardware testing (ultrasonic, IR sensors, buzzer, LEDs) via lgpio
-- System info summary (RAM, CPU, uptime, etc.)
+- Rich terminal output with emojis and formatting (via Rich)
+- Supports flags: 
+  • --silent : suppress console output 
+  • --log    : saves to `diagnostics_report.txt`
+- Tests:
+  • Voltage sensor (via separate script)
+  • Ultrasonic rangefinder (GPIO)
+  • IR line-tracker array (GPIO)
+  • Camera device presence (/dev/video0)
+  • Buzzer signal test
+  • RGB LEDs or status LEDs
+  • System summary (RAM, CPU, uptime, etc.)
 
-🔧 Requires:
-- `lgpio` installed via pip
-- Proper `/dev/gpiochip0` permissions (`root:gpio` + `chmod 660`)
+🔧 Requirements:
+- Python 3.9+ and `lgpio` (`pip install lgpio`)
+- Proper `/dev/gpiochip0` permissions (`sudo chown root:gpio` + `chmod 660`)
+- User must be in the `gpio` group or run via `sudo` or `newgrp gpio`
 """
 
 import os
@@ -31,20 +45,22 @@ from rich import box
 from io import StringIO
 import lgpio
 
+# ========== Configuration ==========
 console = Console()
 LOG_FILE = "diagnostics_report.txt"
 SILENT = "--silent" in sys.argv
 LOG = "--log" in sys.argv
 h = lgpio.gpiochip_open(0)
 
-# Pin mapping
+# GPIO Pin Mapping (BCM Mode)
 TRIG = 27
 ECHO = 22
 IR_LINE_PINS = [17, 27, 22]
 BUZZER = 18
 LEDS = [5, 6, 13]
 
-# Output function
+# ========== Logging ==========
+
 def log_or_print(msg):
     if not SILENT:
         console.print(msg)
@@ -66,8 +82,10 @@ def run_section(name, func):
     except Exception as e:
         log_or_print(f"[red]❌ {name} failed: {e}[/red]")
 
-# Sensor functions
+# ========== Test Sections ==========
+
 def test_voltage():
+    """Run the external voltage sensor script (ADS1115/PCF8591)."""
     path = os.path.join("sensors", "read_voltage.py")
     if not os.path.exists(path):
         log_or_print("[Voltage] ⚠️ Script not found.")
@@ -77,15 +95,18 @@ def test_voltage():
     spec.loader.exec_module(voltage)
 
 def test_ultrasonic():
+    """Trigger the ultrasonic rangefinder and read distance."""
     lgpio.gpio_claim_output(h, TRIG, 0)
     lgpio.gpio_claim_input(h, ECHO)
 
+    lgpio.gpio_write(h, TRIG, 0)
+    time.sleep(0.000002)
     lgpio.gpio_write(h, TRIG, 1)
-    time.sleep(10e-6)
+    time.sleep(0.00001)
     lgpio.gpio_write(h, TRIG, 0)
 
     start = lgpio.tick()
-    timeout = start + 1_000_000
+    timeout = start + 1_000_000  # 1 second timeout in microseconds
 
     while lgpio.gpio_read(h, ECHO) == 0:
         if lgpio.tick() - start > 1_000_000:
@@ -97,11 +118,12 @@ def test_ultrasonic():
             raise TimeoutError("Timeout waiting for ECHO to go LOW")
     t_end = lgpio.tick()
 
-    pulse = lgpio.tick_diff(t_start, t_end)
-    dist = round(pulse / 58.0, 2)
-    log_or_print(f"[Ultrasonic] 📡 Distance: {dist} cm")
+    pulse_us = lgpio.tick_diff(t_start, t_end)
+    distance_cm = round(pulse_us / 58.0, 2)
+    log_or_print(f"[Ultrasonic] 📡 Distance: {distance_cm} cm")
 
 def test_ir_line():
+    """Read IR sensors and show their logic state."""
     result = []
     for pin in IR_LINE_PINS:
         lgpio.gpio_claim_input(h, pin)
@@ -110,12 +132,14 @@ def test_ir_line():
     log_or_print(f"[IR Tracker] 🔦 Sensor states: {' | '.join(result)}")
 
 def test_camera():
+    """Check if /dev/video0 exists."""
     if os.path.exists("/dev/video0"):
         log_or_print("[Camera] 🎥 Detected")
     else:
         log_or_print("[Camera] ❌ Not connected")
 
 def test_buzzer():
+    """Buzz the onboard buzzer for 0.3 seconds."""
     lgpio.gpio_claim_output(h, BUZZER, 0)
     lgpio.gpio_write(h, BUZZER, 1)
     time.sleep(0.3)
@@ -123,6 +147,7 @@ def test_buzzer():
     log_or_print("[Buzzer] 🔊 Buzzed")
 
 def test_leds():
+    """Blink all LED pins on for half a second."""
     for pin in LEDS:
         lgpio.gpio_claim_output(h, pin, 1)
     time.sleep(0.5)
@@ -131,6 +156,7 @@ def test_leds():
     log_or_print("[LEDs] 💡 Flashed")
 
 def system_info():
+    """Gather system metrics and print as a Rich table."""
     from subprocess import getoutput
     table = Table(title="🧠 Omega 1 System Info", box=box.ROUNDED, style="bold white")
     table.add_column("Metric", style="cyan", no_wrap=True)
@@ -144,7 +170,8 @@ def system_info():
     table.add_row("Disk", getoutput("df -h / | tail -1"))
     log_or_print(table)
 
-# Main logic
+# ========== Main Entry ==========
+
 if __name__ == "__main__":
     if LOG:
         with open(LOG_FILE, "w") as f:

@@ -1,5 +1,24 @@
 // File: main_ultrasonic.go
-// Summary: WebSocket ultrasonic server using periph.io (daemonless, Pi 5-compatible)
+// Summary: 🧠 Omega 1 – Ultrasonic WebSocket Server (Pi 5 Compatible)
+//
+// This Go script uses the `periph.io` library to interface with an HC-SR04 ultrasonic sensor
+// on a Raspberry Pi 5 without needing pigpio or background daemons. It runs a WebSocket server
+// on port 8080 and streams live distance data (in cm, meters, inches, feet) to any connected clients.
+//
+// ✅ Highlights:
+// - Uses `periph.io/x/host/v3` for direct GPIO control
+// - Fully compatible with Raspberry Pi 5 (Ubuntu 24.04 or Raspberry Pi OS)
+// - Daemonless operation (no `pigpiod` required)
+// - Sends JSON payloads over WebSocket every 1 second
+// - Graceful error handling (timeouts, invalid readings)
+//
+// 🔌 Wiring:
+// - Trigger → GPIO27 (Physical Pin 13)
+// - Echo    → GPIO22 (Physical Pin 15)
+//
+// Run it with:
+// $ go run main_ultrasonic.go
+//
 
 package main
 
@@ -13,7 +32,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"periph.io/x/conn/v3/gpio"
-	"periph.io/x/conn/v3/physic"
 	"periph.io/x/host/v3"
 	"periph.io/x/host/v3/rpi"
 )
@@ -38,24 +56,22 @@ func measureDistance(trigger gpio.PinOut, echo gpio.PinIn) (int, error) {
 	time.Sleep(10 * time.Microsecond)
 	trigger.Out(gpio.Low)
 
-	// Wait for echo to go high
-	start := time.Now()
+	startWait := time.Now()
 	for echo.Read() == gpio.Low {
-		if time.Since(start) > time.Second {
+		if time.Since(startWait) > time.Second {
 			return -1, os.ErrDeadlineExceeded
 		}
 	}
-	start = time.Now()
+	start := time.Now()
 
-	// Wait for echo to go low
 	for echo.Read() == gpio.High {
 		if time.Since(start) > time.Second {
 			return -1, os.ErrDeadlineExceeded
 		}
 	}
 	duration := time.Since(start)
-	distanceCM := int(float64(duration.Nanoseconds()) / 1e3 / 58.0)
 
+	distanceCM := int(float64(duration.Microseconds()) / 58.0)
 	if distanceCM <= 0 || distanceCM > 400 {
 		return -1, os.ErrInvalid
 	}
@@ -90,14 +106,15 @@ func handleUltrasonicSensor(ws *websocket.Conn) {
 			ws.WriteJSON(UltrasonicData{Status: "error", Error: err.Error()})
 			continue
 		}
-		payload := UltrasonicData{
+
+		data := UltrasonicData{
 			Status:       "success",
 			DistanceCM:   distanceCM,
 			DistanceM:    math.Round(float64(distanceCM)/100*100) / 100,
 			DistanceInch: math.Round(float64(distanceCM)/2.54*100) / 100,
 			DistanceFeet: math.Round(float64(distanceCM)/30.48*100) / 100,
 		}
-		ws.WriteJSON(payload)
+		_ = ws.WriteJSON(data)
 	}
 }
 

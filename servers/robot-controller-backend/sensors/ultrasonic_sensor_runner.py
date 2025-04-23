@@ -16,13 +16,13 @@ import threading
 import time
 from ultrasonic_sensor import Ultrasonic
 
-ultrasonic = Ultrasonic()
 stop_event = threading.Event()
 
 def run_ultrasonic():
     """
     Continuously measures and prints the distance using the ultrasonic sensor.
     """
+    ultrasonic = Ultrasonic()
     try:
         while not stop_event.is_set():
             distance = ultrasonic.get_distance()
@@ -47,4 +47,3 @@ if __name__ == "__main__":
     print("🛑 Stopping ultrasonic thread")
     stop_event.set()
     ultrasonic_thread.join()
-    ultrasonic.close()
