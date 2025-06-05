@@ -58,7 +58,7 @@ The backend server, written in Go, handles incoming HTTP and WebSocket requests 
 
 ### Command Definitions
 
-- **Command Definitions**: `command_defintions.py` - Defines commands for the robot.
+- **Command Definitions**: `command_definitions.py` - Defines commands for the robot.
 
 ### Mock PCA9685
 

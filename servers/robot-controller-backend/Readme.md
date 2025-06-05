@@ -60,7 +60,7 @@ The project is organized into several directories and files:
 
 ### Command Definitions
 
-- **Command Definitions**: `commands/command_definitions.py` - Defines commands for the robot.
+- **Command Definitions**: `command_definitions.py` - Defines commands for the robot.
 - **Command Processor**: `commands/command_processor.py` - Processes incoming commands.
 
 ### Video Server
