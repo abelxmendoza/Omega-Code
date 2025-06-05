@@ -253,6 +253,28 @@ The repository includes a comprehensive set of tests organized into unit tests, 
 
 Open a web browser and navigate to `https://localhost:3000` to access the robot controller interface. Use the provided controls to send commands to the robot.
 
+## Raspberry Pi 5 Compatibility
+
+Omega-Code runs on the Raspberry Pi&nbsp;5. The new board replaces the legacy
+`RPi.GPIO` interface used on the Pi&nbsp;4&nbsp;B with the `libgpiod` driver. Older
+scripts that import `RPi.GPIO` must be updated to use the `lgpio` package.
+
+Install `lgpio` using pip:
+
+```bash
+pip install lgpio
+```
+
+Grant the GPIO group access to the device before running the software:
+
+```bash
+sudo chown root:gpio /dev/gpiochip0
+sudo chmod g+rw /dev/gpiochip0
+```
+
+With these permissions in place, the rest of the project behaves just as it does
+on a Pi&nbsp;4&nbsp;B but benefits from the Pi&nbsp;5's improved performance.
+
 ## Acknowledgements
 
 Special thanks to Freenove for providing the **Freenove 4WD Smart Car Kit for Raspberry Pi** and their comprehensive support.
