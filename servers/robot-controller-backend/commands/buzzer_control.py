@@ -1,23 +1,29 @@
 # File: /Omega-Code/servers/robot-controller-backend/commands/buzzer_control.py
 
-import RPi.GPIO as GPIO
+import lgpio
 import sys
 import time
 
 # Configure GPIO settings
-GPIO.setwarnings(False)
 Buzzer_Pin = 17  # Define the GPIO pin connected to the buzzer
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(Buzzer_Pin, GPIO.OUT)
 
 class Buzzer:
+    def __init__(self):
+        """Initialize the buzzer GPIO using lgpio."""
+        self.h = lgpio.gpiochip_open(0)
+        lgpio.gpio_claim_output(self.h, Buzzer_Pin, 0)
+
     def activate(self):
         """Activate the buzzer."""
-        GPIO.output(Buzzer_Pin, True)
+        lgpio.gpio_write(self.h, Buzzer_Pin, 1)
 
     def deactivate(self):
         """Deactivate the buzzer."""
-        GPIO.output(Buzzer_Pin, False)
+        lgpio.gpio_write(self.h, Buzzer_Pin, 0)
+
+    def close(self):
+        """Release the GPIO handle."""
+        lgpio.gpiochip_close(self.h)
 
 
 if __name__ == "__main__":
@@ -38,4 +44,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error: {e}")
     finally:
-        GPIO.cleanup()
+        buzzer.close()

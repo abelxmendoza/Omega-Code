@@ -12,7 +12,7 @@ Functions:
 
 Dependencies:
 - ROS: rospy, std_msgs
-- RPi.GPIO: GPIO
+- lgpio
 
 Usage:
 - Run this script to start the ultrasonic publisher node.
@@ -21,32 +21,37 @@ Usage:
 #!/usr/bin/env python
 import rospy
 from std_msgs.msg import Float32
-import RPi.GPIO as GPIO
+import lgpio
 import time
 
-GPIO.setmode(GPIO.BCM)
 TRIG = 23
 ECHO = 24
-GPIO.setup(TRIG, GPIO.OUT)
-GPIO.setup(ECHO, GPIO.IN)
+h = lgpio.gpiochip_open(0)
+lgpio.gpio_claim_output(h, TRIG, 0)
+lgpio.gpio_claim_input(h, ECHO)
 
 def distance():
-    GPIO.output(TRIG, False)
-    time.sleep(2)
-    GPIO.output(TRIG, True)
+    lgpio.gpio_write(h, TRIG, 0)
+    time.sleep(0.000002)
+    lgpio.gpio_write(h, TRIG, 1)
     time.sleep(0.00001)
-    GPIO.output(TRIG, False)
+    lgpio.gpio_write(h, TRIG, 0)
 
-    while GPIO.input(ECHO) == 0:
-        pulse_start = time.time()
+    timeout_ns = 1_000_000_000
+    wait_start = time.monotonic_ns()
+    while lgpio.gpio_read(h, ECHO) == 0:
+        if time.monotonic_ns() - wait_start > timeout_ns:
+            return -1
 
-    while GPIO.input(ECHO) == 1:
-        pulse_end = time.time()
+    start = time.monotonic_ns()
+    while lgpio.gpio_read(h, ECHO) == 1:
+        if time.monotonic_ns() - start > timeout_ns:
+            return -1
+    end = time.monotonic_ns()
 
-    pulse_duration = pulse_end - pulse_start
-    distance = pulse_duration * 17150
-    distance = round(distance, 2)
-    return distance
+    pulse_us = (end - start) / 1000.0
+    distance_cm = round(pulse_us / 58.0, 2)
+    return distance_cm
 
 def publish_ultrasonic():
     pub = rospy.Publisher('ultrasonic/distance', Float32, queue_size=10)
@@ -63,4 +68,6 @@ if __name__ == '__main__':
     try:
         publish_ultrasonic()
     except rospy.ROSInterruptException:
-        GPIO.cleanup()
+        pass
+    finally:
+        lgpio.gpiochip_close(h)

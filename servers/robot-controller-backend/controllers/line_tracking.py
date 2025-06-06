@@ -12,7 +12,7 @@ Functions:
 
 import time
 from Motor import *
-import RPi.GPIO as GPIO
+import lgpio
 
 class Line_Tracking:
     def __init__(self):
@@ -23,10 +23,14 @@ class Line_Tracking:
         self.IR01 = 14
         self.IR02 = 15
         self.IR03 = 23
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self.IR01, GPIO.IN)
-        GPIO.setup(self.IR02, GPIO.IN)
-        GPIO.setup(self.IR03, GPIO.IN)
+        self.h = lgpio.gpiochip_open(0)
+        lgpio.gpio_claim_input(self.h, self.IR01)
+        lgpio.gpio_claim_input(self.h, self.IR02)
+        lgpio.gpio_claim_input(self.h, self.IR03)
+
+    def close(self):
+        """Release the GPIO handle."""
+        lgpio.gpiochip_close(self.h)
 
     def run(self):
         """
@@ -34,11 +38,11 @@ class Line_Tracking:
         """
         while True:
             self.LMR = 0x00
-            if GPIO.input(self.IR01) == True:
+            if lgpio.gpio_read(self.h, self.IR01):
                 self.LMR = (self.LMR | 4)
-            if GPIO.input(self.IR02) == True:
+            if lgpio.gpio_read(self.h, self.IR02):
                 self.LMR = (self.LMR | 2)
-            if GPIO.input(self.IR03) == True:
+            if lgpio.gpio_read(self.h, self.IR03):
                 self.LMR = (self.LMR | 1)
             if self.LMR == 2:
                 PWM.setMotorModel(800, 800, 800, 800)
@@ -63,3 +67,5 @@ if __name__ == '__main__':
         infrared.run()
     except KeyboardInterrupt:  # When 'Ctrl+C' is pressed, the child program will be executed.
         PWM.setMotorModel(0, 0, 0, 0)
+    finally:
+        infrared.close()
