@@ -325,7 +325,7 @@ Freenove is an open-source electronics platform committed to helping customers q
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](LICENSE).
 
 
 ![1719168124569](image/README/1719168124569.png)
