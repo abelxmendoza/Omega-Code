@@ -12,7 +12,7 @@ Functions:
 
 Dependencies:
 - ROS: rospy, std_msgs
-- RPi.GPIO: GPIO
+- lgpio
 
 Usage:
 - Run this script to start the line tracking publisher node.
@@ -21,18 +21,18 @@ Usage:
 #!/usr/bin/env python
 import rospy
 from std_msgs.msg import Int32MultiArray
-import RPi.GPIO as GPIO
+import lgpio
 
-GPIO.setmode(GPIO.BCM)
 IR01 = 14
 IR02 = 15
 IR03 = 18
-GPIO.setup(IR01, GPIO.IN)
-GPIO.setup(IR02, GPIO.IN)
-GPIO.setup(IR03, GPIO.IN)
+h = lgpio.gpiochip_open(0)
+lgpio.gpio_claim_input(h, IR01)
+lgpio.gpio_claim_input(h, IR02)
+lgpio.gpio_claim_input(h, IR03)
 
 def read_line_sensors():
-    return [GPIO.input(IR01), GPIO.input(IR02), GPIO.input(IR03)]
+    return [lgpio.gpio_read(h, IR01), lgpio.gpio_read(h, IR02), lgpio.gpio_read(h, IR03)]
 
 def publish_line_tracking():
     pub = rospy.Publisher('line_tracking/data', Int32MultiArray, queue_size=10)
@@ -50,4 +50,6 @@ if __name__ == '__main__':
     try:
         publish_line_tracking()
     except rospy.ROSInterruptException:
-        GPIO.cleanup()
+        pass
+    finally:
+        lgpio.gpiochip_close(h)
