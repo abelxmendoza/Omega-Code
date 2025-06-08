@@ -97,7 +97,7 @@ The frontend UI, built with Next.js and React, provides a web-based interface fo
 
 ### Control Panel
 
-- **Control Panel**: `src/components/ControlPanel.tsx` - Component for controlling robot movements.
+- **Control Panel**: `src/components/CarControlPanel.tsx` - Component for controlling the car's movements.
 
 ### Speed Control
 
