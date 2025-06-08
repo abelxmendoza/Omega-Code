@@ -14,7 +14,32 @@ Key functionalities:
 
 import sys
 import time
-from rpi_ws281x import *
+
+try:
+    from rpi_ws281x import PixelStrip, Color
+except Exception:  # pragma: no cover - handle missing library gracefully
+    try:
+        from rpi_ws281x import Adafruit_NeoPixel as PixelStrip, Color
+    except Exception:
+        # Provide a minimal stub for environments without rpi_ws281x
+        class PixelStrip:
+            def __init__(self, num, pin, freq_hz, dma, invert, brightness, channel):
+                self._num = num
+
+            def begin(self):
+                pass
+
+            def numPixels(self):
+                return self._num
+
+            def setPixelColor(self, i, color):
+                pass
+
+            def show(self):
+                pass
+
+        def Color(r, g, b):
+            return (r << 16) | (g << 8) | b
 
 # LED strip configuration constants
 LED_COUNT = 8            # Number of LED pixels
@@ -35,8 +60,14 @@ class LedControl:
         """
         try:
             self.ORDER = "RGB"  # Default color order
-            self.strip = Adafruit_NeoPixel(
-                LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL
+            self.strip = PixelStrip(
+                LED_COUNT,
+                LED_PIN,
+                LED_FREQ_HZ,
+                LED_DMA,
+                LED_INVERT,
+                LED_BRIGHTNESS,
+                LED_CHANNEL,
             )
             self.strip.begin()  # Initialize the LED strip
         except Exception as e:
