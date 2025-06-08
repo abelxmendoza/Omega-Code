@@ -40,7 +40,7 @@ The backend server, written in Go, handles incoming HTTP and WebSocket requests 
 ### Main Application
 
 - **Main Application (Go)**: `main.go` - Entry point of the backend server.
-- **Main Application (Python)**: `main.py` - Entry point of the Python backend server.
+- **Combined Application (Go)**: `main_combined.go` - Starts the Go server along with the Python video server and ROS nodes.
 
 ### Line Tracking
 

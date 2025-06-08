@@ -21,7 +21,6 @@ The project is organized into several directories and files:
 - **venv**: Python virtual environment for dependencies.
 - **main.go**: Entry point of the backend server (Go).
 - **main_combined.go**: Starts the server along with the Python video server and ROS nodes.
-- **main.py**: Entry point of the backend server (Python).
 - **server.csr**: Certificate Signing Request file.
 - **server.log**: Log file for server activities.
 - **go.mod**: Go module definitions.
@@ -99,15 +98,15 @@ The project is organized into several directories and files:
 
 ### Running the Project
 
-1. Start the backend server (Go):
+1. Start the backend server with Go:
 
    ```bash
    go run main.go
    ```
-2. Start the backend server (Python):
+   Or run the combined server:
 
    ```bash
-   python main.py
+   go run main_combined.go
    ```
 
 ### Usage
