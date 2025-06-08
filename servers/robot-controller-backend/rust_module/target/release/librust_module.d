@@ -1,1 +1,0 @@
-/home/omega1/Documents/code/Omega-Code/servers/robot-controller-backend/rust_module/target/release/librust_module.so: /home/omega1/Documents/code/Omega-Code/servers/robot-controller-backend/rust_module/src/lib.rs

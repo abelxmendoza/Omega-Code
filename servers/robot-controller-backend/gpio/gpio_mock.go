@@ -1,64 +1,51 @@
 // File: /Omega-Code/servers/robot-controller-backend/gpio/gpio_mock.go
-
-/*
-Package gpio provides a mock implementation of GPIO for testing purposes.
-It simulates GPIO operations without requiring actual hardware.
-*/
-
 package gpio
 
-import "github.com/stianeikeland/go-rpio/v4"
+import "log"
 
-// MockGPIO implements the GPIO interface for testing purposes.
+// MockGPIO implements the GPIO interface for testing.
 type MockGPIO struct{}
 
 func (m MockGPIO) Open() error {
+    log.Println("⚡ [MOCK] GPIO Opened")
     return nil
 }
 
 func (m MockGPIO) Close() error {
+    log.Println("⚡ [MOCK] GPIO Closed")
     return nil
 }
 
 func (m MockGPIO) Pin(pin int) GPIOPin {
-    return &MockGPIOPin{pin: pin}
+    return &MockGPIOPin{pin: pin, state: false} // ✅ Default to LOW (false)
 }
 
-// MockGPIOPin implements the GPIOPin interface for testing purposes.
+// MockGPIOPin simulates GPIO pin behavior.
 type MockGPIOPin struct {
     pin   int
-    state rpio.State
+    state bool  // ✅ Changed from `rpio.State` to `bool`
 }
 
 func (p *MockGPIOPin) Input() {}
 
 func (p *MockGPIOPin) Output() {}
 
-func (p *MockGPIOPin) Read() rpio.State {
-    // Return specific values based on the pin number for testing
-    switch p.pin {
-    case 14:
-        return High // Mock read to return High state for pin 14
-    case 15:
-        return Low  // Mock read to return Low state for pin 15
-    case 23:
-        return High // Mock read to return High state for pin 23
-    case 22:
-        // Simulate the echo pin behavior
-        if p.state == Low {
-            p.state = High
-            return Low
-        }
-        return High
-    default:
-        return Low
-    }
+func (p *MockGPIOPin) Read() bool {
+    return p.state // ✅ Now returns `bool`, matching `GPIOPin` interface
 }
 
 func (p *MockGPIOPin) High() {
-    p.state = High
+    log.Printf("⚡ [MOCK] Pin %d set to HIGH\n", p.pin)
+    p.state = true
 }
 
 func (p *MockGPIOPin) Low() {
-    p.state = Low
+    log.Printf("⚡ [MOCK] Pin %d set to LOW\n", p.pin)
+    p.state = false
+}
+
+// ✅ FIXED: SetState now correctly accepts `bool`
+func (p *MockGPIOPin) SetState(state bool) {
+    p.state = state
+    log.Printf("⚡ [MOCK] Pin %d manually set to %v\n", p.pin, state)
 }

@@ -13,6 +13,7 @@ The project is organized into several directories:
 - **pages**: Contains the Next.js pages.
 - **styles**: Contains global CSS styles.
 - **control_definitions.ts**: Contains command definitions used throughout the project.
+- **redux**: Redux store configuration located in `src/redux`.
 
 
 ![1719083563125](image/README/1719083563125.png)
@@ -35,9 +36,9 @@ The project is organized into several directories:
 
 - **Context for Logging Commands**: `src/components/CommandLogContext.tsx`
 
-### Control Panel
+### Car Control Panel
 
-- **Control Panel**: `src/components/ControlPanel.tsx` - Component for controlling robot movements.
+- **Car Control Panel**: `src/components/CarControlPanel.tsx` - Component for controlling robot movements.
 
 ### Speed Control
 
@@ -74,9 +75,29 @@ The project is organized into several directories:
 
 - **Color Wheel**: `src/components/ColorWheel.tsx` - Color selection using a color wheel.
 
+
+### Sensor Dashboard
+
+- **Sensor Dashboard**: `src/components/SensorDashboard.tsx` - Displays line tracking and ultrasonic sensor data.
+
+### GPS Location and Map
+
+- **GPS Location**: `src/components/GpsLocation.tsx` - Wrapper component that loads the map.
+- **Map Component**: `src/components/MapComponent.tsx` - Interactive map showing the robot's position.
+
+### Additional Status Components
+
+- **Line Tracker Status**: `src/components/LineTrackerStatus.tsx` - Shows line tracking sensor values.
+- **Ultrasonic Sensor Status**: `src/components/UltrasonicSensorStatus.tsx` - Displays ultrasonic sensor distances.
+
+
 ## Styles
 
 - **Global Styles**: `src/styles/globals.css` - Global CSS styles for the project.
+
+## Redux Store
+
+- The Redux logic lives in `src/redux` and is initialized in `src/redux/store.ts`.
 
 ## Getting Started
 
@@ -104,6 +125,11 @@ The project is organized into several directories:
 ### Usage
 
 Open a web browser and navigate to `http://localhost:3000` to access the robot controller interface. Use the provided controls to send commands to the robot.
+
+## Testing
+
+This project includes **Jest** unit tests in the `tests` directory and **Cypress** end-to-end tests. Run `npm test` for Jest and `npx cypress open` for Cypress.
+
 
 ## Contributing
 
