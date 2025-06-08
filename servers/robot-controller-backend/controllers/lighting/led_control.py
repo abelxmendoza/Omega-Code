@@ -12,6 +12,7 @@ Key functionalities:
 3. Execute predefined effects with error handling for robust operation.
 """
 
+
 import sys
 import time
 
@@ -87,7 +88,7 @@ class LedControl:
         """
         self.ORDER = "RGB"  # Default color order
         try:
-            strip = PixelStrip(
+           
 
             self.ORDER = "RGB"  # Default color order
             self.strip = PixelStrip(
