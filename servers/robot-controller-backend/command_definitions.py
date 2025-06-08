@@ -5,9 +5,11 @@ Command Definitions
 
 This script defines a set of commands for controlling various parts of the robot, such as motors, LEDs, servos, sensors, and more.
 
+
 Class:
 - COMMAND: Contains static command strings for different robot functions.
 """
+
 
 class COMMAND:
     # Motor Commands
@@ -55,6 +57,7 @@ class COMMAND:
     # Power and Mode Commands
     CMD_POWER = "CMD_POWER"                   # Command to control the power
     CMD_MODE = "CMD_MODE"                     # Command to set the mode
+
 
     def __init__(self):
         pass

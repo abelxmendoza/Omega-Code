@@ -34,4 +34,3 @@ jobs:
           export PYTHONPATH=$(pwd)
           pytest
 
-          
