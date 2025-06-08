@@ -251,7 +251,7 @@ The repository includes a comprehensive set of tests organized into unit tests, 
 
 ### Usage
 
-Open a web browser and navigate to `https://localhost:3000` to access the robot controller interface. Use the provided controls to send commands to the robot.
+Open a web browser and navigate to `http://localhost:3000` to access the robot controller interface. If you have configured the server to use HTTPS, adjust the URL accordingly.
 
 ## Acknowledgements
 
@@ -261,8 +261,6 @@ Special thanks to Freenove for providing the **Freenove 4WD Smart Car Kit for Ra
 
 > A 4WD smart car kit for Raspberry Pi.
 
-![Freenove](Picture/icon.png)
-![Freenove](Picture/icon1.png)
 
 #### Download
 
