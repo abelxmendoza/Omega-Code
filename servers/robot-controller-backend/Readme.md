@@ -20,7 +20,7 @@ The project is organized into several directories and files:
 - **__pycache__**: Python bytecode cache.
 - **venv**: Python virtual environment for dependencies.
 - **main.go**: Entry point of the backend server (Go).
-- **main_combined.go**: Starts the Python video server and ROS nodes before launching the Go server.
+- **main_combined.go**: Starts the server along with the Python video server and ROS nodes.
 - **main.py**: Entry point of the backend server (Python).
 - **server.csr**: Certificate Signing Request file.
 - **server.log**: Log file for server activities.
@@ -134,6 +134,8 @@ pytest tests/unit        # unit tests
 pytest tests/integration # integration tests
 pytest tests/e2e         # end-to-end tests
 ```
+
+Run tests with `pytest`.
 
 
 The tests are automatically run on each push to the master branch and on each pull request targeting the master branch using GitHub Actions. The CI/CD configuration can be found in the `.github/workflows/ci.yml` file.
