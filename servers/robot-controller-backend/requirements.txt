@@ -2,7 +2,9 @@
 
 # Core dependencies
 Adafruit-PCA9685==1.0.1
-RPi.GPIO==0.7.0
+RPi.GPIO==0.7.0  # Legacy Pi 4 support
+lgpio  # GPIO control on Pi 5
+rpi_ws281x  # WS281x LED strip support
 smbus2==0.4.1  # Added for I2C communication with ADC chips
 
 # Flask and WebSocket dependencies for the video server
@@ -23,3 +25,4 @@ opencv-python-headless==4.5.5.64
 
 # Additional utilities
 requests==2.27.1  # Added in case of external API requests
+rich
