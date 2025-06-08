@@ -38,7 +38,6 @@ class StubPixelStrip:
         pass
 
 
-
 try:
     from rpi_ws281x import PixelStrip, Color
 except Exception:  # pragma: no cover - handle missing library gracefully
@@ -65,6 +64,7 @@ except Exception:  # pragma: no cover - handle missing library gracefully
                 pass
 
 
+
         def Color(r, g, b):
             return (r << 16) | (g << 8) | b
 
@@ -85,7 +85,10 @@ class LedControl:
         """
         Initializes the LED strip with specified configuration.
         """
+        self.ORDER = "RGB"  # Default color order
         try:
+            strip = PixelStrip(
+
             self.ORDER = "RGB"  # Default color order
             self.strip = PixelStrip(
                 LED_COUNT,
@@ -96,9 +99,15 @@ class LedControl:
                 LED_BRIGHTNESS,
                 LED_CHANNEL,
             )
-            self.strip.begin()  # Initialize the LED strip
+            strip.begin()  # Initialize the LED strip
+            self.strip = strip
         except Exception as e:
             print(f"Warning: Failed to initialize LED strip: {e}")
+            try:
+                del strip
+            except UnboundLocalError:
+                pass
+
             self.strip = StubPixelStrip(
                 LED_COUNT,
                 LED_PIN,

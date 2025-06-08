@@ -19,7 +19,6 @@ class TestControllersLedControl(unittest.TestCase):
         )
         instance.begin.assert_called_once()
 
-
     @patch('controllers.lighting.led_control.PixelStrip')
     def test_init_falls_back_to_stub_on_error(self, MockStrip):
         instance = MockStrip.return_value
