@@ -15,12 +15,38 @@ Key functionalities:
 import sys
 import time
 
+__all__ = ["LedControl", "StubPixelStrip"]
+
+
+class StubPixelStrip:
+    """Fallback LED strip that performs no hardware operations."""
+
+    def __init__(self, num, pin, freq_hz, dma, invert, brightness, channel):
+        self._num = num
+        self.is_stub = True
+
+    def begin(self):
+        pass
+
+    def numPixels(self):
+        return self._num
+
+    def setPixelColor(self, i, color):
+        pass
+
+    def show(self):
+        pass
+
+
+
 try:
     from rpi_ws281x import PixelStrip, Color
 except Exception:  # pragma: no cover - handle missing library gracefully
     try:
         from rpi_ws281x import Adafruit_NeoPixel as PixelStrip, Color
     except Exception:
+
+        PixelStrip = StubPixelStrip
         # Provide a minimal stub for environments without rpi_ws281x
         class PixelStrip:
             def __init__(self, num, pin, freq_hz, dma, invert, brightness, channel):
@@ -37,6 +63,7 @@ except Exception:  # pragma: no cover - handle missing library gracefully
 
             def show(self):
                 pass
+
 
         def Color(r, g, b):
             return (r << 16) | (g << 8) | b
@@ -71,7 +98,17 @@ class LedControl:
             )
             self.strip.begin()  # Initialize the LED strip
         except Exception as e:
-            raise RuntimeError(f"Failed to initialize LED strip: {e}")
+            print(f"Warning: Failed to initialize LED strip: {e}")
+            self.strip = StubPixelStrip(
+                LED_COUNT,
+                LED_PIN,
+                LED_FREQ_HZ,
+                LED_DMA,
+                LED_INVERT,
+                LED_BRIGHTNESS,
+                LED_CHANNEL,
+            )
+            print("Using stub LED strip; no hardware output will occur")
 
     def _convert_color(self, order, R_G_B):
         """
