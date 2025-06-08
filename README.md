@@ -255,8 +255,14 @@ the backend `.env` file with the `ENV_FILE` variable when running these scripts.
 2. Start the frontend development server:
    ```bash
    cd ui/robot-controller-ui
-   npm run dev
-   ```
+  npm run dev
+  ```
+
+### Optional Dependencies
+
+- **OpenCV (`cv2` Python package)** – required for video streaming and image processing. If not installed, the
+  application will warn and disable camera features. Tests that rely on OpenCV are skipped automatically when
+  the module is missing.
 
 ### Usage
 

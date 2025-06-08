@@ -17,7 +17,12 @@ through a background thread.
 
 """
 
-import cv2
+import warnings
+try:
+    import cv2  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    cv2 = None  # type: ignore
+    warnings.warn("OpenCV not installed. Camera features will be disabled.", ImportWarning)
 import threading
 import time
 
@@ -38,6 +43,11 @@ class Camera:
         self.frame = None
         self.lock = threading.Lock()
 
+        if cv2 is None:
+            warnings.warn("OpenCV not available. Camera disabled.", RuntimeWarning)
+            self.capture = None
+            return
+
         # Initialize camera
         self.capture = cv2.VideoCapture(self.device, cv2.CAP_V4L2)
         if not self.capture.isOpened():
@@ -56,6 +66,8 @@ class Camera:
 
     def _capture_frames(self):
         """ Continuously captures frames in a background thread. """
+        if self.capture is None:
+            return
         while self.running:
             ret, frame = self.capture.read()
             if not ret or frame is None:
@@ -74,13 +86,15 @@ class Camera:
 
     def get_frame(self):
         """ Returns the latest captured frame. """
+        if self.capture is None:
+            return None
         with self.lock:
             return self.frame.copy() if self.frame is not None else None
 
     def capture_image(self, filename="snapshot.jpg"):
         """ Captures and saves an image. """
         frame = self.get_frame()
-        if frame is not None:
+        if frame is not None and cv2 is not None:
             cv2.imwrite(filename, frame)
             return filename
         return None
@@ -88,26 +102,30 @@ class Camera:
     def stop(self):
         """ Stops the camera and releases resources. """
         self.running = False
-        self.thread.join()
-        self.capture.release()
+        if self.capture is not None:
+            self.thread.join()
+            self.capture.release()
         print("✅ Camera stopped and released.")
 
 # Standalone Test (Run this script to test the camera)
 if __name__ == "__main__":
-    try:
-        cam = Camera()
-        print("🎥 Camera is running. Press 'q' to quit.")
+    if cv2 is None:
+        print("OpenCV is not installed. Camera demo disabled.")
+    else:
+        try:
+            cam = Camera()
+            print("🎥 Camera is running. Press 'q' to quit.")
 
-        while True:
-            frame = cam.get_frame()
-            if frame is not None:
-                cv2.imshow("Camera Feed", frame)
-            
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-        
-    except Exception as e:
-        print(f"🔥 Error: {e}")
-    finally:
-        cam.stop()
-        cv2.destroyAllWindows()
+            while True:
+                frame = cam.get_frame()
+                if frame is not None:
+                    cv2.imshow("Camera Feed", frame)
+
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+
+        except Exception as e:
+            print(f"🔥 Error: {e}")
+        finally:
+            cam.stop()
+            cv2.destroyAllWindows()
