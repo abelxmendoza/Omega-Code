@@ -1,17 +1,33 @@
 # Root .gitignore
-config/.env
-config/.env.script2
+
+# Environment files
 *.env
+config/.env.script2
+
+# Log files
+server.log
 
 # Ignore certificate files
 servers/robot-controller-backend/certs/*.pem
 servers/robot-controller-backend/certs/*.key
-servers/robot-controller-backend/.env
-config/.env
-config/.env.script2
-servers/robot-controller-backend/certs/*.pem
-servers/robot-controller-backend/certs/*.key
-servers/robot-controller-backend/.env
 
 # macOS system files
 .DS_Store
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# Build artifacts
+target/
+**/target/
+
+# Executable binaries
+*.exe
+*.out
+*.bin
+servers/robot-controller-backend/robot-controller
+
+# Shared libraries
+*.so
+*.dylib
