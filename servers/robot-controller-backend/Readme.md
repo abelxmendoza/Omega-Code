@@ -113,6 +113,25 @@ The project is organized into several directories and files:
 
 The backend server will listen for incoming HTTP requests to control the robot. Ensure the frontend is running to interact with the backend.
 
+## Raspberry Pi 5 Compatibility
+
+Omega-Code runs on the Raspberry Pi\&nbsp;5. The new board replaces the legacy `RPi.GPIO` interface used on the Pi\&nbsp;4\&nbsp;B with the `libgpiod` driver. Older scripts that import `RPi.GPIO` must be updated to use the `lgpio` package.
+
+Install `lgpio` using pip:
+
+```bash
+pip install lgpio
+```
+
+Grant the GPIO group access to the device before running the software:
+
+```bash
+sudo chown root:gpio /dev/gpiochip0
+sudo chmod g+rw /dev/gpiochip0
+```
+
+With these permissions in place, the rest of the project behaves just as it does on a Pi\&nbsp;4\&nbsp;B but benefits from the Pi\&nbsp;5's improved performance.
+
 ## Testing
 
 This project includes a comprehensive test suite to ensure the functionality of the backend components.
