@@ -88,9 +88,6 @@ class LedControl:
         """
         self.ORDER = "RGB"  # Default color order
         try:
-           
-
-            self.ORDER = "RGB"  # Default color order
             self.strip = PixelStrip(
                 LED_COUNT,
                 LED_PIN,
