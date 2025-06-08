@@ -1,17 +1,17 @@
 # Root .gitignore
-config/.env
-config/.env.script2
-*.env
 
-# Ignore certificate files
-servers/robot-controller-backend/certs/*.pem
-servers/robot-controller-backend/certs/*.key
+# Environment files
+*.env
 servers/robot-controller-backend/.env
 config/.env
 config/.env.script2
+
+# Certificates
 servers/robot-controller-backend/certs/*.pem
 servers/robot-controller-backend/certs/*.key
-servers/robot-controller-backend/.env
+
+# Logs
+servers/robot-controller-backend/server.log
 
 # macOS system files
 .DS_Store
