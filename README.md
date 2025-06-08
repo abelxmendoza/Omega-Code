@@ -10,6 +10,9 @@ Omega-Code is a comprehensive project aimed at developing a fully-featured robot
 
 The project is organized into several directories:
 
+
+- **config** (removed): Configuration is now handled through environment
+  variables and `.env` files such as `.env.example` in the repository root.
 - **scripts**: Contains shell scripts for connecting to a hotspot.
 - **servers**: Contains the backend server code for handling robot commands.
 - **ui**: Contains the frontend user interface code for the robot controller.
@@ -251,6 +254,28 @@ The repository includes a comprehensive set of tests organized into unit tests, 
 
 Open a web browser and navigate to `http://localhost:3000` to access the robot controller interface. If you have configured HTTPS, use `https://localhost:3000` instead. Use the provided controls to send commands to the robot.
 
+## Raspberry Pi 5 Compatibility
+
+Omega-Code runs on the Raspberry Pi&nbsp;5. The new board replaces the legacy
+`RPi.GPIO` interface used on the Pi&nbsp;4&nbsp;B with the `libgpiod` driver. Older
+scripts that import `RPi.GPIO` must be updated to use the `lgpio` package.
+
+Install `lgpio` using pip:
+
+```bash
+pip install lgpio
+```
+
+Grant the GPIO group access to the device before running the software:
+
+```bash
+sudo chown root:gpio /dev/gpiochip0
+sudo chmod g+rw /dev/gpiochip0
+```
+
+With these permissions in place, the rest of the project behaves just as it does
+on a Pi&nbsp;4&nbsp;B but benefits from the Pi&nbsp;5's improved performance.
+
 ## Acknowledgements
 
 Special thanks to Freenove for providing the **Freenove 4WD Smart Car Kit for Raspberry Pi** and their comprehensive support.
@@ -299,7 +324,7 @@ Freenove is an open-source electronics platform committed to helping customers q
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](LICENSE).
 
 
 ![1719168124569](image/README/1719168124569.png)
