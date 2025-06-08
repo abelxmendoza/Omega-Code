@@ -11,6 +11,7 @@ Omega-Code is a comprehensive project aimed at developing a fully-featured robot
 The project is organized into several directories:
 
 
+
 - **config** (removed): Configuration is now handled through environment
   variables and `.env` files such as `.env.example` in the repository root.
 - **scripts**: Contains shell scripts for connecting to a hotspot.
