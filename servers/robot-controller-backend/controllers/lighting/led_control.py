@@ -88,14 +88,7 @@ class LedControl:
         """
         self.ORDER = "RGB"  # Default color order
         try:
-          
-          self.ORDER = "RGB"  # Default color order
-          self.strip = PixelStrip(
-            LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA,
-             LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL
-              )
-
-
+            self.strip = PixelStrip(
                 LED_COUNT,
                 LED_PIN,
                 LED_FREQ_HZ,
@@ -104,16 +97,9 @@ class LedControl:
                 LED_BRIGHTNESS,
                 LED_CHANNEL,
             )
-            strip.begin()  # Initialize the LED strip
-            self.strip = strip
+            self.strip.begin()  # Initialize the LED strip
         except Exception as e:
             print(f"Warning: Failed to initialize LED strip: {e}")
-
-            try:
-                del strip
-            except UnboundLocalError:
-                pass
-
             self.strip = StubPixelStrip(
                 LED_COUNT,
                 LED_PIN,
