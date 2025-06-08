@@ -20,7 +20,9 @@ The project is organized into several directories and files:
 - **__pycache__**: Python bytecode cache.
 - **venv**: Python virtual environment for dependencies.
 - **main.go**: Entry point of the backend server (Go).
-- **main_combined.go**: Starts the server along with the Python video server and ROS nodes.
+- **main.py**: Entry point of the backend server (Python).
+- **main_combined.go**: Starts the Python video server and ROS nodes before launching the Go server.
+
 - **server.csr**: Certificate Signing Request file.
 - **server.log**: Log file for server activities.
 - **go.mod**: Go module definitions.
@@ -108,12 +110,48 @@ The project is organized into several directories and files:
    Or run the combined server:
 
    ```bash
+
+    python main.py
+    ```
+3. Start the Go server with the Python video server and ROS nodes:
+
+   ```bash
+
    go run main_combined.go
    ```
 
 ### Usage
 
 The backend server will listen for incoming HTTP requests to control the robot. Ensure the frontend is running to interact with the backend.
+
+## Testing
+
+This project includes a comprehensive test suite to ensure the functionality of the backend components.
+
+### Test Structure
+
+All tests live in the `tests` directory:
+
+- `tests/unit` - unit tests for individual backend components.
+- `tests/integration` - integration tests covering interactions between modules.
+- `tests/e2e` - end-to-end tests that exercise the full system.
+
+### Running Tests
+
+Install dependencies and run `pytest` with the desired test directory. Examples:
+
+```bash
+pip install -r requirements.txt
+
+# run unit tests
+PYTHONPATH=$(pwd) pytest tests/unit
+
+# run integration tests
+PYTHONPATH=$(pwd) pytest tests/integration
+
+# run end-to-end tests
+PYTHONPATH=$(pwd) pytest tests/e2e
+```
 
 ## Raspberry Pi 5 Compatibility
 
@@ -137,6 +175,7 @@ With these permissions in place, the rest of the project behaves just as it does
 ## Testing
 
 This project includes a comprehensive test suite to ensure the functionality of the backend components.
+
 
 ### Test Structure
 
