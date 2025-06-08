@@ -36,6 +36,13 @@ def run_test():
 
     print("LED test complete.")
 
+    # Explicitly delete the LED controller to ensure any underlying resources
+    # are cleaned up before exiting. This helps avoid segfaults on some
+    # platforms when the rpi_ws281x library fails to initialize.
+    del led
+
+
+
 
 if __name__ == "__main__":
     try:
