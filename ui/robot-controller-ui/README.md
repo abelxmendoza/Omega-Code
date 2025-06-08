@@ -36,9 +36,9 @@ The project is organized into several directories:
 
 - **Context for Logging Commands**: `src/components/CommandLogContext.tsx`
 
-### Control Panel
+### Car Control Panel
 
-- **Control Panel**: `src/components/CarControlPanel.tsx` - Component for controlling robot movements.
+- **Car Control Panel**: `src/components/CarControlPanel.tsx` - Component for controlling robot movements.
 
 ### Speed Control
 
@@ -75,6 +75,7 @@ The project is organized into several directories:
 
 - **Color Wheel**: `src/components/ColorWheel.tsx` - Color selection using a color wheel.
 
+
 ### Sensor Dashboard
 
 - **Sensor Dashboard**: `src/components/SensorDashboard.tsx` - Displays line tracking and ultrasonic sensor data.
@@ -89,9 +90,14 @@ The project is organized into several directories:
 - **Line Tracker Status**: `src/components/LineTrackerStatus.tsx` - Shows line tracking sensor values.
 - **Ultrasonic Sensor Status**: `src/components/UltrasonicSensorStatus.tsx` - Displays ultrasonic sensor distances.
 
+
 ## Styles
 
 - **Global Styles**: `src/styles/globals.css` - Global CSS styles for the project.
+
+## Redux Store
+
+- The Redux logic lives in `src/redux` and is initialized in `src/redux/store.ts`.
 
 ## Getting Started
 
@@ -123,6 +129,7 @@ Open a web browser and navigate to `http://localhost:3000` to access the robot c
 ## Testing
 
 This project includes **Jest** unit tests in the `tests` directory and **Cypress** end-to-end tests. Run `npm test` for Jest and `npx cypress open` for Cypress.
+
 
 ## Contributing
 

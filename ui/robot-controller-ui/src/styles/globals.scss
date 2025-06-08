@@ -1,65 +1,75 @@
+/*
+# File: /src/styles/globals.scss
+# Summary:
+Global styles for the robot controller UI application. Integrates TailwindCSS utilities 
+and defines custom styles for enhanced UI elements such as neon effects, battery indicators, 
+and sensor dashboards.
+*/
+
+/* Import TailwindCSS base styles */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Custom styles */
+/* Custom Styles */
+
+/* Neon Glow Effect */
 .neon-blue {
   box-shadow: 0 0 5px #00f, 0 0 10px #00f, 0 0 20px #00f, 0 0 40px #00f, 0 0 80px #00f;
-  background-color: #00f;
+  background-color: #00f; /* Neon blue */
 }
 
+/* Background Colors */
 .bg-red-500 {
-  background-color: #f00;
+  background-color: #f00; /* Bright red */
 }
-
 .bg-yellow-500 {
-  background-color: #ff0;
+  background-color: #ff0; /* Bright yellow */
 }
-
 .bg-green-500 {
-  background-color: #0f0;
+  background-color: #0f0; /* Bright green */
 }
 
+/* Battery Styles */
 .battery-empty {
   border: 1px solid #ccc;
   background-color: transparent;
-  min-width: 5px; /* Ensure the bar is visible even when empty */
+  min-width: 5px; /* Ensure visibility when empty */
 }
-
 .battery-container {
-  height: 1rem; /* Define a height for the container */
-  background-color: #e0e0e0; /* Light gray background for visibility */
+  height: 1rem;
+  background-color: #e0e0e0; /* Light gray for clarity */
 }
-
 .low {
-  background-color: red;
+  background-color: red; /* For low battery or sensor warning */
 }
-
 .high {
-  background-color: #00f;
+  background-color: #00f; /* For high sensor or battery value */
 }
 
-.sensor-dashboard, .component-a, .component-b {
-  background-color: #1a1a1a;
-  color: #ffffff;
+/* Sensor Dashboard */
+.sensor-dashboard,
+.component-a,
+.component-b {
+  background-color: #1a1a1a; /* Dark background */
+  color: #ffffff; /* White text */
   padding: 20px;
-  border-radius: 10px;
+  border-radius: 10px; /* Rounded corners */
 }
-
 .sensor-container {
   display: flex;
-  justify-content: space-between;
+  justify-content: space-between; /* Space out child elements */
+}
+.line-tracking,
+.ultrasonic-distance {
+  margin: 0 20px; /* Add spacing between elements */
 }
 
-.line-tracking, .ultrasonic-distance {
-  margin: 0 20px;
-}
-
+/* Typography */
 h2 {
-  margin-bottom: 20px;
+  margin-bottom: 20px; /* Add spacing below headings */
 }
-
 strong {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 10px; /* Add spacing below strong text */
 }

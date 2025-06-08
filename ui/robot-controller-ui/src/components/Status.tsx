@@ -1,76 +1,96 @@
-// src/components/Status.tsx
-
 /*
-This component displays the status and battery level of the robot.
-It shows a check icon if the robot is connected and a cross icon if it is disconnected.
-The battery level is displayed as a percentage and a visual bar that changes color based on the battery level.
+# File: /src/components/Status.tsx
+# Summary:
+Displays the status and battery level of the robot.
+Indicates connection status using icons and visualizes battery level with a percentage and color-coded bar.
+Automatically attempts reconnection if the WebSocket disconnects.
 */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 
 const Status: React.FC = () => {
-  const [status, setStatus] = useState('Disconnected');
-  const [batteryLevel, setBatteryLevel] = useState(0);
-  const ws = useRef<WebSocket | null>(null);
+  const [status, setStatus] = useState<'Connected' | 'Disconnected'>('Disconnected'); // Connection status
+  const [batteryLevel, setBatteryLevel] = useState(0); // Battery level (percentage)
+  const ws = useRef<WebSocket | null>(null); // WebSocket instance reference
+  const wsUrl = 'ws://localhost:8080/ws'; // WebSocket URL
 
   useEffect(() => {
-    // Establish WebSocket connection
-    ws.current = new WebSocket('ws://localhost:8080/ws');
+    // Function to establish and manage WebSocket connection
+    const connectWebSocket = () => {
+      ws.current = new WebSocket(wsUrl);
 
-    ws.current.onopen = () => {
-      console.log('WebSocket connection established');
-      setStatus('Connected');
+      // WebSocket opened successfully
+      ws.current.onopen = () => {
+        console.log('[WebSocket] Connection established');
+        setStatus('Connected');
+      };
+
+      // Handle incoming WebSocket messages
+      ws.current.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.battery !== undefined) {
+            setBatteryLevel(data.battery);
+          }
+        } catch (error) {
+          console.error('[WebSocket] Error parsing message:', error);
+        }
+      };
+
+      // WebSocket connection closed
+      ws.current.onclose = () => {
+        console.log('[WebSocket] Connection closed');
+        setStatus('Disconnected');
+        setTimeout(() => {
+          console.log('[WebSocket] Attempting to reconnect...');
+          connectWebSocket(); // Reconnect after delay
+        }, 2000); // Retry every 2 seconds
+      };
+
+      // WebSocket error occurred
+      ws.current.onerror = (error) => {
+        console.error('[WebSocket] Error:', error);
+        setStatus('Disconnected');
+      };
     };
 
-    ws.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.battery !== undefined) {
-        setBatteryLevel(data.battery);
-      }
-    };
+    // Initiate WebSocket connection
+    connectWebSocket();
 
-    ws.current.onclose = () => {
-      console.log('WebSocket connection closed');
-      setStatus('Disconnected');
-    };
-
-    ws.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setStatus('Disconnected');
-    };
-
-    // Cleanup on unmount
+    // Cleanup WebSocket on component unmount
     return () => {
       if (ws.current) {
         ws.current.close();
+        console.log('[WebSocket] Connection closed during cleanup');
       }
     };
-  }, []);
+  }, [wsUrl]);
 
-  // Determine the class for the battery bar color based on battery level
+  // Determine the CSS class for the battery bar based on the battery level
   const getBatteryClass = (level: number) => {
-    if (level === 0) return 'battery-empty';
-    if (level > 75) return 'bg-green-500';
-    if (level > 50) return 'bg-yellow-500';
-    if (level > 20) return 'neon-blue';
-    return 'bg-red-500';
+    if (level > 75) return 'bg-green-500'; // High battery level
+    if (level > 50) return 'bg-yellow-500'; // Medium battery level
+    if (level > 20) return 'neon-blue'; // Low battery level
+    return 'bg-red-500'; // Critical battery level
   };
 
-  const batteryClass = getBatteryClass(batteryLevel);
-  const batteryBarClass = `h-4 rounded ${batteryClass}`;
+  // CSS class for the battery bar
+  const batteryBarClass = `h-4 rounded ${getBatteryClass(batteryLevel)}`;
 
   return (
     <div className="flex items-center space-x-4">
-      {/* Display the status with an icon */}
+      {/* Connection status indicator */}
       <div className="flex items-center">
-        Status: {status === 'Connected' ? (
+        Status:
+        {status === 'Connected' ? (
           <FaCheckCircle data-testid="status-icon" className="text-green-500 ml-2" />
         ) : (
           <FaTimesCircle data-testid="status-icon" className="text-red-500 ml-2" />
         )}
+        <span className="ml-2">{status}</span>
       </div>
-      {/* Display the battery level as a bar and percentage */}
+      {/* Battery level indicator */}
       <div className="flex items-center">
         Battery:
         <div className="ml-2 w-32 battery-container">

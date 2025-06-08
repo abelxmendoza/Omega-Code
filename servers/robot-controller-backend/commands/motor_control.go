@@ -1,6 +1,9 @@
-// File: /Omega-Code/servers/robot-controller-backend/commands/motor_control.go
+/*
+# File: /Omega-Code/servers/robot-controller-backend/commands/motor_control.go
+# Summary:
+This file provides functionality for motor and buzzer control. Includes support for horn-like buzzer behavior.
+*/
 
-// Package commands handles the processing and execution of various commands for the robot controller.
 package commands
 
 import (
@@ -10,32 +13,38 @@ import (
     "github.com/abelxmendoza/Omega-Code/servers/robot-controller-backend/common"
 )
 
-// ExecuteMotorCommand executes a motor control command.
+// ExecuteMotorCommand executes a motor or buzzer control command.
 func ExecuteMotorCommand(cmd Command) {
     logCommand(cmd)
 
-    var pin int
-    var state string
+    var scriptType string
+    var param1 string
 
     switch cmd.Command {
     case "move-up":
-        pin = 19 // Example pin for moving the car forward
-        state = "HIGH"
+        scriptType = "motor"
+        param1 = "19" // Pin for moving forward
     case "move-down":
-        pin = 20 // Example pin for moving the car backward
-        state = "HIGH"
+        scriptType = "motor"
+        param1 = "20" // Pin for moving backward
     case "move-left":
-        pin = 21 // Example pin for moving the car left
-        state = "HIGH"
+        scriptType = "motor"
+        param1 = "21" // Pin for moving left
     case "move-right":
-        pin = 22 // Example pin for moving the car right
-        state = "HIGH"
+        scriptType = "motor"
+        param1 = "22" // Pin for moving right
+    case "buzz":
+        scriptType = "buzzer"
+        param1 = "on"
+    case "buzz-stop":
+        scriptType = "buzzer"
+        param1 = "off"
     default:
-        log.Printf("Unknown motor command: %s\n", cmd.Command)
+        log.Printf("Unknown command: %s\n", cmd.Command)
         return
     }
 
-    err := common.ExecutePythonScriptSimplified("motor", fmt.Sprintf("%d", pin), state)
+    err := common.ExecutePythonScriptSimplified(scriptType, param1)
     if err != nil {
         log.Printf("Error executing Python script: %s\n", err)
     }

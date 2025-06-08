@@ -1,50 +1,52 @@
-import React, { useEffect, useRef } from 'react';
-import { useCommandLog } from './CommandLogContext';
+/*
+# File: /src/components/CommandLog.tsx
+# Summary:
+A component that displays a real-time log of commands sent or received.
+Commands are managed centrally via the CommandContext and include timestamps.
+This component provides a scrollable list with user-friendly formatting and interaction.
+*/
+
+import React from 'react';
+import { useCommand } from '../context/CommandContext';
 
 const CommandLog: React.FC = () => {
-  const { commands = [], addCommand } = useCommandLog(); // Default to an empty array if commands is undefined
-  const ws = useRef<WebSocket | null>(null);
-
-  useEffect(() => {
-    // Establish WebSocket connection
-    ws.current = new WebSocket('ws://localhost:8080/ws');
-
-    ws.current.onopen = () => {
-      console.log('WebSocket connection established');
-    };
-
-    ws.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.command) {
-        addCommand(data.command);
-      }
-    };
-
-    ws.current.onclose = () => {
-      console.log('WebSocket connection closed');
-    };
-
-    ws.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    // Cleanup on unmount
-    return () => {
-      if (ws.current) {
-        ws.current.close();
-      }
-    };
-  }, [addCommand]);
-
-  console.log('Rendering CommandLog with commands:', commands);
+  const { commands } = useCommand(); // Access the command log from CommandContext
 
   return (
     <div className="w-full md:w-3/4 lg:w-1/2 p-4 bg-gray-900 rounded-lg shadow-md">
-      <h2 className="text-lg font-bold text-green-400 border-b-2 border-green-400 pb-2">Command Log</h2>
-      <ul className="mt-4 h-20 overflow-y-auto bg-gray-800 rounded-lg p-2">
-        {commands.map((command, index) => (
-          <li key={index} className="text-center text-green-300">{command}</li>
-        ))}
+      {/* Header */}
+      <h2 className="text-lg font-bold text-green-400 border-b-2 border-green-400 pb-2">
+        Command Log
+      </h2>
+
+      {/* Command List */}
+      <ul className="mt-4 h-40 overflow-y-auto bg-gray-800 rounded-lg p-2">
+        {commands.length > 0 ? (
+          // Render the list of commands
+          commands.map((entry, index) => (
+            <li
+              key={index} // Unique key for React rendering
+              className="text-green-300 py-1 text-sm hover:text-green-200 transition-colors cursor-pointer flex items-start"
+              title={`Command #${index + 1}`} // Tooltip for better UX
+            >
+              {/* Timestamp */}
+              <span className="text-gray-400 text-xs mr-2 whitespace-nowrap">
+                {new Date(entry.timestamp).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                })}
+              </span>
+              {/* Command Content */}
+              <span className="flex-1">{entry.command}</span>
+            </li>
+          ))
+        ) : (
+          // Fallback when no commands are logged
+          <li className="text-center text-gray-400 py-2">
+            No commands logged yet.
+          </li>
+        )}
       </ul>
     </div>
   );
