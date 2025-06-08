@@ -17,3 +17,17 @@ servers/robot-controller-backend/certs/*.key
 # Python cache files
 __pycache__/
 *.pyc
+
+# Build artifacts
+target/
+**/target/
+
+# Executable binaries
+*.exe
+*.out
+*.bin
+servers/robot-controller-backend/robot-controller
+
+# Shared libraries
+*.so
+*.dylib
