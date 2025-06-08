@@ -10,12 +10,10 @@ Omega-Code is a comprehensive project aimed at developing a fully-featured robot
 
 The project is organized into several directories:
 
-- **config**: Contains configuration files necessary for the project.
 - **scripts**: Contains shell scripts for connecting to a hotspot.
 - **servers**: Contains the backend server code for handling robot commands.
 - **ui**: Contains the frontend user interface code for the robot controller.
 - **ros**: Contains ROS nodes and scripts for various functionalities including path planning, sensor fusion, and autonomous driving.
-- **machine_learning**: Contains machine learning models and scripts for robot navigation.
 
 ## Backend Server
 
