@@ -45,6 +45,7 @@ except Exception:  # pragma: no cover - handle missing library gracefully
         from rpi_ws281x import Adafruit_NeoPixel as PixelStrip, Color
     except Exception:
 
+
         PixelStrip = StubPixelStrip
         # Provide a minimal stub for environments without rpi_ws281x
         class PixelStrip:
@@ -62,7 +63,6 @@ except Exception:  # pragma: no cover - handle missing library gracefully
 
             def show(self):
                 pass
-
 
 
         def Color(r, g, b):
@@ -103,6 +103,7 @@ class LedControl:
             self.strip = strip
         except Exception as e:
             print(f"Warning: Failed to initialize LED strip: {e}")
+
             try:
                 del strip
             except UnboundLocalError:

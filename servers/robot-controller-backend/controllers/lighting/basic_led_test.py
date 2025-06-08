@@ -35,10 +35,12 @@ def run_test():
     led.rainbow(wait_ms=20, iterations=1)
 
     print("LED test complete.")
+
     # Explicitly delete the LED controller to ensure any underlying resources
     # are cleaned up before exiting. This helps avoid segfaults on some
     # platforms when the rpi_ws281x library fails to initialize.
     del led
+
 
 
 
