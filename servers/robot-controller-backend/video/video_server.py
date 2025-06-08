@@ -1,58 +1,151 @@
-# File: /Omega-Code/servers/robot-controller-backend/video/video_server.py
-
 """
-This script sets up a video streaming server using Flask. It captures video from a camera,
-detects faces in real-time, and streams the video to clients. The server runs on the 
-Tailscale IP specified in the .env file.
+📌 File: video/video_server.py
 
-Key functionalities:
-1. Load environment variables, including the Tailscale IP address.
-2. Initialize a Flask app to handle HTTP requests.
-3. Capture video from a connected camera.
-4. Detect faces in the video frames using Haar Cascades.
-5. Stream the video frames to connected clients via a Flask route.
-6. Capture a still image and save it to a file via a Flask route.
+💡 Summary:
+This module provides a Flask-based video streaming server that integrates:
+✅ Real-time video feed from the Raspberry Pi camera
+✅ Motion detection using frame difference analysis (see: video/motion_detection.py)
+✅ Object tracking with OpenCV (see: video/object_tracking.py)
+✅ Secure access via SSL (if enabled)
+✅ Local and Tailscale support for remote access
+✅ Optimized to handle CORS and Mixed Content issues
+
+🛠️ Features:
+- Streams video via an MJPEG stream
+- Highlights detected motion in real-time
+- Allows object tracking on a selected region
+- Supports SSL encryption for secure streaming
+- Enables CORS for frontend access
+- Runs efficiently on Raspberry Pi hardware
 """
-
-# File: /Omega-Code/servers/robot-controller-backend/video/video_server.py
 
 import os
 import cv2
-from flask import Flask, Response
+import logging
+from flask import Flask, Response, request
+from flask_cors import CORS  # Added for CORS support
 from dotenv import load_dotenv
+from video.camera import Camera
+from video.motion_detection import MotionDetector
+from video.object_tracking import ObjectTracker
 
+# Load environment variables
 load_dotenv('.env')
-TAILSCALE_IP_PI = os.getenv('TAILSCALE_IP_PI')
+PI_IP = os.getenv("PI_IP", "0.0.0.0")  # Default to 0.0.0.0 if not specified
+TAILSCALE_IP_PI = os.getenv("TAILSCALE_IP_PI", None)
 
+# SSL Configuration
+CERT_PATH = os.getenv("CERT_PATH", None)
+KEY_PATH = os.getenv("KEY_PATH", None)
+
+# Determine the appropriate IP to use
+HOST_IP = TAILSCALE_IP_PI if TAILSCALE_IP_PI else PI_IP
+
+# Flask Application
 app = Flask(__name__)
+CORS(app)  # Enable CORS to allow frontend access
 
-class VideoStreaming:
-    def __init__(self):
-        self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        self.capture = cv2.VideoCapture(0)
-        self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
-        self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+# Initialize camera and modules
+camera = Camera(device="/dev/video0", width=640, height=480)  # Explicitly define the device
+motion_detector = MotionDetector()
+tracker = ObjectTracker()
 
-    def generate(self):
-        while True:
-            ret, frame = self.capture.read()
-            if not ret:
-                continue
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = self.face_cascade.detectMultiScale(gray, 1.1, 4)
-            for (x, y, w, h) in faces:
-                cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
-            ret, buffer = cv2.imencode('.jpg', frame)
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+# Tracking state
+tracking_enabled = False
 
-video_stream = VideoStreaming()
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+
+def generate_frames():
+    """ 
+    Video streaming generator function.
+    Continuously captures frames, applies processing, and encodes them for streaming.
+    """
+    global tracking_enabled
+
+    while True:
+        frame = camera.get_frame()
+        if frame is None:
+            continue
+
+        # Apply motion detection
+        frame, motion_detected = motion_detector.detect_motion(frame)
+
+        # Apply object tracking if enabled
+        if tracking_enabled:
+            frame, tracking_active = tracker.update_tracking(frame)
+
+        # Encode frame in JPEG format
+        ret, buffer = cv2.imencode('.jpg', frame)
+        if not ret:
+            logging.error("❌ Error encoding frame to JPEG format.")
+            continue
+
+        frame = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
 
 @app.route('/video_feed')
 def video_feed():
-    return Response(video_stream.generate(),
+    """ 
+    Streams the video feed with motion detection & tracking.
+    The stream is accessible via an MJPEG-compatible player or browser.
+    """
+    return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
+
+@app.route('/start_tracking', methods=['POST'])
+def start_tracking():
+    """ 
+    Enables object tracking by selecting a bounding box. 
+    Requires a GUI display to manually select a tracking region.
+    """
+    global tracking_enabled
+    frame = camera.get_frame()
+
+    if frame is None:
+        logging.error("❌ Camera not available")
+        return "❌ Camera not available", 400
+
+    try:
+        logging.info("📌 Waiting for object selection...")
+
+        # Ensure a GUI is available for selection
+        if os.environ.get("DISPLAY"):
+            bbox = cv2.selectROI("Select Object to Track", frame, fromCenter=False)
+            if bbox and all(i > 0 for i in bbox):  # Validate bounding box
+                tracker.start_tracking(frame, bbox)
+                tracking_enabled = True
+                logging.info("✅ Tracking started.")
+                return "Tracking started", 200
+            else:
+                logging.warning("⚠️ No object selected.")
+                return "❌ No object selected", 400
+        else:
+            logging.warning("⚠️ No DISPLAY environment found, cannot use ROI selection.")
+            return "❌ No GUI available for object selection", 500
+
+    except Exception as e:
+        logging.error(f"⚠️ Error in object tracking: {e}")
+        return f"❌ Tracking failed: {e}", 500
+
+
 if __name__ == '__main__':
-    app.run(host=TAILSCALE_IP_PI, port=5000)
+    logging.info("🚀 Video server starting...")
+    logging.info(f"   🌐 Local: http://{PI_IP}:5000/video_feed")
+    if TAILSCALE_IP_PI:
+        logging.info(f"   🏴‍☠️ Tailscale: http://{TAILSCALE_IP_PI}:5000/video_feed")
+
+    # Start Flask server with optional SSL
+    try:
+        if CERT_PATH and KEY_PATH and os.path.exists(CERT_PATH) and os.path.exists(KEY_PATH):
+            logging.info("🔒 Running with SSL enabled!")
+            app.run(host=HOST_IP, port=5000, ssl_context=(CERT_PATH, KEY_PATH))
+        else:
+            logging.info("⚡ Running without SSL.")
+            app.run(host=HOST_IP, port=5000)
+    except Exception as e:
+        logging.error(f"🔥 Error starting video server: {e}")

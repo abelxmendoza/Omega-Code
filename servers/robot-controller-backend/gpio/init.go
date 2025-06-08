@@ -1,31 +1,18 @@
 // File: /Omega-Code/servers/robot-controller-backend/gpio/init.go
 
-/*
-Package gpio provides initialization functions for GPIO operations on both real and mock hardware.
-It includes functions for setting up GPIO interfaces and detecting the hardware type.
-*/
-
 package gpio
 
-import (
-    "runtime"
-    "github.com/stianeikeland/go-rpio/v4"
-)
+import "runtime"
 
-var (
-    GpioInterface GPIO
-    Low           rpio.State = 0
-    High          rpio.State = 1
-)
+// Global variable for GPIO interface
+var GpioInterface GPIO
 
 // InitGPIO initializes the GPIO interface based on the hardware type.
 func InitGPIO() {
     if isRunningOnRaspberryPi() {
-        GpioInterface = RealGPIO{}
-        Low = rpio.Low
-        High = rpio.High
+        GpioInterface = &RealGPIO{} // ✅ Fixed reference to RealGPIO
     } else {
-        GpioInterface = MockGPIO{}
+        GpioInterface = &MockGPIO{} // ✅ Fixed reference to MockGPIO
     }
 }
 

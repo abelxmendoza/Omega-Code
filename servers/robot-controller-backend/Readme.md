@@ -15,13 +15,14 @@ The project is organized into several directories and files:
 - **controllers**: Controllers for motors, servos, and line tracking.
 - **video**: Video streaming server.
 - **utils**: Utility scripts and helper classes.
-- **tests**: Unit tests.
+- **tests**: Contains unit, integration, and end-to-end tests.
 - **rust_module**: Rust integration for performance-critical tasks.
 - **__pycache__**: Python bytecode cache.
 - **venv**: Python virtual environment for dependencies.
 - **main.go**: Entry point of the backend server (Go).
 - **main.py**: Entry point of the backend server (Python).
 - **main_combined.go**: Starts the Python video server and ROS nodes before launching the Go server.
+
 - **server.csr**: Certificate Signing Request file.
 - **server.log**: Log file for server activities.
 - **go.mod**: Go module definitions.
@@ -61,7 +62,9 @@ The project is organized into several directories and files:
 
 ### Command Definitions
 
-- **Command Definitions**: `command_definitions.py` - Defines commands for the robot.
+
+ - **Command Definitions**: `command_definitions.py` - Defines commands for the robot.
+
 - **Command Processor**: `commands/command_processor.py` - Processes incoming commands.
 
 ### Video Server
@@ -99,19 +102,21 @@ The project is organized into several directories and files:
 
 ### Running the Project
 
-1. Start the backend server (Go):
+1. Start the backend server with Go:
 
    ```bash
    go run main.go
    ```
-2. Start the backend server (Python):
+   Or run the combined server:
 
    ```bash
+
     python main.py
     ```
 3. Start the Go server with the Python video server and ROS nodes:
 
    ```bash
+
    go run main_combined.go
    ```
 
@@ -148,32 +153,54 @@ PYTHONPATH=$(pwd) pytest tests/integration
 PYTHONPATH=$(pwd) pytest tests/e2e
 ```
 
-### CI/CD Integration
+## Raspberry Pi 5 Compatibility
+
+Omega-Code runs on the Raspberry Pi\&nbsp;5. The new board replaces the legacy `RPi.GPIO` interface used on the Pi\&nbsp;4\&nbsp;B with the `libgpiod` driver. Older scripts that import `RPi.GPIO` must be updated to use the `lgpio` package.
+
+Install `lgpio` using pip:
+
+```bash
+pip install lgpio
+```
+
+Grant the GPIO group access to the device before running the software:
+
+```bash
+sudo chown root:gpio /dev/gpiochip0
+sudo chmod g+rw /dev/gpiochip0
+```
+
+With these permissions in place, the rest of the project behaves just as it does on a Pi\&nbsp;4\&nbsp;B but benefits from the Pi\&nbsp;5's improved performance.
+
+## Testing
+
+This project includes a comprehensive test suite to ensure the functionality of the backend components.
+
+
+### Test Structure
+
+The tests are located in the `tests` directory with dedicated `unit`, `integration`, and `e2e` folders.
+
+### Running Tests
+
+To run the tests, follow these steps:
+
+```bash
+pip install -r requirements.txt
+export PYTHONPATH=$(pwd)
+pytest        # all tests
+pytest tests/unit        # unit tests
+pytest tests/integration # integration tests
+pytest tests/e2e         # end-to-end tests
+```
+
+Run tests with `pytest`.
+
 
 The tests are automatically run on each push to the master branch and on each pull request targeting the master branch using GitHub Actions. The CI/CD configuration can be found in the `.github/workflows/ci.yml` file.
 
 ### Test Descriptions
-
-- **led_control_test.py**: Tests for the LED control functionality.
-
-  - `test_color_wipe`: Tests the color wipe functionality.
-  - `test_theater_chase`: Tests the theater chase functionality.
-  - `test_rainbow`: Tests the rainbow functionality.
-  - `test_set_led_single`: Tests setting a single LED.
-  - `test_set_led_multi`: Tests setting multiple LEDs.
-  - `test_set_led_two`: Tests setting two LEDs.
-- **mock_pca9685_test.py**: Tests for the mock PCA9685 functionality.
-
-  - `test_set_pwm_freq`: Tests setting the PWM frequency.
-  - `test_set_servo_pulse`: Tests setting the servo pulse.
-- **servo_control_test.py**: Tests for the servo control functionality.
-
-  - `test_servo_initialization`: Tests the initialization of the servo.
-  - `test_set_servo_pwm_horizontal`: Tests setting the PWM for the horizontal servo.
-  - `test_set_servo_pwm_vertical`: Tests setting the PWM for the vertical servo.
-
-
-## Contributing
+The suite covers modules such as LED control, servo control, and the mock PCA9685. See the `tests` directory for details.
 
 Contributions are welcome! Please fork the repository and submit a pull request for any improvements or bug fixes.
 

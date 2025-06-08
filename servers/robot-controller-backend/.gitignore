@@ -7,3 +7,4 @@ certs/*.csr
 certs/*.pem
 certs/*.key
 certs/*.csr
+venv/

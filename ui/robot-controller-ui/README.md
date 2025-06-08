@@ -37,7 +37,7 @@ The project is organized into several directories:
 
 ### Control Panel
 
-- **Control Panel**: `src/components/ControlPanel.tsx` - Component for controlling robot movements.
+- **Car Control Panel**: `src/components/CarControlPanel.tsx` - Component for controlling robot movements.
 
 ### Speed Control
 
@@ -74,9 +74,21 @@ The project is organized into several directories:
 
 - **Color Wheel**: `src/components/ColorWheel.tsx` - Color selection using a color wheel.
 
+### Additional Components
+
+- **Sensor Dashboard**: `src/components/SensorDashboard.tsx` - Displays sensor readings in a unified view.
+- **Gps Location**: `src/components/GpsLocation.tsx` - Shows the robot's GPS coordinates.
+- **Map Component**: `src/components/MapComponent.tsx` - Renders a map for location tracking.
+- **Line Tracker Status**: `src/components/LineTrackerStatus.tsx` - Indicates line tracking sensor status.
+- **Ultrasonic Sensor Status**: `src/components/UltrasonicSensorStatus.tsx` - Shows distance measurements from the ultrasonic sensor.
+
 ## Styles
 
 - **Global Styles**: `src/styles/globals.css` - Global CSS styles for the project.
+
+## Redux Store
+
+- The Redux logic lives in `src/redux` and is initialized in `src/redux/store.ts`.
 
 ## Getting Started
 
@@ -104,6 +116,10 @@ The project is organized into several directories:
 ### Usage
 
 Open a web browser and navigate to `http://localhost:3000` to access the robot controller interface. Use the provided controls to send commands to the robot.
+
+## Testing
+
+Unit tests are written with Jest and located in the `tests` directory. End-to-end tests use Cypress and are found in the `cypress` folder.
 
 ## Contributing
 
