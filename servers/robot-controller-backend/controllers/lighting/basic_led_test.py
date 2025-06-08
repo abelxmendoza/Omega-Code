@@ -13,6 +13,7 @@ else:  # pragma: no cover - imported as package
     from .led_control import LedControl
 
 
+
 def run_test():
     """Run a simple sequence of LED patterns to verify functionality."""
     led = LedControl()
