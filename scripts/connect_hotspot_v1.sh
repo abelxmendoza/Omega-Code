@@ -6,8 +6,17 @@
 # Environment variables for the iPhone SSID, iPhone password, Tailscale IP, 
 # and Raspberry Pi user should be defined in a .env file.
 
-# Load environment variables from .env file
-export $(grep -v '^#' config/.env | xargs)
+# Determine the project root. Allow override via OMEGA_CODE_ROOT
+ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+# Load environment variables from the project's .env file
+ENV_FILE="$ROOT_DIR/config/.env"
+if [ -f "$ENV_FILE" ]; then
+    export $(grep -v '^#' "$ENV_FILE" | xargs)
+else
+    echo "Environment file not found: $ENV_FILE" >&2
+    exit 1
+fi
 
 # Function to connect to iPhone hotspot
 connect_to_hotspot() {

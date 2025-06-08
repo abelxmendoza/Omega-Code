@@ -1,8 +1,11 @@
 import os
 import re
+from pathlib import Path
 
 # Define the paths and the new directory structure
-base_path = "/Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend"
+PROJECT_ROOT = Path(os.environ.get("OMEGA_CODE_ROOT", Path(__file__).resolve().parents[1]))
+base_path = PROJECT_ROOT / "servers" / "robot-controller-backend"
+base_path = str(base_path)
 new_structure = {
     "commands": ["command_definitions.py", "command_processor.go"],
     "gpio": ["gpio_real.go", "gpio_mock.go", "gpio_simulator.py"],

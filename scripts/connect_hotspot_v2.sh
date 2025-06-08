@@ -5,8 +5,17 @@
 # and SSHs into the Raspberry Pi using Tailscale IP. It dynamically
 # adjusts settings based on the hostname of the machine (Laptop1-hostname or Laptop2-hostname).
 
+# Determine project root. Allow override via OMEGA_CODE_ROOT
+ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
 # Load environment variables from the specified .env file
-source config/.env.script2
+ENV_FILE="${ENV_FILE:-$ROOT_DIR/config/.env.script2}"
+if [ -f "$ENV_FILE" ]; then
+    source "$ENV_FILE"
+else
+    echo "Environment file not found: $ENV_FILE" >&2
+    exit 1
+fi
 
 # Get the hostname of the current machine
 HOSTNAME=$(hostname)

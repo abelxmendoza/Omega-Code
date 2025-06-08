@@ -27,19 +27,29 @@ start_jetson_nano_nodes() {
 # Function to start the UI on MacBook
 start_ui() {
     echo "Starting the UI..."
-    cd /Users/abel_elreaper/Desktop/Omega-Code/ui/robot-controller-ui
+    cd "$ROOT_DIR/ui/robot-controller-ui"
     npm start
 }
 
 # Function to start the Go backend server
 start_go_backend() {
     echo "Starting Go backend server..."
-    cd /Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend
+    cd "$ROOT_DIR/servers/robot-controller-backend"
     go run main_combined.go &
 }
 
 # Load environment variables from .env file
-source /Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend/.env
+# Determine project root. Allow override via OMEGA_CODE_ROOT
+ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+# Load environment variables from the backend .env file
+ENV_FILE="${ENV_FILE:-$ROOT_DIR/servers/robot-controller-backend/.env}"
+if [ -f "$ENV_FILE" ]; then
+    source "$ENV_FILE"
+else
+    echo "Environment file not found: $ENV_FILE" >&2
+    exit 1
+fi
 
 # Main script execution
 main() {

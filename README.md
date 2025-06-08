@@ -235,8 +235,15 @@ The repository includes a comprehensive set of tests organized into unit tests, 
    Create a `.env` file in the `servers/robot-controller-backend` directory with the following variables:
    ```env
    CERT_PATH=/path/to/cert.pem
-   KEY_PATH=/path/to/key.pem
-   ```
+  KEY_PATH=/path/to/key.pem
+  ```
+
+### Additional Environment Variables
+
+The helper scripts in `scripts/` and in the backend support an optional
+`OMEGA_CODE_ROOT` variable. Set this to the absolute path of the repository if
+the scripts cannot automatically determine it. You can also override the path to
+the backend `.env` file with the `ENV_FILE` variable when running these scripts.
 
 ### Running the Project
 
