@@ -44,7 +44,26 @@ except Exception:  # pragma: no cover - handle missing library gracefully
     try:
         from rpi_ws281x import Adafruit_NeoPixel as PixelStrip, Color
     except Exception:
+
         PixelStrip = StubPixelStrip
+        # Provide a minimal stub for environments without rpi_ws281x
+        class PixelStrip:
+            def __init__(self, num, pin, freq_hz, dma, invert, brightness, channel):
+                self._num = num
+
+            def begin(self):
+                pass
+
+            def numPixels(self):
+                return self._num
+
+            def setPixelColor(self, i, color):
+                pass
+
+            def show(self):
+                pass
+
+
 
         def Color(r, g, b):
             return (r << 16) | (g << 8) | b
@@ -69,6 +88,9 @@ class LedControl:
         self.ORDER = "RGB"  # Default color order
         try:
             strip = PixelStrip(
+
+            self.ORDER = "RGB"  # Default color order
+            self.strip = PixelStrip(
                 LED_COUNT,
                 LED_PIN,
                 LED_FREQ_HZ,
@@ -85,6 +107,7 @@ class LedControl:
                 del strip
             except UnboundLocalError:
                 pass
+
             self.strip = StubPixelStrip(
                 LED_COUNT,
                 LED_PIN,

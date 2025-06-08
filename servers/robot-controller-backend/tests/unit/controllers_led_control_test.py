@@ -26,6 +26,7 @@ class TestControllersLedControl(unittest.TestCase):
         led = lc.LedControl()
         self.assertTrue(isinstance(led.strip, lc.StubPixelStrip))
 
+
     def test_convert_color_valid(self):
         led = lc.LedControl()
         result = led._convert_color('RGB', 0x112233)
