@@ -17,8 +17,11 @@
 # - The MacBook must be paired with the iPhone via Bluetooth.
 # - The .env file must contain the iPhone’s Bluetooth MAC address.
 
-# Define the absolute path to the .env file
-ENV_FILE="/Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend/.env"
+# Determine project root. Allow override via OMEGA_CODE_ROOT
+ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+# Path to the .env file (can be overridden with ENV_FILE)
+ENV_FILE="${ENV_FILE:-$ROOT_DIR/servers/robot-controller-backend/.env}"
 
 # Load environment variables from .env file
 if [ -f "$ENV_FILE" ]; then

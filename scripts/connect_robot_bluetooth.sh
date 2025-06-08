@@ -5,8 +5,11 @@
 # This script connects both your **MacBook and Raspberry Pi (Omega1)** to the iPhone's Personal Hotspot via Bluetooth PAN.
 # Since macOS does not have `bt-network`, it uses `blueutil` instead.
 
-# Define the absolute path to the .env file
-ENV_FILE="/Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend/.env"
+# Determine project root. Allow override via OMEGA_CODE_ROOT
+ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+# Path to the .env file (can be overridden with ENV_FILE)
+ENV_FILE="${ENV_FILE:-$ROOT_DIR/servers/robot-controller-backend/.env}"
 
 # Load environment variables securely
 if [ -f "$ENV_FILE" ]; then
