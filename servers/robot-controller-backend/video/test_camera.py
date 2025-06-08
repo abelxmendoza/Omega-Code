@@ -1,6 +1,14 @@
-import cv2
+import warnings
+try:
+    import cv2  # type: ignore
+except ImportError:  # pragma: no cover
+    cv2 = None  # type: ignore
+    warnings.warn("OpenCV not installed. Camera test disabled.", ImportWarning)
 
 def test_camera():
+    if cv2 is None:
+        print("OpenCV not installed. Skipping camera test.")
+        return
     device = '/dev/video0'  # Correct device based on your previous outputs
     gst_str = f"v4l2src device={device} ! videoconvert ! appsink"
     

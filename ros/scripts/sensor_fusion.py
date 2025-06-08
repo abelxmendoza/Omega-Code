@@ -30,7 +30,12 @@ from sensor_msgs.msg import Image, Range
 from std_msgs.msg import Float32
 from cv_bridge import CvBridge
 import numpy as np
-import cv2
+import warnings
+try:
+    import cv2  # type: ignore
+except ImportError:  # pragma: no cover
+    cv2 = None  # type: ignore
+    warnings.warn("OpenCV not installed. Sensor fusion image processing disabled.", ImportWarning)
 
 class SensorFusion:
     def __init__(self):
@@ -45,6 +50,9 @@ class SensorFusion:
         self.latest_line_tracking = None
 
     def image_callback(self, data):
+        if cv2 is None:
+            rospy.logwarn("OpenCV not available, skipping image processing")
+            return
         self.latest_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
         self.fuse_sensors()
 
@@ -60,8 +68,9 @@ class SensorFusion:
         if self.latest_image is not None and self.latest_ultrasonic is not None and self.latest_line_tracking is not None:
             # Example of simple fusion: overlay ultrasonic and line tracking data on the image
             fused_image = self.latest_image.copy()
-            cv2.putText(fused_image, f'Ultrasonic: {self.latest_ultrasonic}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-            cv2.putText(fused_image, f'Line Tracking: {self.latest_line_tracking}', (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+            if cv2 is not None:
+                cv2.putText(fused_image, f'Ultrasonic: {self.latest_ultrasonic}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                cv2.putText(fused_image, f'Line Tracking: {self.latest_line_tracking}', (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
 
             # Publish the fused data as an image
             fused_msg = self.bridge.cv2_to_imgmsg(fused_image, "bgr8")

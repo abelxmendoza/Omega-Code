@@ -11,7 +11,12 @@ It compares consecutive frames to identify motion and highlights areas where mov
 - Adjustable sensitivity for motion detection.
 """
 
-import cv2
+import warnings
+try:
+    import cv2  # type: ignore
+except ImportError:  # pragma: no cover
+    cv2 = None  # type: ignore
+    warnings.warn("OpenCV not installed. Motion detection disabled.", ImportWarning)
 import numpy as np
 
 class MotionDetector:
@@ -21,6 +26,8 @@ class MotionDetector:
 
     def detect_motion(self, frame):
         """ Detect motion by comparing current frame with the previous one. """
+        if cv2 is None:
+            return frame, False
         if frame is None:
             print("❌ No frame captured")
             return frame, False  # Return original frame with no motion detected

@@ -2,10 +2,15 @@
 
 import unittest
 from unittest.mock import patch, MagicMock
+try:
+    import cv2  # type: ignore
+except ImportError:  # pragma: no cover
+    cv2 = None  # type: ignore
 import rospy
 from scripts.camera_publisher import publish_camera
 
 class TestCameraPublisher(unittest.TestCase):
+    @unittest.skipIf(cv2 is None, "OpenCV not installed")
     @patch('scripts.camera_publisher.cv2.VideoCapture')
     @patch('scripts.camera_publisher.CvBridge')
     @patch('scripts.camera_publisher.rospy.Publisher')

@@ -2,6 +2,10 @@
 
 import unittest
 from unittest.mock import patch, MagicMock
+try:
+    import cv2  # type: ignore
+except ImportError:  # pragma: no cover
+    cv2 = None  # type: ignore
 import rospy
 from std_msgs.msg import Int32MultiArray, Float32
 from sensor_msgs.msg import Image
@@ -13,6 +17,7 @@ class TestROSIntegration(unittest.TestCase):
         self.line_pub = rospy.Publisher('line_tracking/data', Int32MultiArray, queue_size=10)
         self.ultrasonic_pub = rospy.Publisher('ultrasonic/distance', Float32, queue_size=10)
 
+    @unittest.skipIf(cv2 is None, "OpenCV not installed")
     @patch('scripts.camera_publisher.cv2.VideoCapture')
     @patch('scripts.camera_publisher.CvBridge')
     @patch('scripts.line_tracking_publisher.GPIO.input', side_effect=[1, 0, 1])

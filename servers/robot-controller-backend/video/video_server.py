@@ -20,7 +20,13 @@ This module provides a Flask-based video streaming server that integrates:
 """
 
 import os
-import cv2
+import time
+import warnings
+try:
+    import cv2  # type: ignore
+except ImportError:  # pragma: no cover
+    cv2 = None  # type: ignore
+    warnings.warn("OpenCV not installed. Video streaming disabled.", ImportWarning)
 import logging
 from flask import Flask, Response, request
 from flask_cors import CORS  # Added for CORS support
@@ -64,6 +70,12 @@ def generate_frames():
     """
     global tracking_enabled
 
+    if cv2 is None:
+        logging.warning("OpenCV not installed. No video frames will be generated.")
+        while True:
+            time.sleep(1)
+            yield (b'')
+
     while True:
         frame = camera.get_frame()
         if frame is None:
@@ -106,15 +118,15 @@ def start_tracking():
     global tracking_enabled
     frame = camera.get_frame()
 
-    if frame is None:
-        logging.error("❌ Camera not available")
+    if frame is None or cv2 is None:
+        logging.error("❌ Camera or OpenCV not available")
         return "❌ Camera not available", 400
 
     try:
         logging.info("📌 Waiting for object selection...")
 
         # Ensure a GUI is available for selection
-        if os.environ.get("DISPLAY"):
+        if os.environ.get("DISPLAY") and cv2 is not None:
             bbox = cv2.selectROI("Select Object to Track", frame, fromCenter=False)
             if bbox and all(i > 0 for i in bbox):  # Validate bounding box
                 tracker.start_tracking(frame, bbox)
