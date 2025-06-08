@@ -15,12 +15,12 @@ The project is organized into several directories and files:
 - **controllers**: Controllers for motors, servos, and line tracking.
 - **video**: Video streaming server.
 - **utils**: Utility scripts and helper classes.
-- **tests**: Unit tests.
+- **tests**: Contains unit, integration, and end-to-end tests.
 - **rust_module**: Rust integration for performance-critical tasks.
 - **__pycache__**: Python bytecode cache.
 - **venv**: Python virtual environment for dependencies.
 - **main.go**: Entry point of the backend server (Go).
-- **main.py**: Entry point of the backend server (Python).
+- **main_combined.go**: Starts the server along with the Python video server and ROS nodes.
 - **server.csr**: Certificate Signing Request file.
 - **server.log**: Log file for server activities.
 - **go.mod**: Go module definitions.
@@ -60,7 +60,9 @@ The project is organized into several directories and files:
 
 ### Command Definitions
 
+
  - **Command Definitions**: `command_definitions.py` - Defines commands for the robot.
+
 - **Command Processor**: `commands/command_processor.py` - Processes incoming commands.
 
 ### Video Server
@@ -98,15 +100,15 @@ The project is organized into several directories and files:
 
 ### Running the Project
 
-1. Start the backend server (Go):
+1. Start the backend server with Go:
 
    ```bash
    go run main.go
    ```
-2. Start the backend server (Python):
+   Or run the combined server:
 
    ```bash
-   python main.py
+   go run main_combined.go
    ```
 
 ### Usage
@@ -138,66 +140,28 @@ This project includes a comprehensive test suite to ensure the functionality of 
 
 ### Test Structure
 
-The tests are located in the `tests` directory and are organized as follows:
-
-- `led_control_test.py`: Tests for the LED control functionality.
-- `mock_pca9685_test.py`: Tests for the mock PCA9685 functionality.
-- `servo_control_test.py`: Tests for the servo control functionality.
+The tests are located in the `tests` directory with dedicated `unit`, `integration`, and `e2e` folders.
 
 ### Running Tests
 
 To run the tests, follow these steps:
 
-* Ensure you have all dependencies installed. You can install them using the provided `requirements.txt` file.
+```bash
+pip install -r requirements.txt
+export PYTHONPATH=$(pwd)
+pytest        # all tests
+pytest tests/unit        # unit tests
+pytest tests/integration # integration tests
+pytest tests/e2e         # end-to-end tests
+```
 
-  ```bash
-  pip install -r requirements.txt
-  ```
-* Set the PYTHONPATH to the current directory and run pytest.
+Run tests with `pytest`.
 
-  ```
-  export PYTHONPATH=$(pwd)
-  pytest
-  ```
-
-======================= test session starts =======================
-platform darwin -- Python 3.10.8, pytest-8.2.2, pluggy-1.5.0
-rootdir: /Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend
-plugins: mock-3.14.0
-collected 11 items
-
-tests/led_control_test.py ......                            [ 54%]
-tests/mock_pca9685_test.py ..                               [ 72%]
-tests/servo_control_test.py ...                             [100%]
-
-================== 11 passed in 295.62s (0:04:55) ==================
-
-### CI/CD Integration
 
 The tests are automatically run on each push to the master branch and on each pull request targeting the master branch using GitHub Actions. The CI/CD configuration can be found in the `.github/workflows/ci.yml` file.
 
 ### Test Descriptions
-
-- **led_control_test.py**: Tests for the LED control functionality.
-
-  - `test_color_wipe`: Tests the color wipe functionality.
-  - `test_theater_chase`: Tests the theater chase functionality.
-  - `test_rainbow`: Tests the rainbow functionality.
-  - `test_set_led_single`: Tests setting a single LED.
-  - `test_set_led_multi`: Tests setting multiple LEDs.
-  - `test_set_led_two`: Tests setting two LEDs.
-- **mock_pca9685_test.py**: Tests for the mock PCA9685 functionality.
-
-  - `test_set_pwm_freq`: Tests setting the PWM frequency.
-  - `test_set_servo_pulse`: Tests setting the servo pulse.
-- **servo_control_test.py**: Tests for the servo control functionality.
-
-  - `test_servo_initialization`: Tests the initialization of the servo.
-  - `test_set_servo_pwm_horizontal`: Tests setting the PWM for the horizontal servo.
-  - `test_set_servo_pwm_vertical`: Tests setting the PWM for the vertical servo.
-
-
-## Contributing
+The suite covers modules such as LED control, servo control, and the mock PCA9685. See the `tests` directory for details.
 
 Contributions are welcome! Please fork the repository and submit a pull request for any improvements or bug fixes.
 

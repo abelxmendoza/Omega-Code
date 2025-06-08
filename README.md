@@ -10,6 +10,7 @@ Omega-Code is a comprehensive project aimed at developing a fully-featured robot
 
 The project is organized into several directories:
 
+
 - **config** (removed): Configuration is now handled through environment
   variables and `.env` files such as `.env.example` in the repository root.
 - **scripts**: Contains shell scripts for connecting to a hotspot.
@@ -42,7 +43,7 @@ The backend server, written in Go, handles incoming HTTP and WebSocket requests 
 ### Main Application
 
 - **Main Application (Go)**: `main.go` - Entry point of the backend server.
-- **Main Application (Python)**: `main.py` - Entry point of the Python backend server.
+- **Combined Application (Go)**: `main_combined.go` - Starts the Go server along with the Python video server and ROS nodes.
 
 ### Line Tracking
 
@@ -58,7 +59,7 @@ The backend server, written in Go, handles incoming HTTP and WebSocket requests 
 
 ### Command Definitions
 
- - **Command Definitions**: `command_definitions.py` - Defines commands for the robot.
+- **Command Definitions**: `command_definitions.py` - Defines commands for the robot.
 
 ### Mock PCA9685
 
@@ -99,7 +100,7 @@ The frontend UI, built with Next.js and React, provides a web-based interface fo
 
 ### Control Panel
 
-- **Control Panel**: `src/components/ControlPanel.tsx` - Component for controlling robot movements.
+- **Control Panel**: `src/components/CarControlPanel.tsx` - Component for controlling the car's movements.
 
 ### Speed Control
 
@@ -251,7 +252,7 @@ The repository includes a comprehensive set of tests organized into unit tests, 
 
 ### Usage
 
-Open a web browser and navigate to `https://localhost:3000` to access the robot controller interface. Use the provided controls to send commands to the robot.
+Open a web browser and navigate to `http://localhost:3000` to access the robot controller interface. If you have configured HTTPS, use `https://localhost:3000` instead. Use the provided controls to send commands to the robot.
 
 ## Raspberry Pi 5 Compatibility
 
@@ -283,8 +284,6 @@ Special thanks to Freenove for providing the **Freenove 4WD Smart Car Kit for Ra
 
 > A 4WD smart car kit for Raspberry Pi.
 
-![Freenove](Picture/icon.png)
-![Freenove](Picture/icon1.png)
 
 #### Download
 
