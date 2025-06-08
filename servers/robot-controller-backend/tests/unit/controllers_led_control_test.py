@@ -19,12 +19,14 @@ class TestControllersLedControl(unittest.TestCase):
         )
         instance.begin.assert_called_once()
 
+
     @patch('controllers.lighting.led_control.PixelStrip')
     def test_init_falls_back_to_stub_on_error(self, MockStrip):
         instance = MockStrip.return_value
         instance.begin.side_effect = RuntimeError('boom')
         led = lc.LedControl()
         self.assertTrue(isinstance(led.strip, lc.StubPixelStrip))
+
 
     def test_convert_color_valid(self):
         led = lc.LedControl()
