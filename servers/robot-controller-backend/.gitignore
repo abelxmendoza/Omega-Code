@@ -1,9 +1,7 @@
 # Backend .gitignore
+
 .env
-certs/*.pem
-certs/*.key
-certs/*.csr
-.env
+server.log
 certs/*.pem
 certs/*.key
 certs/*.csr
