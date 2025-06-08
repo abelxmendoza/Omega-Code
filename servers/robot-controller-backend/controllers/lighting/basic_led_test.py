@@ -2,7 +2,16 @@
 
 import time
 
-from .led_control import LedControl
+import os
+import sys
+
+if __package__ in (None, ""):
+    # Support running as a standalone script
+    sys.path.append(os.path.dirname(__file__))
+    from led_control import LedControl
+else:  # pragma: no cover - imported as package
+    from .led_control import LedControl
+
 
 
 def run_test():
