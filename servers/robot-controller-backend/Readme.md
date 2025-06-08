@@ -21,6 +21,7 @@ The project is organized into several directories and files:
 - **venv**: Python virtual environment for dependencies.
 - **main.go**: Entry point of the backend server (Go).
 - **main.py**: Entry point of the backend server (Python).
+- **main_combined.go**: Starts the Python video server and ROS nodes before launching the Go server.
 - **server.csr**: Certificate Signing Request file.
 - **server.log**: Log file for server activities.
 - **go.mod**: Go module definitions.
@@ -106,7 +107,12 @@ The project is organized into several directories and files:
 2. Start the backend server (Python):
 
    ```bash
-   python main.py
+    python main.py
+    ```
+3. Start the Go server with the Python video server and ROS nodes:
+
+   ```bash
+   go run main_combined.go
    ```
 
 ### Usage
@@ -119,39 +125,28 @@ This project includes a comprehensive test suite to ensure the functionality of 
 
 ### Test Structure
 
-The tests are located in the `tests` directory and are organized as follows:
+All tests live in the `tests` directory:
 
-- `led_control_test.py`: Tests for the LED control functionality.
-- `mock_pca9685_test.py`: Tests for the mock PCA9685 functionality.
-- `servo_control_test.py`: Tests for the servo control functionality.
+- `tests/unit` - unit tests for individual backend components.
+- `tests/integration` - integration tests covering interactions between modules.
+- `tests/e2e` - end-to-end tests that exercise the full system.
 
 ### Running Tests
 
-To run the tests, follow these steps:
+Install dependencies and run `pytest` with the desired test directory. Examples:
 
-* Ensure you have all dependencies installed. You can install them using the provided `requirements.txt` file.
+```bash
+pip install -r requirements.txt
 
-  ```bash
-  pip install -r requirements.txt
-  ```
-* Set the PYTHONPATH to the current directory and run pytest.
+# run unit tests
+PYTHONPATH=$(pwd) pytest tests/unit
 
-  ```
-  export PYTHONPATH=$(pwd)
-  pytest
-  ```
+# run integration tests
+PYTHONPATH=$(pwd) pytest tests/integration
 
-======================= test session starts =======================
-platform darwin -- Python 3.10.8, pytest-8.2.2, pluggy-1.5.0
-rootdir: /Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend
-plugins: mock-3.14.0
-collected 11 items
-
-tests/led_control_test.py ......                            [ 54%]
-tests/mock_pca9685_test.py ..                               [ 72%]
-tests/servo_control_test.py ...                             [100%]
-
-================== 11 passed in 295.62s (0:04:55) ==================
+# run end-to-end tests
+PYTHONPATH=$(pwd) pytest tests/e2e
+```
 
 ### CI/CD Integration
 
