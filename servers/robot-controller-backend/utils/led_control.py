@@ -7,5 +7,6 @@ class Led(LedControl):
     colorWipe = LedControl.color_wipe
     theaterChase = LedControl.theater_chase
     setLed = LedControl.set_led
-    LED_TYPR = LedControl._convert_color
+    # Preserve legacy attribute name for compatibility
+    LED_TYPE = LedControl._convert_color
 
