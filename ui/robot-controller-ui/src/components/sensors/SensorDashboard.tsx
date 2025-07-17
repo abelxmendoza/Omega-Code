@@ -1,14 +1,15 @@
-/*
-# File: sr./components/sensors/SensorDashboard.tsx
+// File: src/components/sensors/SensorDashboard.tsx
 
-# Summary:
-This component serves as a dashboard displaying real-time sensor data:
-- **Line tracking** status.
-- **Ultrasonic sensor distances** in multiple units (cm, m, in, ft).
-
-- Establishes a WebSocket connection to the server.
-- Updates data dynamically for both line tracking and ultrasonic sensors.
-*/
+/**
+ * SensorDashboard Component
+ * 
+ * Displays real-time sensor data received over WebSocket:
+ * - Line Tracking Sensor (IR01, IR02, IR03)
+ * - Ultrasonic Sensor (distance in cm, m, inches, feet)
+ * 
+ * Automatically connects to the backend server via WebSocket
+ * and updates UI upon receiving sensor events.
+ */
 
 import React, { useEffect, useState, useRef } from 'react';
 
@@ -26,14 +27,12 @@ interface UltrasonicData {
 }
 
 const SensorDashboard: React.FC = () => {
-  // State to store line tracking sensor data
   const [lineTrackingData, setLineTrackingData] = useState<LineTrackingData>({
     IR01: 0,
     IR02: 0,
     IR03: 0,
   });
 
-  // State to store ultrasonic sensor data
   const [ultrasonicData, setUltrasonicData] = useState<UltrasonicData>({
     distance_cm: 0,
     distance_m: 0,
@@ -41,64 +40,61 @@ const SensorDashboard: React.FC = () => {
     distance_feet: 0,
   });
 
-  const ws = useRef<WebSocket | null>(null); // WebSocket reference for live updates
+  const ws = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    // Establish WebSocket connection
-    ws.current = new WebSocket('ws://192.168.1.134:8080/ultrasonic'); // Update the IP address as needed
+    const LOCAL_WS_URL = process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_LOCAL || 'ws://192.168.1.134:8080/ultrasonic';
+    const TAILSCALE_WS_URL = process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_TAILSCALE || 'ws://100.93.225.61:8080/ultrasonic';
+
+    // Prioritize Tailscale, fallback to local
+    const selectedWSUrl = TAILSCALE_WS_URL || LOCAL_WS_URL;
+    ws.current = new WebSocket(selectedWSUrl);
 
     ws.current.onopen = () => {
-      console.log('WebSocket connection established');
+      console.log(`🔌 WebSocket connected: ${selectedWSUrl}`);
     };
 
     ws.current.onmessage = (event) => {
-      const data = JSON.parse(event.data); // Parse incoming JSON data
+      const data = JSON.parse(event.data);
       if (data.lineTracking) {
-        setLineTrackingData(data.lineTracking); // Update line tracking data
+        setLineTrackingData(data.lineTracking);
       }
       if (data.distance_cm !== undefined) {
-        setUltrasonicData(data); // Update ultrasonic sensor data
+        setUltrasonicData(data);
       }
     };
 
     ws.current.onclose = () => {
-      console.log('WebSocket connection closed');
+      console.log('❌ WebSocket connection closed');
     };
 
     ws.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      console.error('⚠️ WebSocket error:', error);
     };
 
-    // Cleanup on component unmount
     return () => {
-      if (ws.current) {
-        ws.current.close();
-      }
+      ws.current?.close();
     };
   }, []);
 
   return (
     <div className="sensor-dashboard bg-gray-800 text-white p-4 rounded-lg shadow-md max-w-6xl mx-auto">
-      {/* Dashboard Header */}
       <h2 className="text-lg font-bold mb-4 text-center">Sensor Dashboard</h2>
 
-      {/* Sensor Data Grid */}
       <div className="sensor-container grid grid-cols-1 sm:grid-cols-2 gap-6">
-        {/* Line Tracking Sensor Data */}
         <div className="line-tracking bg-gray-900 p-4 rounded-lg shadow-lg">
-          <strong className="block text-sm mb-2 underline">Line Tracking:</strong>
+          <strong className="block text-sm mb-2 underline">Line Tracking Sensor</strong>
           <p>IR01: {lineTrackingData.IR01}</p>
           <p>IR02: {lineTrackingData.IR02}</p>
           <p>IR03: {lineTrackingData.IR03}</p>
         </div>
 
-        {/* Ultrasonic Sensor Data */}
         <div className="ultrasonic-distance bg-gray-900 p-4 rounded-lg shadow-lg">
-          <strong className="block text-sm mb-2 underline">Ultrasonic Distance:</strong>
-          <p>Distance: {ultrasonicData.distance_cm} cm</p>
-          <p>Distance: {ultrasonicData.distance_m.toFixed(2)} m</p>
-          <p>Distance: {ultrasonicData.distance_inch.toFixed(2)} inches</p>
-          <p>Distance: {ultrasonicData.distance_feet.toFixed(2)} feet</p>
+          <strong className="block text-sm mb-2 underline">Ultrasonic Distance</strong>
+          <p>{ultrasonicData.distance_cm} cm</p>
+          <p>{ultrasonicData.distance_m.toFixed(2)} m</p>
+          <p>{ultrasonicData.distance_inch.toFixed(2)} inches</p>
+          <p>{ultrasonicData.distance_feet.toFixed(2)} feet</p>
         </div>
       </div>
     </div>

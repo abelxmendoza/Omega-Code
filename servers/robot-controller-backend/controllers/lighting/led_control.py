@@ -1,5 +1,6 @@
 # File: /Omega-Code/servers/robot-controller-backend/controllers/lighting/led_control.py
 
+
 """
 LED Control Script
 
@@ -252,3 +253,4 @@ if __name__ == "__main__":
         led_control.set_led(color, mode, pattern, interval)
     except Exception as e:
         print(f"Error: {e}")
+
