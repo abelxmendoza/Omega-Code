@@ -1,51 +1,57 @@
-"""Basic LED functionality test script."""
+"""
+LED Test Script for WS2812/WS2811 Strips (NeoPixels)
 
-import time
+This script serves as a standalone utility to verify LED functionality for addressable RGB LED strips
+driven by the rpi_ws281x library. It interfaces with the LedController module to apply solid colors
+or run a predefined color test sequence.
 
-import os
+Usage:
+- Run with a named color argument (e.g., `python basic_led_test.py red`)
+- Run with RGB values (e.g., `python basic_led_test.py 255 128 64`)
+- Run without arguments to cycle through red, green, and blue automatically
+
+Supported Colors:
+- Named: red, green, blue, off
+- RGB: three integer values from 0–255
+
+File Location:
+~/Omega-Code/servers/robot-controller-backend/controllers/lighting/basic_led_test.py
+"""
+
+from led_control import LedController
+from rpi_ws281x import Color
 import sys
 
-if __package__ in (None, ""):
-    # Support running as a standalone script
-    sys.path.append(os.path.dirname(__file__))
-    from led_control import LedControl
-else:  # pragma: no cover - imported as package
-    from .led_control import LedControl
-
-
-def run_test():
-    """Run a simple sequence of LED patterns to verify functionality."""
-    led = LedControl()
-
-    print("Starting LED functionality test. Press Ctrl+C to exit.")
-
-    # Cycle through primary colors with a color wipe effect
-    colors = [0xFF0000, 0x00FF00, 0x0000FF]
-    for color in colors:
-        print(f"Color wipe: {color:#06x}")
-        led.color_wipe(color, wait_ms=100)
-        time.sleep(0.5)
-
-    # Theater chase effect with white color
-    print("Theater chase")
-    led.theater_chase(0xFFFFFF, wait_ms=50, iterations=5)
-
-    # Rainbow cycle
-    print("Rainbow")
-    led.rainbow(wait_ms=20, iterations=1)
-
-    print("LED test complete.")
-
-    # Explicitly delete the LED controller to ensure any underlying resources
-    # are cleaned up before exiting. This helps avoid segfaults on some
-    # platforms when the rpi_ws281x library fails to initialize.
-    del led
-
-
-
-
 if __name__ == "__main__":
-    try:
-        run_test()
-    except KeyboardInterrupt:
-        print("Test interrupted by user.")
+    led = LedController()
+
+    if len(sys.argv) == 2:
+        # Named color mode
+        c = sys.argv[1].lower()
+        if c == 'red':
+            led.color_wipe(Color(255, 0, 0))
+        elif c == 'green':
+            led.color_wipe(Color(0, 255, 0))
+        elif c == 'blue':
+            led.color_wipe(Color(0, 0, 255))
+        elif c == 'off':
+            led.color_wipe(Color(0, 0, 0))
+        else:
+            print("Invalid color. Use: red, green, blue, or off.")
+            sys.exit(1)
+
+    elif len(sys.argv) == 4:
+        # RGB mode
+        try:
+            r = int(sys.argv[1])
+            g = int(sys.argv[2])
+            b = int(sys.argv[3])
+            led.color_wipe(Color(r, g, b))
+        except ValueError:
+            print("Invalid RGB values. Please provide integers from 0 to 255.")
+            sys.exit(1)
+
+    else:
+        print("🚦 Starting LED functionality test. Press Ctrl+C to exit.")
+        led.test_colors()
+        print("✅ LED test complete.")
