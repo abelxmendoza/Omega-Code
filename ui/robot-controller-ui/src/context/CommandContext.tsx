@@ -93,45 +93,55 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
    * Establishes and manages the WebSocket connection lifecycle.
    */
   useEffect(() => {
-    ws.current = new WebSocket(wsUrl);
+    const connectWebSocket = () => {
+      ws.current = new WebSocket(wsUrl);
 
-    ws.current.onopen = () => {
-      console.log('[WebSocket] Connected');
-      addCommand('WebSocket connected');
-    };
+      ws.current.onopen = () => {
+        console.log('[WebSocket] Connected');
+        addCommand('WebSocket connected');
+      };
 
-    ws.current.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.command) {
-          addCommand(`Received: ${data.command}`);
-        } else {
-          console.warn('[WebSocket] Unrecognized message:', event.data);
+      ws.current.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.command) {
+            addCommand(`Received: ${data.command}`);
+          } else {
+            console.warn('[WebSocket] Unrecognized message:', event.data);
+          }
+        } catch (error) {
+          console.error('[WebSocket] Error parsing message:', error);
         }
-      } catch (error) {
-        console.error('[WebSocket] Error parsing message:', error);
-      }
+      };
+
+      ws.current.onclose = () => {
+        console.warn('[WebSocket] Disconnected. Attempting to reconnect...');
+        addCommand('WebSocket disconnected');
+        setTimeout(() => {
+          if (!ws.current || ws.current.readyState === WebSocket.CLOSED) {
+            connectWebSocket();
+          }
+        }, 2000); // Retry connection after 2 seconds
+      };
+
+      ws.current.onerror = (event: Event) => {
+        console.error('[WebSocket] Error:', event);
+
+        const errMsg =
+          event instanceof ErrorEvent ? event.message : 'Unknown WebSocket error';
+
+        addCommand(`WebSocket error: ${errMsg}`);
+      };
     };
 
-    ws.current.onclose = () => {
-      console.warn('[WebSocket] Disconnected. Attempting to reconnect...');
-      addCommand('WebSocket disconnected');
-      setTimeout(() => {
-        if (!ws.current || ws.current.readyState === WebSocket.CLOSED) {
-          ws.current = new WebSocket(wsUrl);
-        }
-      }, 2000); // Retry connection after 2 seconds
-    };
-
-    ws.current.onerror = (error) => {
-      console.error('[WebSocket] Error:', error);
-      addCommand(`WebSocket error: ${error.message || 'Unknown error'}`);
-    };
+    connectWebSocket();
 
     // Cleanup WebSocket connection on component unmount
     return () => {
-      ws.current?.close();
-      addCommand('WebSocket connection closed during cleanup');
+      if (ws.current) {
+        ws.current.close();
+        addCommand('WebSocket connection closed during cleanup');
+      }
     };
   }, [wsUrl]);
 

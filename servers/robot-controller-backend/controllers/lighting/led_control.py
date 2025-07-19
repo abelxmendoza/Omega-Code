@@ -1,3 +1,6 @@
+# File: /Omega-Code/servers/robot-controller-backend/controllers/lighting/led_control.py
+
+
 """
 LED Control Module for WS2812/WS2811 Strips (NeoPixels)
 
@@ -58,6 +61,71 @@ class LedController:
         Test red, green, and blue colors sequentially across the strip.
         Turns the LEDs off afterward.
         """
+        for j in range(256 * iterations):
+            for i in range(self.strip.numPixels()):
+                self.strip.setPixelColor(i, self._wheel((i + j) & 255))
+            self.strip.show()
+            time.sleep(wait_ms / 1000.0)
+
+    def _wheel(self, pos):
+        """
+        Generates rainbow colors for a given position.
+
+        Args:
+            pos (int): Position in the color wheel (0-255).
+
+        Returns:
+            int: 24-bit RGB color value.
+        """
+        if pos < 0 or pos > 255:
+            return Color(0, 0, 0)
+        elif pos < 85:
+            return Color(pos * 3, 255 - pos * 3, 0)
+        elif pos < 170:
+            pos -= 85
+            return Color(255 - pos * 3, 0, pos * 3)
+        else:
+            pos -= 170
+            return Color(0, pos * 3, 255 - pos * 3)
+
+    def set_led(self, color, mode, pattern, interval):
+        """
+        Configures LED color and pattern.
+
+        Args:
+            color (int): 24-bit RGB color value.
+            mode (str): Mode ('single', 'multi', etc.).
+            pattern (str): Pattern type.
+            interval (int): Delay for dynamic patterns.
+        """
+        try:
+            if mode == "single":
+                self.color_wipe(color)
+            elif mode == "multi":
+                self.theater_chase(color, wait_ms=interval)
+            elif mode == "two":
+                self.rainbow(wait_ms=interval)
+            else:
+                print(f"Invalid mode: {mode}")
+        except Exception as e:
+            print(f"Failed to set LED: {e}")
+
+if __name__ == "__main__":
+    if len(sys.argv) != 5:
+        print("Usage: python3 led_control.py <color> <mode> <pattern> <interval>")
+        sys.exit(1)
+
+    try:
+        color = int(sys.argv[1], 16)
+        mode = sys.argv[2]
+        pattern = sys.argv[3]
+        interval = int(sys.argv[4])
+
+        led_control = LedControl()
+        led_control.set_led(color, mode, pattern, interval)
+    except Exception as e:
+        print(f"Error: {e}")
+
         print("➡️ Red")
         self.color_wipe(Color(255, 0, 0))
         time.sleep(1)
