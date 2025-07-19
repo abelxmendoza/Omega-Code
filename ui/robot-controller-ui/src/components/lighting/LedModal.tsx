@@ -1,7 +1,9 @@
 /*
-# File: /src/components/lighting/LedModal.tsx
+# File: /Omega-Code/ui/robot-controller-ui/src/components/lighting/LedModal.tsx
 # Summary:
-Provides a modal interface for controlling LED settings on the robot. Users can configure color, mode, pattern, and interval settings, and send these configurations to the backend via WebSocket.
+Modal interface for controlling LED lighting on the robot. Supports single and two-color modes,
+pattern selection, brightness control, and interval configuration for dynamic patterns.
+Sends configuration to the backend via WebSocket.
 */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -14,59 +16,55 @@ interface LedModalProps {
 }
 
 const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
-  const [color, setColor] = useState('#ffffff'); // Selected color state
-  const [mode, setMode] = useState(LIGHTING_MODES[0]); // Selected mode state
-  const [pattern, setPattern] = useState(LIGHTING_PATTERNS[0]); // Selected pattern state
-  const [interval, setInterval] = useState(1000); // Interval for dynamic patterns (ms)
+  const [color1, setColor1] = useState('#ffffff');
+  const [color2, setColor2] = useState('#000000');
+  const [mode, setMode] = useState(LIGHTING_MODES[0]);
+  const [pattern, setPattern] = useState(LIGHTING_PATTERNS[0]);
+  const [interval, setInterval] = useState(1000);
+  const [brightness, setBrightness] = useState(100); // 0–100%
   const ws = useRef<WebSocket | null>(null);
-  const wsUrl = process.env.NEXT_PUBLIC_BACKEND_WS_URL || 'ws://localhost:8080/ws'; // WebSocket URL
+  const wsUrl = process.env.NEXT_PUBLIC_BACKEND_WS_URL || 'ws://localhost:8080/ws';
 
-  // Initialize WebSocket connection
   useEffect(() => {
     ws.current = new WebSocket(wsUrl);
-
     ws.current.onopen = () => console.log('WebSocket connection established');
     ws.current.onclose = () => console.log('WebSocket connection closed');
     ws.current.onerror = (error) => console.error('WebSocket error:', error);
-
-    return () => ws.current?.close(); // Clean up WebSocket connection
+    return () => ws.current?.close();
   }, [wsUrl]);
 
-  // Handle color picker changes
-  const handleColorChange = (color: any) => {
-    setColor(color.hex);
-  };
-
-  // Handle mode dropdown changes
-  const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setMode(e.target.value);
-  };
-
-  // Handle pattern dropdown changes
-  const handlePatternChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setPattern(e.target.value);
-  };
-
-  // Handle interval input changes
+  const handleColor1Change = (color: any) => setColor1(color.hex);
+  const handleColor2Change = (color: any) => setColor2(color.hex);
+  const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => setMode(e.target.value);
+  const handlePatternChange = (e: React.ChangeEvent<HTMLSelectElement>) => setPattern(e.target.value);
   const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(e.target.value);
-    if (value >= 100) {
-      setInterval(value);
-    } else {
-      console.warn('Interval must be at least 100 ms.');
-    }
+    if (value >= 100) setInterval(value);
+    else console.warn('Interval must be at least 100 ms.');
+  };
+  const handleBrightnessChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value);
+    if (value >= 0 && value <= 100) setBrightness(value);
   };
 
-  // Send LED settings to the backend
   const handleApply = () => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      const commandData = {
+      const commandData: any = {
         command: COMMAND.SET_LED,
-        color,
         mode,
         pattern,
-        interval: pattern !== 'static' ? interval : undefined, // Include interval only for dynamic patterns
+        color1,
+        brightness: brightness / 100,
       };
+
+      if (mode === 'two') {
+        commandData.color2 = color2;
+      }
+
+      if (pattern !== 'static') {
+        commandData.interval = interval;
+      }
+
       ws.current.send(JSON.stringify(commandData));
       console.log('LED settings applied:', commandData);
     } else {
@@ -74,7 +72,6 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  // Render nothing if the modal is not open
   if (!isOpen) return null;
 
   return (
@@ -87,12 +84,24 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         >
           Close
         </button>
+
         {/* Title */}
         <h2 className="text-lg font-bold text-green-400 border-b-2 border-green-400 pb-2 mb-4">
           LED Configuration
         </h2>
-        {/* Color Picker */}
-        <SketchPicker color={color} onChange={handleColorChange} />
+
+        {/* Color Picker 1 */}
+        <label className="block text-green-300 font-semibold mb-1">Primary Color:</label>
+        <SketchPicker color={color1} onChange={handleColor1Change} />
+
+        {/* Color Picker 2 */}
+        {mode === 'two' && (
+          <>
+            <label className="block text-green-300 font-semibold mt-4 mb-1">Secondary Color:</label>
+            <SketchPicker color={color2} onChange={handleColor2Change} />
+          </>
+        )}
+
         {/* Mode Selector */}
         <div className="mt-4">
           <label htmlFor="mode" className="block text-green-300 font-semibold">Mode:</label>
@@ -109,6 +118,7 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
             ))}
           </select>
         </div>
+
         {/* Pattern Selector */}
         <div className="mt-4">
           <label htmlFor="pattern" className="block text-green-300 font-semibold">Pattern:</label>
@@ -125,7 +135,8 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
             ))}
           </select>
         </div>
-        {/* Interval Input (Only for Non-Static Patterns) */}
+
+        {/* Interval Input */}
         {pattern !== 'static' && (
           <div className="mt-4">
             <label htmlFor="interval" className="block text-green-300 font-semibold">Interval (ms):</label>
@@ -139,6 +150,21 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
             />
           </div>
         )}
+
+        {/* Brightness Slider */}
+        <div className="mt-4">
+          <label htmlFor="brightness" className="block text-green-300 font-semibold">Brightness (%):</label>
+          <input
+            id="brightness"
+            type="range"
+            min={0}
+            max={100}
+            value={brightness}
+            onChange={handleBrightnessChange}
+            className="w-full"
+          />
+        </div>
+
         {/* Apply Button */}
         <button
           onClick={handleApply}
