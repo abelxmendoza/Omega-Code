@@ -1,6 +1,9 @@
 """
 LED Test Script for WS2812/WS2811 Strips (NeoPixels)
 
+File Location:
+~/Omega-Code/servers/robot-controller-backend/controllers/lighting/basic_led_test.py
+
 This script serves as a standalone utility to verify LED functionality for addressable RGB LED strips
 driven by the rpi_ws281x library. It interfaces with the LedController module to apply solid colors
 or run a predefined color test sequence.
@@ -13,9 +16,6 @@ Usage:
 Supported Colors:
 - Named: red, green, blue, off
 - RGB: three integer values from 0–255
-
-File Location:
-~/Omega-Code/servers/robot-controller-backend/controllers/lighting/basic_led_test.py
 """
 
 from led_control import LedController
@@ -52,7 +52,7 @@ if __name__ == "__main__":
             sys.exit(1)
 
     else:
+        # No arguments: cycle through red, green, and blue (functionality test)
         print("🚦 Starting LED functionality test. Press Ctrl+C to exit.")
         led.test_colors()
         print("✅ LED test complete.")
-
