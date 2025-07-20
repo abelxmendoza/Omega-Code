@@ -17,7 +17,6 @@ File Location:
 ~/Omega-Code/servers/robot-controller-backend/controllers/lighting/led_control.py
 """
 
-
 import sys
 import time
 from rpi_ws281x import Adafruit_NeoPixel, Color, WS2811_STRIP_GRB
@@ -162,3 +161,4 @@ if __name__ == "__main__":
         led_control.set_led(color, mode, pattern, interval)
     except Exception as e:
         print(f"Startup error: {e}")
+
