@@ -51,3 +51,4 @@ const LightingPattern: React.FC<LightingPatternProps> = ({ onSelectPattern }) =>
 };
 
 export default LightingPattern;
+

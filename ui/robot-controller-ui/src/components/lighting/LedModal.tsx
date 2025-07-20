@@ -1,14 +1,17 @@
 /*
 # File: /Omega-Code/ui/robot-controller-ui/src/components/lighting/LedModal.tsx
 # Summary:
-Modal interface for controlling LED lighting on the robot. Supports single and two-color modes,
-pattern selection, brightness control, and interval configuration for dynamic patterns.
+Modal interface for controlling LED lighting on the robot. Supports single and rainbow modes,
+power toggle, pattern selection, brightness control, and interval configuration for dynamic patterns.
 Sends configuration to the backend via WebSocket.
 */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { SketchPicker } from 'react-color';
-import { COMMAND, LIGHTING_MODES, LIGHTING_PATTERNS } from '../../control_definitions';
+import { COMMAND } from '../../control_definitions';
+
+const LIGHTING_MODES = ['single', 'rainbow'];
+const LIGHTING_PATTERNS = ['static', 'pulse', 'blink'];
 
 interface LedModalProps {
   isOpen: boolean;
@@ -16,8 +19,8 @@ interface LedModalProps {
 }
 
 const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
+  const [ledOn, setLedOn] = useState(true);
   const [color1, setColor1] = useState('#ffffff');
-  const [color2, setColor2] = useState('#000000');
   const [mode, setMode] = useState(LIGHTING_MODES[0]);
   const [pattern, setPattern] = useState(LIGHTING_PATTERNS[0]);
   const [interval, setInterval] = useState(1000);
@@ -34,7 +37,6 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   }, [wsUrl]);
 
   const handleColor1Change = (color: any) => setColor1(color.hex);
-  const handleColor2Change = (color: any) => setColor2(color.hex);
   const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => setMode(e.target.value);
   const handlePatternChange = (e: React.ChangeEvent<HTMLSelectElement>) => setPattern(e.target.value);
   const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -47,7 +49,29 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     if (value >= 0 && value <= 100) setBrightness(value);
   };
 
+  const handleTogglePower = () => {
+    const newState = !ledOn;
+    setLedOn(newState);
+
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(
+        JSON.stringify({
+          command: COMMAND.LED_POWER,
+          state: newState ? 'on' : 'off',
+        })
+      );
+      console.log(`LED power ${newState ? 'ON' : 'OFF'}`);
+    } else {
+      console.error('WebSocket connection is not open.');
+    }
+  };
+
   const handleApply = () => {
+    if (!ledOn) {
+      console.log('LED is off, skipping apply.');
+      return;
+    }
+
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       const commandData: any = {
         command: COMMAND.SET_LED,
@@ -56,10 +80,6 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         color1,
         brightness: brightness / 100,
       };
-
-      if (mode === 'two') {
-        commandData.color2 = color2;
-      }
 
       if (pattern !== 'static') {
         commandData.interval = interval;
@@ -90,80 +110,88 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
           LED Configuration
         </h2>
 
-        {/* Color Picker 1 */}
-        <label className="block text-green-300 font-semibold mb-1">Primary Color:</label>
-        <SketchPicker color={color1} onChange={handleColor1Change} />
-
-        {/* Color Picker 2 */}
-        {mode === 'two' && (
-          <>
-            <label className="block text-green-300 font-semibold mt-4 mb-1">Secondary Color:</label>
-            <SketchPicker color={color2} onChange={handleColor2Change} />
-          </>
-        )}
-
-        {/* Mode Selector */}
-        <div className="mt-4">
-          <label htmlFor="mode" className="block text-green-300 font-semibold">Mode:</label>
-          <select
-            id="mode"
-            value={mode}
-            onChange={handleModeChange}
-            className="w-full bg-gray-800 text-white p-2 rounded mt-1"
+        {/* LED Power Toggle */}
+        <div className="mt-2 mb-4 flex justify-between items-center">
+          <span className="text-green-300 font-semibold">
+            LED Status: {ledOn ? 'On' : 'Off'}
+          </span>
+          <button
+            onClick={handleTogglePower}
+            className={`px-4 py-2 rounded text-white ${ledOn ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`}
           >
-            {LIGHTING_MODES.map((modeOption) => (
-              <option key={modeOption} value={modeOption}>
-                {modeOption.charAt(0).toUpperCase() + modeOption.slice(1)}
-              </option>
-            ))}
-          </select>
+            Turn {ledOn ? 'Off' : 'On'}
+          </button>
         </div>
 
-        {/* Pattern Selector */}
-        <div className="mt-4">
-          <label htmlFor="pattern" className="block text-green-300 font-semibold">Pattern:</label>
-          <select
-            id="pattern"
-            value={pattern}
-            onChange={handlePatternChange}
-            className="w-full bg-gray-800 text-white p-2 rounded mt-1"
-          >
-            {LIGHTING_PATTERNS.map((patternOption) => (
-              <option key={patternOption} value={patternOption}>
-                {patternOption.charAt(0).toUpperCase() + patternOption.slice(1)}
-              </option>
-            ))}
-          </select>
-        </div>
+        <fieldset disabled={!ledOn} className={ledOn ? '' : 'opacity-50'}>
 
-        {/* Interval Input */}
-        {pattern !== 'static' && (
+          {/* Color Picker 1 */}
+          <label className="block text-green-300 font-semibold mb-1">Primary Color:</label>
+          <SketchPicker color={color1} onChange={handleColor1Change} />
+
+          {/* Mode Selector */}
           <div className="mt-4">
-            <label htmlFor="interval" className="block text-green-300 font-semibold">Interval (ms):</label>
-            <input
-              id="interval"
-              type="number"
-              value={interval}
-              onChange={handleIntervalChange}
+            <label htmlFor="mode" className="block text-green-300 font-semibold">Mode:</label>
+            <select
+              id="mode"
+              value={mode}
+              onChange={handleModeChange}
               className="w-full bg-gray-800 text-white p-2 rounded mt-1"
-              min={100}
+            >
+              {LIGHTING_MODES.map((modeOption) => (
+                <option key={modeOption} value={modeOption}>
+                  {modeOption.charAt(0).toUpperCase() + modeOption.slice(1)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Pattern Selector */}
+          <div className="mt-4">
+            <label htmlFor="pattern" className="block text-green-300 font-semibold">Pattern:</label>
+            <select
+              id="pattern"
+              value={pattern}
+              onChange={handlePatternChange}
+              className="w-full bg-gray-800 text-white p-2 rounded mt-1"
+            >
+              {LIGHTING_PATTERNS.map((patternOption) => (
+                <option key={patternOption} value={patternOption}>
+                  {patternOption.charAt(0).toUpperCase() + patternOption.slice(1)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Interval Input */}
+          {pattern !== 'static' && (
+            <div className="mt-4">
+              <label htmlFor="interval" className="block text-green-300 font-semibold">Interval (ms):</label>
+              <input
+                id="interval"
+                type="number"
+                value={interval}
+                onChange={handleIntervalChange}
+                className="w-full bg-gray-800 text-white p-2 rounded mt-1"
+                min={100}
+              />
+            </div>
+          )}
+
+          {/* Brightness Slider */}
+          <div className="mt-4">
+            <label htmlFor="brightness" className="block text-green-300 font-semibold">Brightness (%):</label>
+            <input
+              id="brightness"
+              type="range"
+              min={0}
+              max={100}
+              value={brightness}
+              onChange={handleBrightnessChange}
+              className="w-full"
             />
           </div>
-        )}
-
-        {/* Brightness Slider */}
-        <div className="mt-4">
-          <label htmlFor="brightness" className="block text-green-300 font-semibold">Brightness (%):</label>
-          <input
-            id="brightness"
-            type="range"
-            min={0}
-            max={100}
-            value={brightness}
-            onChange={handleBrightnessChange}
-            className="w-full"
-          />
-        </div>
+        </fieldset>
 
         {/* Apply Button */}
         <button

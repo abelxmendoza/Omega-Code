@@ -55,3 +55,4 @@ if __name__ == "__main__":
         print("🚦 Starting LED functionality test. Press Ctrl+C to exit.")
         led.test_colors()
         print("✅ LED test complete.")
+
