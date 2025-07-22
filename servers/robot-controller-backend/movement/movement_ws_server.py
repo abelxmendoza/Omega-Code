@@ -7,7 +7,7 @@ from minimal_motor_control import Motor
 
 motor = Motor()
 
-async def handler(websocket, path):
+async def handler(websocket):
     print(f"[CONNECTED] Client: {websocket.remote_address}")
     try:
         async for message in websocket:
