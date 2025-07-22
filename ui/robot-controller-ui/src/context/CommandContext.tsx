@@ -13,6 +13,7 @@ import React, {
   useRef,
   useEffect,
 } from 'react';
+import { connectMovementWs } from '@/utils/connectMovementWs';
 
 // Define the structure of a command entry with a timestamp
 interface CommandEntry {
@@ -50,7 +51,6 @@ Manages WebSocket connection, command logging, and state handling. Provides Comm
 export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [commands, setCommands] = useState<CommandEntry[]>([]); // Command log state
   const ws = useRef<WebSocket | null>(null); // Reference to WebSocket instance
-  const wsUrl = process.env.NEXT_PUBLIC_BACKEND_WS_URL || 'ws://localhost:8080/ws'; // WebSocket URL
 
   /**
    * Logs a command with the current timestamp.
@@ -93,15 +93,17 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
    * Establishes and manages the WebSocket connection lifecycle.
    */
   useEffect(() => {
-    const connectWebSocket = () => {
-      ws.current = new WebSocket(wsUrl);
+    let shouldReconnect = true;
 
-      ws.current.onopen = () => {
+    const setupWebSocket = (wsInstance: WebSocket) => {
+      ws.current = wsInstance;
+
+      wsInstance.onopen = () => {
         console.log('[WebSocket] Connected');
         addCommand('WebSocket connected');
       };
 
-      ws.current.onmessage = (event) => {
+      wsInstance.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           if (data.command) {
@@ -114,36 +116,44 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
       };
 
-      ws.current.onclose = () => {
+      wsInstance.onclose = () => {
         console.warn('[WebSocket] Disconnected. Attempting to reconnect...');
         addCommand('WebSocket disconnected');
-        setTimeout(() => {
-          if (!ws.current || ws.current.readyState === WebSocket.CLOSED) {
-            connectWebSocket();
-          }
-        }, 2000); // Retry connection after 2 seconds
+        if (shouldReconnect) {
+          setTimeout(() => {
+            connectAndSetup();
+          }, 2000);
+        }
       };
 
-      ws.current.onerror = (event: Event) => {
+      wsInstance.onerror = (event: Event) => {
         console.error('[WebSocket] Error:', event);
-
         const errMsg =
           event instanceof ErrorEvent ? event.message : 'Unknown WebSocket error';
-
         addCommand(`WebSocket error: ${errMsg}`);
       };
     };
 
-    connectWebSocket();
+    const connectAndSetup = () => {
+      connectMovementWs()
+        .then(setupWebSocket)
+        .catch(() => {
+          addCommand('WebSocket failed to connect (Tailscale and LAN)');
+          setTimeout(connectAndSetup, 2000);
+        });
+    };
+
+    connectAndSetup();
 
     // Cleanup WebSocket connection on component unmount
     return () => {
+      shouldReconnect = false;
       if (ws.current) {
         ws.current.close();
         addCommand('WebSocket connection closed during cleanup');
       }
     };
-  }, [wsUrl]);
+  }, []);
 
   // Provide the CommandContext values to children
   return (
