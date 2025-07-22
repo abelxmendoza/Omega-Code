@@ -1,5 +1,3 @@
-# movement_ws_server.py
-
 import asyncio
 import websockets
 import json
@@ -41,6 +39,9 @@ async def handler(websocket, path):
 
 if __name__ == "__main__":
     print("Starting Movement WebSocket Server on ws://0.0.0.0:8081")
-    start_server = websockets.serve(handler, "0.0.0.0", 8081)
-    asyncio.get_event_loop().run_until_complete(start_server)
-    asyncio.get_event_loop().run_forever()
+
+    async def main():
+        async with websockets.serve(handler, "0.0.0.0", 8081):
+            await asyncio.Future()  # run forever
+
+    asyncio.run(main())
