@@ -1,3 +1,5 @@
+# movement_ws_server.py
+
 import asyncio
 import websockets
 import json
@@ -15,13 +17,13 @@ async def handler(websocket, path):
                 cmd = data.get("command")
                 speed = int(data.get("speed", 2000))  # Optional: set default speed
 
-                if cmd == "forward":
+                if cmd in ["forward", "move-up"]:
                     motor.forward(speed)
                     response = {"status": "ok", "action": "forward", "speed": speed}
-                elif cmd == "backward":
+                elif cmd in ["backward", "move-down"]:
                     motor.backward(speed)
                     response = {"status": "ok", "action": "backward", "speed": speed}
-                elif cmd == "stop":
+                elif cmd in ["stop", "move-stop"]:
                     motor.stop()
                     response = {"status": "ok", "action": "stop"}
                 else:
