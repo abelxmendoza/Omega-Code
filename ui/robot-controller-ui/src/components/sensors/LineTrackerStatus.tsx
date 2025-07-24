@@ -46,3 +46,4 @@ const LineTrackerStatus: React.FC = () => {
 };
 
 export default LineTrackerStatus;
+
