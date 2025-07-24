@@ -5,6 +5,11 @@ WebSocket server for robot movement, speed, and buzzer control.
 Routes commands from the frontend UI to the correct hardware controller modules.
 """
 
+import sys
+import os
+# Add parent directory to sys.path so we can import from controllers/
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import asyncio
 import websockets
 import json
