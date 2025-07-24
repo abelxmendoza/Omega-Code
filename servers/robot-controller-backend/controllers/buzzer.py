@@ -4,6 +4,7 @@
 Hardware controller for robot buzzer (horn).
 Call buzz_on() to activate (sound), buzz_off() to deactivate (silent).
 """
+import time
 import RPi.GPIO as GPIO
 
 BUZZER_PIN = 17  # BCM numbering
