@@ -74,3 +74,4 @@ const UltrasonicSensorStatus: React.FC = () => {
 };
 
 export default UltrasonicSensorStatus;
+
