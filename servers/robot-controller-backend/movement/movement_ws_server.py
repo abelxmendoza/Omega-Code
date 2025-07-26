@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import asyncio
 import websockets
 import json
-from minimal_motor_control import Motor
+from .minimal_motor_control import Motor
 from controllers.buzzer import setup_buzzer, buzz_on, buzz_off
 from servo_control import Servo  # <-- Add this import
 
