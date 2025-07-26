@@ -14,6 +14,10 @@ Usage:
 """
 
 import sys
+import os
+
+# --- FIXED: Add parent dir to sys.path so "utils" is importable anywhere ---
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Try to import PCA9685. If it fails, use mock class for testing on macOS.
 try:
