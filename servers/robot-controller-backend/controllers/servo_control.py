@@ -9,7 +9,8 @@ Classes:
 
 Usage:
     Run this script with two arguments: <servo-type> and <angle>.
-    Example: python3 servo_control.py servo-horizontal 10
+    Example: python3 servo_control.py horizontal 10
+    Example: python3 servo_control.py 0 90
 """
 
 import sys
@@ -35,19 +36,24 @@ class Servo:
         Set the PWM for the specified servo channel.
 
         Parameters:
-        channel (str): The servo channel ('horizontal' or 'vertical').
+        channel (str): The servo channel ('horizontal', 'vertical', '0', '1').
         angle (int): The angle to set the servo to.
         error (int): The error correction value.
         """
         angle = int(angle)
-        if channel == 'horizontal':
+        if channel in ('horizontal', '0'):
+            print(f"[SERVO] Setting HORIZONTAL/0 to angle {angle}")
             self.PwmServo.setServoPulse(8, 2500 - int((angle + error) / 0.09))
-        elif channel == 'vertical':
+        elif channel in ('vertical', '1'):
+            print(f"[SERVO] Setting VERTICAL/1 to angle {angle}")
             self.PwmServo.setServoPulse(9, 500 + int((angle + error) / 0.09))
+        else:
+            print(f"[SERVO] Unknown channel: {channel}")
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
         print("Usage: python3 servo_control.py <servo-type> <angle>")
+        print("   <servo-type>: horizontal, vertical, 0, or 1")
         sys.exit(1)
 
     servo_type = sys.argv[1]

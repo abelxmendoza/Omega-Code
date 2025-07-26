@@ -1,7 +1,7 @@
 """
 # File: /Omega-Code/servers/robot-controller-backend/movement/movement_ws_server.py
 # Summary:
-WebSocket server for robot movement, speed, and buzzer control.
+WebSocket server for robot movement, speed, buzzer, and servo control.
 Routes commands from the frontend UI to the correct hardware controller modules.
 """
 
@@ -15,9 +15,11 @@ import websockets
 import json
 from minimal_motor_control import Motor
 from controllers.buzzer import setup_buzzer, buzz_on, buzz_off
+from servo_control import Servo  # <-- Add this import
 
 motor = Motor()
 setup_buzzer()  # Only once at startup!
+servo = Servo() # Only once at startup!
 
 current_speed = 2000  # Default speed (adjust as needed)
 
@@ -34,6 +36,7 @@ async def handler(websocket):
                 # Allow speed to be overridden by payload if provided
                 speed = int(data.get("speed", current_speed))
 
+                # --- Movement commands ---
                 if cmd in ["forward", "move-up"]:
                     motor.forward(speed)
                     response = {"status": "ok", "action": "forward", "speed": speed}
@@ -43,18 +46,30 @@ async def handler(websocket):
                 elif cmd in ["stop", "move-stop"]:
                     motor.stop()
                     response = {"status": "ok", "action": "stop"}
+                # --- Speed commands ---
                 elif cmd in ["increase-speed"]:
                     current_speed = min(current_speed + 200, 4095)
                     response = {"status": "ok", "action": "increase-speed", "speed": current_speed}
                 elif cmd in ["decrease-speed"]:
                     current_speed = max(current_speed - 200, 0)
                     response = {"status": "ok", "action": "decrease-speed", "speed": current_speed}
+                # --- Buzzer (horn) commands ---
                 elif cmd == "buzz":
                     buzz_on()
                     response = {"status": "ok", "action": "buzz"}
                 elif cmd == "buzz-stop":
                     buzz_off()
                     response = {"status": "ok", "action": "buzz-stop"}
+                # --- Servo control commands ---
+                elif cmd in ["servo-horizontal", "CMD_SERVO_HORIZONTAL"]:
+                    angle = int(data.get("angle", 0))
+                    servo.setServoPwm("horizontal", angle)
+                    response = {"status": "ok", "action": "servo-horizontal", "angle": angle}
+                elif cmd in ["servo-vertical", "CMD_SERVO_VERTICAL"]:
+                    angle = int(data.get("angle", 0))
+                    servo.setServoPwm("vertical", angle)
+                    response = {"status": "ok", "action": "servo-vertical", "angle": angle}
+                # --- Unknown command ---
                 else:
                     response = {"status": "error", "error": f"Unknown command: {cmd}"}
             except Exception as e:
