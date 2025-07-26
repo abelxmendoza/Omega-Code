@@ -21,7 +21,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Try to import PCA9685. If it fails, use mock class for testing on macOS.
 try:
-    from utils.PCA9685 import PCA9685  # Updated import path
+    from utils.pca9685 import PCA9685  # Updated import path
 except ImportError:
     from utils.mock_pca9685 import PCA9685  # Updated import path
 
