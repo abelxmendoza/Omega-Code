@@ -15,7 +15,7 @@ import websockets
 import json
 from minimal_motor_control import Motor
 from controllers.buzzer import setup_buzzer, buzz_on, buzz_off
-from servo_control import Servo  # <-- Add this import
+from controllers.servo_control import Servo
 
 motor = Motor()
 setup_buzzer()  # Only once at startup!
