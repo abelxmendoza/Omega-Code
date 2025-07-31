@@ -1,29 +1,25 @@
-# File: /Omega-Code/servers/robot-controller-backend/servo_control.py
+# File: /Omega-Code/servers/robot-controller-backend/controllers/servo_control.py
 
 """
 This script controls the servo motors using the PCA9685 module.
-If running on a non-Raspberry Pi system (e.g., macOS), it uses a mock PCA9685 class for testing purposes.
-
-Classes:
-    Servo -- A class to control servo motors using the PCA9685 driver.
 
 Usage:
-    Run this script with two arguments: <servo-type> and <angle>.
-    Example: python3 servo_control.py horizontal 10
-    Example: python3 servo_control.py 0 90
+    python3 servo_control.py horizontal 90
+    python3 servo_control.py 0 45
+
+Arguments:
+    <servo-type>: horizontal, vertical, 0, or 1
+    <angle>: Integer angle in degrees
 """
 
 import sys
 import os
 
-# --- FIXED: Add parent dir to sys.path so "utils" is importable anywhere ---
+# Add project root to sys.path so "utils" is importable
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Try to import PCA9685. If it fails, use mock class for testing on macOS.
-try:
-    from utils.pca9685 import PCA9685  # Updated import path
-except ImportError:
-    from utils.mock_pca9685 import PCA9685  # Updated import path
+# Import only the real PCA9685 driver
+from utils.pca9685 import PCA9685
 
 class Servo:
     def __init__(self):
@@ -40,9 +36,9 @@ class Servo:
         Set the PWM for the specified servo channel.
 
         Parameters:
-        channel (str): The servo channel ('horizontal', 'vertical', '0', '1').
-        angle (int): The angle to set the servo to.
-        error (int): The error correction value.
+        channel (str): The servo channel ('horizontal', 'vertical', '0', or '1')
+        angle (int): Desired angle in degrees
+        error (int): Error correction offset
         """
         angle = int(angle)
         if channel in ('horizontal', '0'):
@@ -52,7 +48,7 @@ class Servo:
             print(f"[SERVO] Setting VERTICAL/1 to angle {angle}")
             self.PwmServo.setServoPulse(9, 500 + int((angle + error) / 0.09))
         else:
-            print(f"[SERVO] Unknown channel: {channel}")
+            print(f"[ERROR] Unknown channel: {channel}")
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
@@ -67,5 +63,5 @@ if __name__ == '__main__':
         servo = Servo()
         servo.setServoPwm(servo_type, angle)
     except Exception as e:
-        print(f"Error controlling servo: {e}")
+        print(f"[ERROR] Servo control failed: {e}")
         sys.exit(1)
