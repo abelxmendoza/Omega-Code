@@ -1,12 +1,12 @@
 /*
-# File: /src/components/control/CarControlPanel.tsx
+# File: /Omega-Code/ui/robot-controller-ui/src/components/control/CarControlPanel.tsx
 # Summary:
 Provides directional controls for the robot with keyboard and mouse inputs.
 Commands are sent to the robot via WebSocket and logged in the CommandContext.
 Includes visual feedback for user interactions and command logging.
 */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { COMMAND } from '@/control_definitions';
 import { useCommand } from '@/context/CommandContext';
 
@@ -14,8 +14,21 @@ import { useCommand } from '@/context/CommandContext';
 const directions = ['up', 'down', 'left', 'right'] as const;
 type Direction = typeof directions[number];
 
+const keyToDirection: Record<string, Direction> = {
+  w: 'up',
+  a: 'left',
+  s: 'down',
+  d: 'right',
+};
+
+const directionToCommand: Record<Direction, string> = {
+  up: COMMAND.MOVE_UP,
+  down: COMMAND.MOVE_DOWN,
+  left: COMMAND.MOVE_LEFT,
+  right: COMMAND.MOVE_RIGHT,
+};
+
 const CarControlPanel: React.FC = () => {
-  // Track pressed state of each directional button
   const [buttonState, setButtonState] = useState<Record<Direction, boolean>>({
     up: false,
     down: false,
@@ -23,56 +36,68 @@ const CarControlPanel: React.FC = () => {
     right: false,
   });
 
-  const { sendCommand, addCommand } = useCommand(); // Access WebSocket and command log functions
+  const { sendCommand, addCommand } = useCommand();
 
-  /**
-   * Updates the visual state of a button when pressed or released.
-   * @param direction - The direction to update ('up', 'down', 'left', 'right').
-   * @param state - The button state (true for pressed, false for released).
-   */
   const setButtonPressed = (direction: Direction, state: boolean) => {
     setButtonState((prevState) => ({ ...prevState, [direction]: state }));
   };
 
-  /**
-   * Handles button press for movement. Logs and sends the corresponding movement command.
-   * @param command - The movement command (e.g., MOVE_UP).
-   * @param direction - The associated direction ('up', 'down', 'left', 'right').
-   */
   const handleButtonClick = (command: string, direction: Direction) => {
-    console.debug(`Button pressed: ${direction}, Command: ${command}`); // Debug log
-    sendCommand(command); // Send movement command via WebSocket
-    addCommand(`Command Sent: ${command}`); // Log command in CommandContext
-    setButtonPressed(direction, true); // Update button visual state
+    sendCommand(command);
+    addCommand(`Command Sent: ${command}`);
+    setButtonPressed(direction, true);
   };
 
-  /**
-   * Handles button release to stop movement. Logs and sends the stop command.
-   * @param direction - The direction of the button released ('up', 'down', 'left', 'right').
-   */
   const handleButtonRelease = (direction: Direction) => {
-    console.debug(`Button released: ${direction}, Command: ${COMMAND.MOVE_STOP}`); // Debug log
-    sendCommand(COMMAND.MOVE_STOP); // Send stop command
-    addCommand(`Command Sent: ${COMMAND.MOVE_STOP}`); // Log stop command
-    setButtonPressed(direction, false); // Reset button visual state
+    sendCommand(COMMAND.MOVE_STOP);
+    addCommand(`Command Sent: ${COMMAND.MOVE_STOP}`);
+    setButtonPressed(direction, false);
   };
 
-  /**
-   * Generates a Tailwind CSS class string for a directional button.
-   * Highlights the button when pressed.
-   * @param direction - The direction of the button ('up', 'down', 'left', 'right').
-   * @returns The CSS class string for the button.
-   */
+  // --- Keyboard support for WASD ---
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      if (key in keyToDirection) {
+        const direction = keyToDirection[key];
+        if (!buttonState[direction]) {
+          handleButtonClick(directionToCommand[direction], direction);
+        }
+        event.preventDefault();
+      }
+    },
+    [buttonState]
+  );
+
+  const handleKeyUp = useCallback(
+    (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      if (key in keyToDirection) {
+        const direction = keyToDirection[key];
+        handleButtonRelease(direction);
+        event.preventDefault();
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [handleKeyDown, handleKeyUp]);
+
   const buttonClass = (direction: Direction) =>
-    `bg-gray-800 text-white p-4 m-1 rounded-lg ${
-      buttonState[direction] ? 'bg-gray-600' : 'bg-gray-800'
+    `p-4 m-1 rounded-lg text-white transition-colors duration-100 ${
+      buttonState[direction] ? 'bg-red-600' : 'bg-gray-800'
     }`;
 
   return (
     <div className="flex flex-col items-center">
       <h2 className="text-lg font-bold mb-2">Car Control</h2>
-
-      {/* Button for moving up */}
       <button
         className={buttonClass('up')}
         onMouseDown={() => handleButtonClick(COMMAND.MOVE_UP, 'up')}
@@ -81,8 +106,6 @@ const CarControlPanel: React.FC = () => {
       >
         W
       </button>
-
-      {/* Buttons for moving left and right */}
       <div className="flex space-x-1">
         <button
           className={buttonClass('left')}
@@ -101,8 +124,6 @@ const CarControlPanel: React.FC = () => {
           D
         </button>
       </div>
-
-      {/* Button for moving down */}
       <button
         className={buttonClass('down')}
         onMouseDown={() => handleButtonClick(COMMAND.MOVE_DOWN, 'down')}
@@ -116,4 +137,3 @@ const CarControlPanel: React.FC = () => {
 };
 
 export default CarControlPanel;
-

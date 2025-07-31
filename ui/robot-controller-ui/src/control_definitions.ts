@@ -26,6 +26,12 @@ export const COMMAND = {
     SET_SERVO_POSITION: 'set-servo-position', // Set specific angles for servos
     RESET_SERVO: 'reset-servo',               // Reset servos to their default positions
 
+    // Camera Servo Directional Commands
+    CAMERA_SERVO_LEFT: 'camera-servo-left',   // Nudge camera left
+    CAMERA_SERVO_RIGHT: 'camera-servo-right', // Nudge camera right
+    CAMERA_SERVO_UP: 'camera-servo-up',       // Tilt camera up
+    CAMERA_SERVO_DOWN: 'camera-servo-down',   // Tilt camera down
+
     // LED Commands
     CMD_LED: 'CMD_LED',                       // General command for controlling LEDs
     CMD_LED_MOD: 'CMD_LED_MOD',               // Modify LED mode settings
@@ -35,11 +41,11 @@ export const COMMAND = {
     LED_BRIGHTNESS: 'led-brightness',         // Control LED brightness levels
 
     // Lighting Control Commands
-    LIGHTING_SET_COLOR: 'lighting-set-color',   // Define a specific LED color
-    LIGHTING_SET_MODE: 'lighting-set-mode',     // Set the lighting mode (e.g., single, multi)
-    LIGHTING_SET_PATTERN: 'lighting-set-pattern', // Specify a lighting pattern (e.g., static, fade)
-    LIGHTING_SET_INTERVAL: 'lighting-set-interval', // Configure interval timing for dynamic patterns
-    LIGHTING_TOGGLE: 'lighting-toggle',         // Turn lighting on or off
+    LIGHTING_SET_COLOR: 'lighting-set-color',         // Define a specific LED color
+    LIGHTING_SET_MODE: 'lighting-set-mode',           // Set the lighting mode (e.g., single, multi)
+    LIGHTING_SET_PATTERN: 'lighting-set-pattern',     // Specify a lighting pattern (e.g., static, fade)
+    LIGHTING_SET_INTERVAL: 'lighting-set-interval',   // Configure interval timing for dynamic patterns
+    LIGHTING_TOGGLE: 'lighting-toggle',               // Turn lighting on or off
 
     // Buzzer Commands
     CMD_BUZZER: 'buzz',                       // Activate the robot's buzzer

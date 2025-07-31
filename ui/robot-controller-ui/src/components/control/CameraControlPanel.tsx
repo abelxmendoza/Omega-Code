@@ -1,3 +1,11 @@
+/*
+# File: /Omega-Code/ui/robot-controller-ui/src/components/control/CameraControlPanel.tsx
+# Summary:
+This component provides UI and keyboard control for the robot's camera (pan/tilt) servos.
+It sends explicit directional commands (up, down, left, right) to the backend,
+allowing precise nudge control via WebSocket for both button and arrow key events.
+*/
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { COMMAND } from '@/control_definitions';
 import { useCommand } from '@/context/CommandContext';
@@ -17,26 +25,24 @@ const CameraControlPanel: React.FC = () => {
   // Handle key press events for controlling the camera
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      const step = event.shiftKey ? 5 : 2;
-
       switch (event.key) {
         case 'ArrowUp':
-          sendCommand(COMMAND.CMD_SERVO_VERTICAL, { angle: step });
+          sendCommand(COMMAND.CAMERA_SERVO_UP);
           setButtonPressed('up', true);
           addCommand('camera-up');
           break;
         case 'ArrowDown':
-          sendCommand(COMMAND.CMD_SERVO_VERTICAL, { angle: -step });
+          sendCommand(COMMAND.CAMERA_SERVO_DOWN);
           setButtonPressed('down', true);
           addCommand('camera-down');
           break;
         case 'ArrowLeft':
-          sendCommand(COMMAND.CMD_SERVO_HORIZONTAL, { angle: step });
+          sendCommand(COMMAND.CAMERA_SERVO_LEFT);
           setButtonPressed('left', true);
           addCommand('camera-left');
           break;
         case 'ArrowRight':
-          sendCommand(COMMAND.CMD_SERVO_HORIZONTAL, { angle: -step });
+          sendCommand(COMMAND.CAMERA_SERVO_RIGHT);
           setButtonPressed('right', true);
           addCommand('camera-right');
           break;
@@ -79,9 +85,10 @@ const CameraControlPanel: React.FC = () => {
     setButtonState((prev) => ({ ...prev, [direction]: state }));
   };
 
+  // Change color to red when pressed
   const buttonClass = (direction: ButtonDirection) =>
-    `bg-gray-800 text-white p-4 m-1 rounded-lg ${
-      buttonState[direction] ? 'bg-gray-600' : 'bg-gray-800'
+    `p-4 m-1 rounded-lg text-white transition-colors duration-100 ${
+      buttonState[direction] ? 'bg-red-600' : 'bg-gray-800'
     }`;
 
   return (
@@ -90,7 +97,7 @@ const CameraControlPanel: React.FC = () => {
       <button
         className={buttonClass('up')}
         onMouseDown={() => {
-          sendCommand(COMMAND.CMD_SERVO_VERTICAL, { angle: 2 });
+          sendCommand(COMMAND.CAMERA_SERVO_UP);
           setButtonPressed('up', true);
         }}
         onMouseUp={() => setButtonPressed('up', false)}
@@ -102,7 +109,7 @@ const CameraControlPanel: React.FC = () => {
         <button
           className={buttonClass('left')}
           onMouseDown={() => {
-            sendCommand(COMMAND.CMD_SERVO_HORIZONTAL, { angle: 2 });
+            sendCommand(COMMAND.CAMERA_SERVO_LEFT);
             setButtonPressed('left', true);
           }}
           onMouseUp={() => setButtonPressed('left', false)}
@@ -113,7 +120,7 @@ const CameraControlPanel: React.FC = () => {
         <button
           className={buttonClass('right')}
           onMouseDown={() => {
-            sendCommand(COMMAND.CMD_SERVO_HORIZONTAL, { angle: -2 });
+            sendCommand(COMMAND.CAMERA_SERVO_RIGHT);
             setButtonPressed('right', true);
           }}
           onMouseUp={() => setButtonPressed('right', false)}
@@ -125,7 +132,7 @@ const CameraControlPanel: React.FC = () => {
       <button
         className={buttonClass('down')}
         onMouseDown={() => {
-          sendCommand(COMMAND.CMD_SERVO_VERTICAL, { angle: -2 });
+          sendCommand(COMMAND.CAMERA_SERVO_DOWN);
           setButtonPressed('down', true);
         }}
         onMouseUp={() => setButtonPressed('down', false)}

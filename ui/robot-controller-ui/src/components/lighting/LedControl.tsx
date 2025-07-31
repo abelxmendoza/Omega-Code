@@ -1,7 +1,7 @@
 /*
 # File: /Omega-Code/ui/robot-controller-ui/src/components/lighting/LedControl.tsx
 # Summary:
-Allows the user to configure LED settings for the robot, including color, mode, pattern, and interval.
+Allows the user to configure LED settings for the robot, including color, mode, pattern, interval, and brightness.
 Settings are sent as commands to the backend WebSocket server.
 */
 
@@ -20,48 +20,38 @@ const LedControl: React.FC<LedControlProps> = ({ sendCommand }) => {
   const [mode, setMode] = useState(LIGHTING_MODES[0]); // Stores the selected mode
   const [pattern, setPattern] = useState(LIGHTING_PATTERNS[0]); // Stores the selected pattern
   const [interval, setInterval] = useState(1000); // Interval for dynamic patterns (in milliseconds)
+  const [brightness, setBrightness] = useState(100); // Brightness in percent (0–100)
 
-  /*
-  # Function: handleColorChange
-  Updates the color state when a new color is selected in the color picker.
-  */
-  const handleColorChange = (color: any) => {
-    setColor(color.hex);
-  };
+  // Color change handler
+  const handleColorChange = (color: any) => setColor(color.hex);
 
-  /*
-  # Function: handleModeChange
-  Updates the selected mode state based on user selection from the dropdown.
-  */
-  const handleModeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setMode(event.target.value);
-  };
+  // Mode change handler
+  const handleModeChange = (event: React.ChangeEvent<HTMLSelectElement>) => setMode(event.target.value);
 
-  /*
-  # Function: handlePatternChange
-  Updates the selected pattern state based on user selection from the dropdown.
-  */
-  const handlePatternChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setPattern(event.target.value);
-  };
+  // Pattern change handler
+  const handlePatternChange = (event: React.ChangeEvent<HTMLSelectElement>) => setPattern(event.target.value);
 
-  /*
-  # Function: handleIntervalChange
-  Validates and updates the interval state for dynamic LED patterns.
-  */
+  // Interval change handler
   const handleIntervalChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(event.target.value);
-    if (value > 0) {
-      setInterval(value);
-    } else {
-      console.warn('Interval must be a positive number.');
-    }
+    if (value > 0) setInterval(value);
+    else console.warn('Interval must be a positive number.');
   };
 
-  /*
-  # Function: handleApply
-  Validates and sends the selected LED settings to the backend.
-  */
+  // Brightness change handler
+  const handleBrightnessChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    let val = Number(event.target.value);
+    if (val > 100) val = 100;
+    if (val < 0) val = 0;
+    setBrightness(val);
+  };
+
+  // Convert hex color to 24-bit int for backend compatibility
+  function hexToInt(hex: string): number {
+    return parseInt(hex.replace(/^#/, ''), 16);
+  }
+
+  // Send all LED settings to backend
   const handleApply = () => {
     if (pattern !== 'static' && interval <= 0) {
       console.error('Interval must be greater than 0 for dynamic patterns.');
@@ -69,14 +59,15 @@ const LedControl: React.FC<LedControlProps> = ({ sendCommand }) => {
     }
 
     const commandData = {
-      color,
+      color: hexToInt(color),
       mode,
       pattern,
-      interval: pattern !== 'static' ? interval : undefined, // Include interval only for non-static patterns
+      interval: pattern !== 'static' ? interval : undefined,
+      brightness: brightness / 100, // always a float between 0–1
     };
 
-    sendCommand(COMMAND.SET_LED, commandData); // Send the command
-    console.log('LED settings applied:', commandData); // Log the applied settings
+    sendCommand(COMMAND.SET_LED, commandData);
+    console.log('LED settings applied:', commandData);
   };
 
   return (
@@ -90,8 +81,8 @@ const LedControl: React.FC<LedControlProps> = ({ sendCommand }) => {
         {/* Color Picker */}
         <SketchPicker color={color} onChange={handleColorChange} />
 
+        {/* Mode Dropdown */}
         <div className="mt-4">
-          {/* Mode Dropdown */}
           <label className="block text-green-300 mb-1">Mode:</label>
           <select
             value={mode}
@@ -100,14 +91,14 @@ const LedControl: React.FC<LedControlProps> = ({ sendCommand }) => {
           >
             {LIGHTING_MODES.map((modeOption) => (
               <option key={modeOption} value={modeOption}>
-                {modeOption.charAt(0).toUpperCase() + modeOption.slice(1)} {/* Capitalize first letter */}
+                {modeOption.charAt(0).toUpperCase() + modeOption.slice(1)}
               </option>
             ))}
           </select>
         </div>
 
+        {/* Pattern Dropdown */}
         <div className="mt-4">
-          {/* Pattern Dropdown */}
           <label className="block text-green-300 mb-1">Pattern:</label>
           <select
             value={pattern}
@@ -122,9 +113,9 @@ const LedControl: React.FC<LedControlProps> = ({ sendCommand }) => {
           </select>
         </div>
 
+        {/* Interval Input (only for dynamic patterns) */}
         {pattern !== 'static' && (
           <div className="mt-4">
-            {/* Interval Input */}
             <label className="block text-green-300 mb-1">Interval (ms):</label>
             <input
               type="number"
@@ -136,6 +127,19 @@ const LedControl: React.FC<LedControlProps> = ({ sendCommand }) => {
             />
           </div>
         )}
+
+        {/* Brightness Slider */}
+        <div className="mt-4">
+          <label className="block text-green-300 mb-1">Brightness: {brightness}%</label>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={brightness}
+            onChange={handleBrightnessChange}
+            className="w-full accent-green-400"
+          />
+        </div>
 
         {/* Apply Button */}
         <button
