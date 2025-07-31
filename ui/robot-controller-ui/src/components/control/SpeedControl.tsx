@@ -152,3 +152,4 @@ const SpeedControl: React.FC = () => {
 };
 
 export default SpeedControl;
+
