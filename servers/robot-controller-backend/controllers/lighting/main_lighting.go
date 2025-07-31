@@ -38,7 +38,6 @@ import (
 	"net/http"
 	"os/exec"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/gorilla/websocket"
