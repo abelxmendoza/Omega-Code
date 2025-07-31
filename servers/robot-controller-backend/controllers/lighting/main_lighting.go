@@ -81,6 +81,15 @@ func handleLighting(ws *websocket.Conn) {
 	defer ws.Close()
 	log.Println("Lighting WebSocket connection established")
 
+	// Send connection confirmation to the frontend
+	welcomeMsg := map[string]string{
+		"status":  "connected",
+		"service": "lighting",
+		"message": "Lighting WebSocket connection established",
+	}
+	welcomeBytes, _ := json.Marshal(welcomeMsg)
+	ws.WriteMessage(websocket.TextMessage, welcomeBytes)
+
 	for {
 		_, msg, err := ws.ReadMessage()
 		if err != nil {
@@ -120,6 +129,7 @@ func handleLighting(ws *websocket.Conn) {
 	}
 }
 
+// main function starts the lighting WebSocket server on port 8082
 func main() {
 	http.HandleFunc("/lighting", func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
