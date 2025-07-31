@@ -20,12 +20,17 @@ from controllers.servo_control import Servo
 
 motor = Motor()
 setup_buzzer()  # Only once at startup
-servo = Servo() # Only once at startup
+servo = Servo()  # Only once at startup
 
 current_speed = 2000  # Default speed
+current_horizontal_angle = 90  # Start centered
+current_vertical_angle = 90
+
+def clamp_angle(angle):
+    return max(0, min(180, angle))
 
 async def handler(websocket):
-    global current_speed
+    global current_speed, current_horizontal_angle, current_vertical_angle
     print(f"[CONNECTED] Client: {websocket.remote_address}")
     try:
         async for message in websocket:
@@ -57,7 +62,7 @@ async def handler(websocket):
                     current_speed = max(current_speed - 200, 0)
                     response = {"status": "ok", "action": "decrease-speed", "speed": current_speed}
 
-                # --- Buzzer (horn) commands ---
+                # --- Buzzer commands ---
                 elif cmd == "buzz":
                     buzz_on()
                     response = {"status": "ok", "action": "buzz"}
@@ -68,16 +73,18 @@ async def handler(websocket):
 
                 # --- Servo control commands ---
                 elif cmd == "servo-horizontal":
-                    angle = int(data.get("angle", 0))
-                    print(f"[SERVO] Horizontal angle received: {angle}")
-                    servo.setServoPwm("horizontal", angle)
-                    response = {"status": "ok", "action": "servo-horizontal", "angle": angle}
+                    delta = int(data.get("angle", 0))
+                    current_horizontal_angle = clamp_angle(current_horizontal_angle + delta)
+                    print(f"[SERVO] Horizontal new angle: {current_horizontal_angle}")
+                    servo.setServoPwm("horizontal", current_horizontal_angle)
+                    response = {"status": "ok", "action": "servo-horizontal", "angle": current_horizontal_angle}
 
                 elif cmd == "servo-vertical":
-                    angle = int(data.get("angle", 0))
-                    print(f"[SERVO] Vertical angle received: {angle}")
-                    servo.setServoPwm("vertical", angle)
-                    response = {"status": "ok", "action": "servo-vertical", "angle": angle}
+                    delta = int(data.get("angle", 0))
+                    current_vertical_angle = clamp_angle(current_vertical_angle + delta)
+                    print(f"[SERVO] Vertical new angle: {current_vertical_angle}")
+                    servo.setServoPwm("vertical", current_vertical_angle)
+                    response = {"status": "ok", "action": "servo-vertical", "angle": current_vertical_angle}
 
                 # --- Unknown command ---
                 else:
@@ -103,4 +110,3 @@ if __name__ == "__main__":
             await asyncio.Future()  # run forever
 
     asyncio.run(main())
-
