@@ -1,5 +1,3 @@
-# File: /Omega-Code/servers/robot-controller-backend/controllers/lighting/led_control.py
-
 """
 LED Control Module for WS2812/WS2811 Strips (NeoPixels)
 
@@ -209,6 +207,14 @@ class LedController:
 
 if __name__ == "__main__":
     # CLI usage: python3 led_control.py <hexcolor> <mode> <pattern> <interval> <brightness>
+    #           python3 led_control.py off
+    #           python3 led_control.py toggle
+    if len(sys.argv) == 2 and sys.argv[1] == "off":
+        led = LedController()
+        led.clear_strip()
+        print("LEDs turned OFF")
+        sys.exit(0)
+
     if len(sys.argv) == 2 and sys.argv[1] == "toggle":
         led = LedController()
         led.toggle_light()
@@ -216,7 +222,8 @@ if __name__ == "__main__":
 
     if len(sys.argv) not in (5, 6):
         print("Usage: python3 led_control.py <hexcolor> <mode> <pattern> <interval> <brightness>")
-        print("Or: python3 led_control.py toggle")
+        print("   or: python3 led_control.py off")
+        print("   or: python3 led_control.py toggle")
         sys.exit(1)
 
     try:
