@@ -78,7 +78,10 @@ func hexColorString(color interface{}) (string, error) {
 
 // handleLighting manages a single WebSocket connection for LED control
 func handleLighting(ws *websocket.Conn) {
-	defer ws.Close()
+	defer func() {
+		log.Println("[DISCONNECTED] Lighting client connection closed")
+		ws.Close()
+	}()
 	log.Println("Lighting WebSocket connection established")
 
 	// Send connection confirmation to the frontend
@@ -137,6 +140,7 @@ func main() {
 			log.Printf("WebSocket upgrade failed: %v", err)
 			return
 		}
+		log.Printf("[CONNECTED] Lighting client: %s", r.RemoteAddr)
 		handleLighting(conn)
 	})
 
