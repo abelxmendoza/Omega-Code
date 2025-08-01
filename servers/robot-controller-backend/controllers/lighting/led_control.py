@@ -47,31 +47,18 @@ class LedController:
         self.is_on = False
 
     def color_wipe(self, color, wait_ms=50):
-        """
-        Wipe a single color across the strip.
-
-        Args:
-            color (Color): Color object.
-            wait_ms (int): Delay per LED in ms.
-        """
         for i in range(self.num_pixels):
             self.strip.setPixelColor(i, color)
         self.strip.show()
         self.is_on = True
 
     def clear_strip(self):
-        """
-        Turn off all LEDs.
-        """
         for i in range(self.num_pixels):
             self.strip.setPixelColor(i, Color(0, 0, 0))
         self.strip.show()
         self.is_on = False
 
     def test_colors(self, wait_ms=500):
-        """
-        Test red, green, and blue color wipes.
-        """
         self.color_wipe(Color(255, 0, 0), wait_ms)
         time.sleep(1)
         self.color_wipe(Color(0, 255, 0), wait_ms)
@@ -81,14 +68,6 @@ class LedController:
         self.clear_strip()
 
     def _wheel(self, pos):
-        """
-        Generate rainbow colors across 0-255 positions.
-
-        Args:
-            pos (int): Position (0-255).
-        Returns:
-            Color object.
-        """
         if pos < 0 or pos > 255:
             return Color(0, 0, 0)
         elif pos < 85:
@@ -101,13 +80,6 @@ class LedController:
             return Color(0, pos * 3, 255 - pos * 3)
 
     def _apply_brightness(self, base_color, brightness):
-        """
-        Apply brightness to a base color.
-
-        Args:
-            base_color (int): 24-bit RGB integer.
-            brightness (float): 0.0–1.0.
-        """
         r = int(((base_color >> 16) & 255) * brightness)
         g = int(((base_color >> 8) & 255) * brightness)
         b = int((base_color & 255) * brightness)
@@ -116,9 +88,6 @@ class LedController:
         self.strip.show()
 
     def rainbow(self, wait_ms=20, brightness=1.0):
-        """
-        Display a rainbow cycle animation with brightness.
-        """
         for j in range(256):
             for i in range(self.num_pixels):
                 base_color = self._wheel((i + j) & 255)
@@ -146,10 +115,7 @@ class LedController:
                 self.clear_strip()
                 return
 
-            if not self.is_on and pattern != "static":
-                print("LEDs are OFF. Turn them ON to apply effects.")
-                return
-
+            # Always apply requested pattern!
             r = int(((color >> 16) & 255) * brightness)
             g = int(((color >> 8) & 255) * brightness)
             b = int((color & 255) * brightness)
@@ -164,6 +130,7 @@ class LedController:
                     time.sleep(interval / 1000)
                     self.clear_strip()
                     time.sleep(interval / 1000)
+                self.is_on = True
             elif pattern == "pulse":
                 for _ in range(5):
                     # Fade in
@@ -176,6 +143,7 @@ class LedController:
                         step_brightness = brightness * (i / 255.0)
                         self._apply_brightness(color, step_brightness)
                         time.sleep(interval / 1000 / 50)
+                self.is_on = True
             else:
                 print(f"Unknown pattern: {pattern}")
 
@@ -185,9 +153,6 @@ class LedController:
             print(f"LED error: {e}")
 
     def toggle_light(self):
-        """
-        Toggle LED on/off state.
-        """
         if self.is_on:
             self.clear_strip()
             print("LEDs turned OFF")
@@ -196,12 +161,6 @@ class LedController:
             print("LEDs turned ON")
 
     def get_status(self):
-        """
-        Get light status.
-
-        Returns:
-            str: 'ON' or 'OFF'
-        """
         return "ON" if self.is_on else "OFF"
 
 
