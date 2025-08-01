@@ -9,6 +9,7 @@ Sends configuration to the backend via WebSocket.
 import React, { useState, useEffect, useRef } from 'react';
 import { SketchPicker } from 'react-color';
 import { COMMAND } from '../../control_definitions';
+import { connectLightingWs } from '../../utils/connectLightingWs';
 
 const LIGHTING_MODES = ['single', 'rainbow'];
 const LIGHTING_PATTERNS = ['static', 'pulse', 'blink'];
@@ -26,22 +27,26 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   const [interval, setInterval] = useState(1000);
   const [brightness, setBrightness] = useState(100); // 0–100%
   const ws = useRef<WebSocket | null>(null);
-  const wsUrl = process.env.NEXT_PUBLIC_BACKEND_WS_URL?.replace(/\/$/, '') + '/lighting' || 'ws://localhost:8082/lighting';
 
   // Connect WS only when modal is open
   useEffect(() => {
     if (!isOpen) return;
 
-    ws.current = new WebSocket(wsUrl);
-    ws.current.onopen = () => console.log('Lighting WS connection established');
-    ws.current.onclose = () => console.log('Lighting WS connection closed');
-    ws.current.onerror = (error) => console.error('Lighting WS error:', error);
+    let wsInstance: WebSocket | null = null;
+    connectLightingWs().then((wsObj) => {
+      ws.current = wsObj;
+      wsInstance = wsObj;
+      wsObj.onopen = () => console.log('Lighting WS connection established');
+      wsObj.onclose = () => console.log('Lighting WS connection closed');
+      wsObj.onerror = (error) => console.error('Lighting WS error:', error);
+    }).catch((err) => {
+      console.error('Lighting WS failed to connect', err);
+    });
 
     return () => {
-      ws.current?.close();
+      wsInstance?.close();
     };
-    // eslint-disable-next-line
-  }, [isOpen, wsUrl]);
+  }, [isOpen]);
 
   const handleColor1Change = (color: any) => setColor1(color.hex);
   const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => setMode(e.target.value);
@@ -56,21 +61,37 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     if (value >= 0 && value <= 100) setBrightness(value);
   };
 
-  // Convert hex color to int (e.g., #ff0000 => 16711680)
-  const hexToInt = (hex: string) => parseInt(hex.replace('#', ''), 16);
-
+  // ----- Updated Power Button Handler -----
   const handleTogglePower = () => {
     const newState = !ledOn;
     setLedOn(newState);
 
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(
-        JSON.stringify({
-          command: COMMAND.LED_POWER || "led-power", // fallback if missing
-          state: newState ? 'on' : 'off',
-        })
-      );
-      console.log(`LED power ${newState ? 'ON' : 'OFF'}`);
+      if (!newState) {
+        // Turn OFF: send pattern "off" (other values are ignored by backend)
+        ws.current.send(
+          JSON.stringify({
+            color: color1,
+            mode,
+            pattern: "off",
+            interval,
+            brightness: 0,
+          })
+        );
+        console.log("LED OFF command sent!");
+      } else {
+        // Turn ON: immediately apply current settings (as if user hit Apply)
+        ws.current.send(
+          JSON.stringify({
+            color: color1,
+            mode,
+            pattern,
+            interval,
+            brightness: brightness / 100,
+          })
+        );
+        console.log("LED ON command sent!");
+      }
     } else {
       console.error('Lighting WS not open.');
     }
@@ -83,7 +104,7 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     }
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       const commandData: any = {
-        color: hexToInt(color1),   // always send as int
+        color: color1,              // Send as hex string (e.g. "#ff0000")
         mode,
         pattern,
         interval,
