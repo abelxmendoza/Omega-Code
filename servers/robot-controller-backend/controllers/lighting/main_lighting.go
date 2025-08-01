@@ -8,11 +8,11 @@ File Location:
 
 This Go application provides a WebSocket server for real-time control of addressable RGB LED strips.
 It receives JSON lighting commands from frontend clients, then launches a Python script (`led_control.py`)
-to apply the requested color, mode, pattern, and interval using the rpi_ws281x library.
+to apply the requested color, mode, pattern, interval, and brightness using the rpi_ws281x library.
 
 Features:
 - Handles WebSocket connections for real-time control.
-- Receives lighting commands as JSON (color, mode, pattern, interval).
+- Receives lighting commands as JSON (color, mode, pattern, interval, brightness).
 - Executes Python scripts to drive LED effects.
 
 Expected JSON payload from frontend (supports both int and hex string):
@@ -20,7 +20,8 @@ Expected JSON payload from frontend (supports both int and hex string):
     "color": "#ff0000",        // Hex string (recommended, e.g. "#ff0000" for red)
     "mode": "single",          // e.g., "single", "multi"
     "pattern": "static",       // e.g., "static", "blink"
-    "interval": 500            // For animation speed, in ms
+    "interval": 500,           // For animation speed, in ms
+    "brightness": 0.85         // Float [0,1], optional (default: 1.0)
 }
 or
 {
@@ -45,10 +46,11 @@ import (
 
 // LightingCommand supports both string and int color fields for compatibility
 type LightingCommand struct {
-	Color    interface{} `json:"color"`    // Can be hex string or int (e.g., "#ff0000" or 16711680)
-	Mode     string      `json:"mode"`     // e.g., "single", "multi", "rainbow"
-	Pattern  string      `json:"pattern"`  // e.g., "static", "blink", "fade"
-	Interval int         `json:"interval"` // For dynamic patterns, in milliseconds
+	Color      interface{} `json:"color"`      // Can be hex string or int (e.g., "#ff0000" or 16711680)
+	Mode       string      `json:"mode"`       // e.g., "single", "multi", "rainbow"
+	Pattern    string      `json:"pattern"`    // e.g., "static", "blink", "fade"
+	Interval   int         `json:"interval"`   // For dynamic patterns, in milliseconds
+	Brightness float64     `json:"brightness"` // Optional, 0.0–1.0 (default: 1.0)
 }
 
 // WebSocket upgrader with permissive CORS
@@ -113,10 +115,20 @@ func handleLighting(ws *websocket.Conn) {
 			continue
 		}
 
-		// Build the command for the Python script
+		brightness := command.Brightness
+		if brightness < 0.0 || brightness > 1.0 {
+			log.Printf("Invalid brightness value: %v (should be 0.0–1.0); using 1.0", brightness)
+			brightness = 1.0
+		}
+		// Default to 1.0 if zero (assuming omitted)
+		if brightness == 0 {
+			brightness = 1.0
+		}
+
+		// Build the command for the Python script (now includes brightness as the 5th argument)
 		pythonCmd := fmt.Sprintf(
-			"python3 led_control.py %s %s %s %d",
-			hexColor, command.Mode, command.Pattern, command.Interval,
+			"python3 led_control.py %s %s %s %d %.3f",
+			hexColor, command.Mode, command.Pattern, command.Interval, brightness,
 		)
 		log.Printf("Executing: %s", pythonCmd)
 

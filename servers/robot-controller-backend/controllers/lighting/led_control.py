@@ -11,7 +11,7 @@ Main Features:
 - Initialize and configure the LED strip
 - Perform color wipe and basic animations
 - On/Off toggle functionality with persistent state
-- Prepares for future dual color + brightness enhancements
+- Full global brightness support for all patterns
 
 File Location:
 ~/Omega-Code/servers/robot-controller-backend/controllers/lighting/led_control.py
@@ -117,26 +117,31 @@ class LedController:
             self.strip.setPixelColor(i, Color(r, g, b))
         self.strip.show()
 
-    def rainbow(self, wait_ms=20):
+    def rainbow(self, wait_ms=20, brightness=1.0):
         """
-        Display a rainbow cycle animation.
+        Display a rainbow cycle animation with brightness.
         """
         for j in range(256):
             for i in range(self.num_pixels):
-                self.strip.setPixelColor(i, self._wheel((i + j) & 255))
+                base_color = self._wheel((i + j) & 255)
+                r = int(((base_color >> 16) & 255) * brightness)
+                g = int(((base_color >> 8) & 255) * brightness)
+                b = int((base_color & 255) * brightness)
+                self.strip.setPixelColor(i, Color(r, g, b))
             self.strip.show()
             time.sleep(wait_ms / 1000.0)
         self.is_on = True
 
-    def set_led(self, color, mode="single", pattern="static", interval=500):
+    def set_led(self, color, mode="single", pattern="static", interval=500, brightness=1.0):
         """
-        Set LED strip color/pattern/mode.
+        Set LED strip color/pattern/mode/brightness.
 
         Args:
             color (int): 24-bit RGB integer.
             mode (str): Lighting mode.
             pattern (str): Animation pattern.
             interval (int): Timing for dynamic patterns (ms).
+            brightness (float): 0.0–1.0, global brightness.
         """
         try:
             if pattern == "off":
@@ -147,12 +152,12 @@ class LedController:
                 print("LEDs are OFF. Turn them ON to apply effects.")
                 return
 
-            r = (color >> 16) & 255
-            g = (color >> 8) & 255
-            b = color & 255
+            r = int(((color >> 16) & 255) * brightness)
+            g = int(((color >> 8) & 255) * brightness)
+            b = int((color & 255) * brightness)
 
             if mode == "rainbow" or pattern == "rainbow":
-                self.rainbow(interval)
+                self.rainbow(interval, brightness)
             elif pattern == "static":
                 self.color_wipe(Color(r, g, b), wait_ms=10)
             elif pattern == "blink":
@@ -165,13 +170,13 @@ class LedController:
                 for _ in range(5):
                     # Fade in
                     for i in range(0, 256, 5):
-                        brightness = i / 255.0
-                        self._apply_brightness(color, brightness)
+                        step_brightness = brightness * (i / 255.0)
+                        self._apply_brightness(color, step_brightness)
                         time.sleep(interval / 1000 / 50)
                     # Fade out
                     for i in range(255, 0, -5):
-                        brightness = i / 255.0
-                        self._apply_brightness(color, brightness)
+                        step_brightness = brightness * (i / 255.0)
+                        self._apply_brightness(color, step_brightness)
                         time.sleep(interval / 1000 / 50)
             else:
                 print(f"Unknown pattern: {pattern}")
@@ -203,14 +208,14 @@ class LedController:
 
 
 if __name__ == "__main__":
-    # CLI usage: python3 led_control.py <hexcolor> <mode> <pattern> <interval>
+    # CLI usage: python3 led_control.py <hexcolor> <mode> <pattern> <interval> <brightness>
     if len(sys.argv) == 2 and sys.argv[1] == "toggle":
         led = LedController()
         led.toggle_light()
         sys.exit(0)
 
-    if len(sys.argv) != 5:
-        print("Usage: python3 led_control.py <hexcolor> <mode> <pattern> <interval>")
+    if len(sys.argv) not in (5, 6):
+        print("Usage: python3 led_control.py <hexcolor> <mode> <pattern> <interval> <brightness>")
         print("Or: python3 led_control.py toggle")
         sys.exit(1)
 
@@ -219,8 +224,9 @@ if __name__ == "__main__":
         mode = sys.argv[2]
         pattern = sys.argv[3]
         interval = int(sys.argv[4])
+        brightness = float(sys.argv[5]) if len(sys.argv) == 6 else 1.0
 
         led_control = LedController()
-        led_control.set_led(color, mode, pattern, interval)
+        led_control.set_led(color, mode, pattern, interval, brightness)
     except Exception as e:
         print(f"Startup error: {e}")
