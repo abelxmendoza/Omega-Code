@@ -1,31 +1,42 @@
 #!/usr/bin/env bash
+# File: scripts/stop_all.sh
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PID_DIR="$BASE_DIR/.pids"
 
-stop_one () {
-  local name="$1" pidf="$PID_DIR/$name.pid"
-  if [ -f "$pidf" ]; then
-    local pid; pid="$(cat "$pidf")"
-    if ps -p "$pid" >/dev/null 2>&1; then
-      echo "[$name] stopping pid $pid"
-      kill "$pid" || true
-      for _ in {1..20}; do ps -p "$pid" >/dev/null 2>&1 || break; sleep 0.2; done
-      ps -p "$pid" >/dev/null 2>&1 && kill -9 "$pid" || true
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
+PID_DIR="$ROOT/.pids"
+
+services=( line_tracker movement ultrasonic lighting )  # add video if needed
+
+stop() {
+  local svc="$1"
+  local pidf="$PID_DIR/$svc.pid"
+  if [[ -f "$pidf" ]]; then
+    local pid
+    pid="$(tr -d ' \t\r\n' < "$pidf" 2>/dev/null || true)"
+    if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
+      echo "[$svc] stopping (pid $pid)…"
+      # Try graceful stop
+      kill "$pid" 2>/dev/null || true
+      sleep 1
+      # If still alive, try killing the whole process group
+      if kill -0 "$pid" 2>/dev/null; then
+        echo "[$svc] force-stopping process group (-$pid)…"
+        kill -TERM "-$pid" 2>/dev/null || true
+        sleep 1
+      fi
+      # Last resort
+      if kill -0 "$pid" 2>/dev/null; then
+        kill -KILL "-$pid" 2>/dev/null || true
+      fi
     else
-      echo "[$name] not running"
+      echo "[$svc] not running"
     fi
     rm -f "$pidf"
   else
-    echo "[$name] no pid file"
+    echo "[$svc] not running"
   fi
 }
 
-stop_one "line_tracker"
-stop_one "movement"
-stop_one "ultrasonic"
-stop_one "lighting"
-# stop_one "video"
-echo "[all] Stopped."
-
+for s in "${services[@]}"; do
+  stop "$s"
+done

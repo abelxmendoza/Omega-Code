@@ -1,83 +1,115 @@
 #!/usr/bin/env bash
+# File: scripts/start_all.sh
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-
-PID_DIR="$BASE_DIR/.pids"
-LOG_DIR="$BASE_DIR/logs"
-VENV_DIR="$BASE_DIR/venv"
-
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
+PID_DIR="$ROOT/.pids"
+LOG_DIR="$ROOT/logs"
+VENV_DIR="$ROOT/venv"
+REQS="$ROOT/requirements.txt"
 PY="$VENV_DIR/bin/python"
-PIP="$VENV_DIR/bin/pip"
+
+echo "[all] Backend: $ROOT"
 
 mkdir -p "$PID_DIR" "$LOG_DIR"
 
-echo "[all] Backend: $BASE_DIR"
-
-# Load .env if present (export all vars)
-if [ -f "$BASE_DIR/.env" ]; then
+# Load .env (export all keys while sourcing)
+if [[ -f "$ROOT/.env" ]]; then
   echo "[all] Loading .env"
-  set -a; . "$BASE_DIR/.env"; set +a
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT/.env"
+  set +a
 fi
 
-# Ensure venv
-if [ ! -x "$PY" ]; then
+# Ensure venv + tools
+if [[ ! -x "$PY" ]]; then
   echo "[all] Creating venv"
   python3 -m venv "$VENV_DIR"
 fi
-echo "[all] Upgrading pip/wheel"
-"$PIP" install -U pip wheel >/dev/null
 
-# Install requirements (safe to re-run)
-if [ -f "$BASE_DIR/requirements.txt" ]; then
+echo "[all] Upgrading pip/wheel"
+"$VENV_DIR/bin/pip" install -U pip wheel >/dev/null
+
+# Install Python deps (idempotent)
+if [[ -f "$REQS" ]]; then
   echo "[all] Installing Python deps"
-  "$PIP" install -r "$BASE_DIR/requirements.txt"
+  "$VENV_DIR/bin/pip" install -r "$REQS"
 fi
 
-run_bg () {
+rotate_log() {
+  local name="$1"
+  local log="$LOG_DIR/$name.log"
+  if [[ -f "$log" ]]; then
+    mv "$log" "$LOG_DIR/$name.log.$(date +%Y%m%d-%H%M%S)" || true
+  fi
+  : > "$log"
+}
+
+already_running() {
+  local name="$1"
+  local pidf="$PID_DIR/$name.pid"
+  if [[ -f "$pidf" ]]; then
+    local pid; pid="$(cat "$pidf" || true)"
+    if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
+      echo "[$name] already running (pid $pid)."
+      return 0
+    fi
+  fi
+  return 1
+}
+
+start_cmd() {
   local name="$1"; shift
-  local cmd="$*"
+  local workdir="$1"; shift
   local log="$LOG_DIR/$name.log"
   local pidf="$PID_DIR/$name.pid"
 
-  if [ -f "$pidf" ] && ps -p "$(cat "$pidf")" >/dev/null 2>&1; then
-    echo "[$name] already running (pid $(cat "$pidf"))."
-    return 0
+  if already_running "$name"; then
+    return
   fi
 
-  echo "[$name] starting → $cmd"
-  bash -lc "$cmd" >>"$log" 2>&1 & echo $! > "$pidf"
-  sleep 0.3
-  if ps -p "$(cat "$pidf")" >/dev/null 2>&1; then
-    echo "[$name] OK (pid $(cat "$pidf")). log: $log"
+  rotate_log "$name"
+  echo "[$name] starting → cd '$workdir' && $*"
+  (
+    cd "$workdir"
+    # Run detached, capture PID of the background shell (sufficient for stop/status)
+    nohup bash -lc "$*" >>"$log" 2>&1 &
+    echo $! >"$pidf"
+  )
+
+  local pid; pid="$(cat "$pidf" || true)"
+  if [[ -n "${pid:-}" ]] && sleep 0.5 && kill -0 "$pid" 2>/dev/null; then
+    echo "[$name] OK (pid $pid). log: $log"
   else
     echo "[$name] FAILED. See $log"
   fi
 }
 
-# --- Servers you have ---
-# Line tracker (Python): :8090/line-tracker
-run_bg "line_tracker" "cd '$BASE_DIR/sensors' && '$PY' line_tracking_ws_server.py"
+# ---- Start services ----
 
-# Movement (Python): :8081
-run_bg "movement" "cd '$BASE_DIR/movement' && '$PY' movement_ws_server.py"
+# 1) Line tracker (Python)
+start_cmd "line_tracker" "$ROOT/sensors" \
+  "'$PY' line_tracking_ws_server.py"
 
-# Ultrasonic (Go): :8080/ultrasonic
+# 2) Movement (Python)
+start_cmd "movement" "$ROOT/movement" \
+  "'$PY' movement_ws_server.py"
+
+# 3) Ultrasonic (Go)
 if command -v go >/dev/null 2>&1; then
-  run_bg "ultrasonic" "cd '$BASE_DIR/sensors' && go run main_ultrasonic.go"
+  start_cmd "ultrasonic" "$ROOT/sensors" \
+    "go run main_ultrasonic.go"
 else
-  echo "[ultrasonic] Skipped (Go not installed)"
+  echo "[ultrasonic] Skipped (go not installed)."
 fi
 
-# Lighting (Go): :8082/lighting
+# 4) Lighting (Go)
 if command -v go >/dev/null 2>&1; then
-  run_bg "lighting" "cd '$BASE_DIR/controllers/lighting' && go run main_lighting.go"
+  start_cmd "lighting" "$ROOT/controllers/lighting" \
+    "go run main_lighting.go"
 else
-  echo "[lighting] Skipped (Go not installed)"
+  echo "[lighting] Skipped (go not installed)."
 fi
-
-# OPTIONAL: Flask video server (uncomment/adjust if you use it)
-# run_bg "video" "cd '$BASE_DIR' && '$PY' video_server.py"
 
 echo "[all] Done. Use scripts/status.sh to check; scripts/stop_all.sh to stop."
