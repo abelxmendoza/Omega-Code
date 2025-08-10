@@ -9,6 +9,11 @@ checks, a tiny status dot with HEAD latency, and a generic WS auto-reconnect (op
 import React, { useState, useEffect, useRef } from 'react';
 import GpsLocation from './GpsLocation';
 
+/** Props */
+export type VideoFeedProps = {
+  onVideoStatusChange?: (ok: boolean) => void; // notify parent when video becomes (un)available
+};
+
 /** Resolve endpoint from profile: lan | tailscale | local */
 const getEnvVar = (base: string) => {
   const profile = process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local';
@@ -20,18 +25,16 @@ const getEnvVar = (base: string) => {
 };
 
 // Pull endpoints from env
-const wsUrl = getEnvVar('NEXT_PUBLIC_BACKEND_WS_URL');            // optional generic WS
-const videoUrl = getEnvVar('NEXT_PUBLIC_VIDEO_STREAM_URL');       // MJPEG stream
+const wsUrl   = getEnvVar('NEXT_PUBLIC_BACKEND_WS_URL');      // optional generic WS (unused data)
+const videoUrl = getEnvVar('NEXT_PUBLIC_VIDEO_STREAM_URL');   // MJPEG stream
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected';
 
 function StatusDot({ status, title }: { status: ServerStatus; title: string }) {
   const color =
-    status === 'connected'
-      ? 'bg-emerald-500'
-      : status === 'connecting'
-      ? 'bg-slate-500'
-      : 'bg-rose-500';
+    status === 'connected'   ? 'bg-emerald-500' :
+    status === 'connecting'  ? 'bg-slate-500'   :
+                                'bg-rose-500';
   return (
     <span
       className={`inline-block rounded-full ${color}`}
@@ -42,7 +45,7 @@ function StatusDot({ status, title }: { status: ServerStatus; title: string }) {
   );
 }
 
-const VideoFeed: React.FC = () => {
+const VideoFeed: React.FC<VideoFeedProps> = ({ onVideoStatusChange }) => {
   const [mapExpanded, setMapExpanded] = useState(false);
   const [videoAvailable, setVideoAvailable] = useState(true);
 
@@ -80,12 +83,18 @@ const VideoFeed: React.FC = () => {
     }
   };
 
+  // Poll availability
   useEffect(() => {
     checkVideoStream();
     const id = setInterval(checkVideoStream, 5000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoUrl]);
+
+  // Notify parent when availability changes
+  useEffect(() => {
+    onVideoStatusChange?.(status === 'connected' && videoAvailable);
+  }, [status, videoAvailable, onVideoStatusChange]);
 
   // Optional generic WS (kept from your original; safe to remove if unused)
   useEffect(() => {
