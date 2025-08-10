@@ -11,6 +11,7 @@
 // - Daemonless operation (no `pigpiod` required)
 // - Sends JSON payloads over WebSocket every 1 second
 // - Graceful error handling (timeouts, invalid readings)
+// - NEW: Sends a JSON welcome envelope on connect and responds to { "type": "ping" } with { "type": "pong" }
 //
 // 🔌 Wiring:
 // - Trigger → GPIO27 (Physical Pin 13)
@@ -23,6 +24,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"math"
 	"net/http"
@@ -49,12 +51,14 @@ var upgrader = websocket.Upgrader{
 }
 
 func measureDistance(trigger gpio.PinOut, echo gpio.PinIn) (int, error) {
+	// Ensure low, then 10µs high pulse
 	trigger.Out(gpio.Low)
 	time.Sleep(2 * time.Microsecond)
 	trigger.Out(gpio.High)
 	time.Sleep(10 * time.Microsecond)
 	trigger.Out(gpio.Low)
 
+	// Wait for echo to go high (start)
 	startWait := time.Now()
 	for echo.Read() == gpio.Low {
 		if time.Since(startWait) > time.Second {
@@ -63,6 +67,7 @@ func measureDistance(trigger gpio.PinOut, echo gpio.PinIn) (int, error) {
 	}
 	start := time.Now()
 
+	// Wait for echo to go low (end)
 	for echo.Read() == gpio.High {
 		if time.Since(start) > time.Second {
 			return -1, os.ErrDeadlineExceeded
@@ -70,6 +75,7 @@ func measureDistance(trigger gpio.PinOut, echo gpio.PinIn) (int, error) {
 	}
 	duration := time.Since(start)
 
+	// Convert to cm (HC-SR04 ~58µs per cm round-trip)
 	distanceCM := int(float64(duration.Microseconds()) / 58.0)
 	if distanceCM <= 0 || distanceCM > 400 {
 		return -1, os.ErrInvalid
@@ -80,7 +86,7 @@ func measureDistance(trigger gpio.PinOut, echo gpio.PinIn) (int, error) {
 func handleUltrasonicSensor(ws *websocket.Conn) {
 	if _, err := host.Init(); err != nil {
 		log.Printf("Failed to initialize periph: %v", err)
-		ws.WriteJSON(UltrasonicData{Status: "error", Error: "Periph init failed"})
+		_ = ws.WriteJSON(UltrasonicData{Status: "error", Error: "Periph init failed"})
 		return
 	}
 
@@ -88,32 +94,73 @@ func handleUltrasonicSensor(ws *websocket.Conn) {
 	echo := rpi.P1_15    // GPIO22
 
 	if err := trigger.Out(gpio.Low); err != nil {
-		ws.WriteJSON(UltrasonicData{Status: "error", Error: "Trigger init failed"})
+		_ = ws.WriteJSON(UltrasonicData{Status: "error", Error: "Trigger init failed"})
 		return
 	}
 	if err := echo.In(gpio.PullNoChange, gpio.NoEdge); err != nil {
-		ws.WriteJSON(UltrasonicData{Status: "error", Error: "Echo init failed"})
+		_ = ws.WriteJSON(UltrasonicData{Status: "error", Error: "Echo init failed"})
 		return
 	}
 
+	// --- Welcome envelope so UI can mark connected immediately ---
+	welcome := map[string]any{
+		"status":  "connected",
+		"service": "ultrasonic",
+		"message": "Ultrasonic WebSocket connection established",
+		"ts":      time.Now().UnixMilli(),
+	}
+	_ = ws.WriteJSON(welcome)
+
+	// --- Concurrent reader: reply to JSON ping with pong ---
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			_, msg, err := ws.ReadMessage()
+			if err != nil {
+				// client closed or read error
+				return
+			}
+			var m map[string]any
+			if err := json.Unmarshal(msg, &m); err == nil {
+				if t, _ := m["type"].(string); t == "ping" {
+					pong := map[string]any{"type": "pong", "ts": m["ts"]}
+					_ = ws.WriteJSON(pong)
+				}
+			}
+		}
+	}()
+
+	// --- Writer: stream distance once per second until disconnect ---
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		distanceCM, err := measureDistance(trigger, echo)
-		if err != nil {
-			ws.WriteJSON(UltrasonicData{Status: "error", Error: err.Error()})
-			continue
-		}
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			distanceCM, err := measureDistance(trigger, echo)
+			if err != nil {
+				_ = ws.WriteJSON(UltrasonicData{Status: "error", Error: err.Error()})
+				continue
+			}
 
-		data := UltrasonicData{
-			Status:       "success",
-			DistanceCM:   distanceCM,
-			DistanceM:    math.Round(float64(distanceCM)/100*100) / 100,
-			DistanceInch: math.Round(float64(distanceCM)/2.54*100) / 100,
-			DistanceFeet: math.Round(float64(distanceCM)/30.48*100) / 100,
+			meters := float64(distanceCM) / 100.0
+			inches := float64(distanceCM) / 2.54
+			feet := float64(distanceCM) / 30.48
+
+			data := UltrasonicData{
+				Status:       "success",
+				DistanceCM:   distanceCM,
+				DistanceM:    math.Round(meters*100) / 100,   // 2 decimals
+				DistanceInch: math.Round(inches*100) / 100,   // 2 decimals
+				DistanceFeet: math.Round(feet*100) / 100,     // 2 decimals
+			}
+			if err := ws.WriteJSON(data); err != nil {
+				return
+			}
 		}
-		_ = ws.WriteJSON(data)
 	}
 }
 

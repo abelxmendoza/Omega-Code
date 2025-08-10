@@ -15,6 +15,7 @@ Updates in this version:
 - Fixes brightness defaulting: brightness is now optional (*float64); default to 1.0 only when omitted (nil).
   Explicit 0.0 is respected (e.g., to turn LEDs off) and all values are clamped to [0,1].
 - Minor: uses WriteJSON for the welcome envelope.
+- Safety: runs the Python effect command with a short timeout to avoid hanging processes.
 
 Features:
 - Handles WebSocket connections for real-time control.
@@ -23,7 +24,7 @@ Features:
 
 Expected JSON payload from frontend (supports both int and hex string):
 {
-    "color": "#ff0000",        // Hex string (recommended, e.g. "#ff0000" for red)
+    "color": "#ff0000",        // Hex string (recommended, e.g., "#ff0000" for red)
     "mode": "single",          // e.g., "single", "multi", "rainbow"
     "pattern": "static",       // e.g., "static", "blink", "fade", "off"
     "interval": 500,           // For animation speed, in ms
@@ -43,6 +44,7 @@ Server ← {"type":"pong","ts": 1723220000000}
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -50,6 +52,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -86,6 +89,17 @@ func hexColorString(color interface{}) (string, error) {
 	}
 }
 
+// clampFloat limits v to [min, max]
+func clampFloat(v, min, max float64) float64 {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
 // handleLighting manages a single WebSocket connection for LED control
 func handleLighting(ws *websocket.Conn) {
 	defer func() {
@@ -95,10 +109,11 @@ func handleLighting(ws *websocket.Conn) {
 	log.Println("Lighting WebSocket connection established")
 
 	// Send connection confirmation to the frontend
-	_ = ws.WriteJSON(map[string]string{
+	_ = ws.WriteJSON(map[string]interface{}{
 		"status":  "connected",
 		"service": "lighting",
 		"message": "Lighting WebSocket connection established",
+		"ts":      time.Now().UnixMilli(),
 	})
 
 	for {
@@ -110,19 +125,16 @@ func handleLighting(ws *websocket.Conn) {
 
 		// Peek for heartbeat pings without assuming the payload is a LightingCommand
 		var envelope map[string]json.RawMessage
-		if err := json.Unmarshal(msg, &envelope); err != nil {
-			log.Printf("JSON parse error: %v", err)
-			continue
-		}
-		if tRaw, ok := envelope["type"]; ok {
-			var typ string
-			_ = json.Unmarshal(tRaw, &typ)
-			if typ == "ping" {
-				var ts int64
-				_ = json.Unmarshal(envelope["ts"], &ts)
-				_ = ws.WriteJSON(map[string]interface{}{"type": "pong", "ts": ts})
-				// Skip normal command handling
-				continue
+		if err := json.Unmarshal(msg, &envelope); err == nil {
+			if tRaw, ok := envelope["type"]; ok {
+				var typ string
+				_ = json.Unmarshal(tRaw, &typ)
+				if typ == "ping" {
+					var ts any
+					_ = json.Unmarshal(envelope["ts"], &ts) // echo whatever came in
+					_ = ws.WriteJSON(map[string]interface{}{"type": "pong", "ts": ts})
+					continue // Skip normal command handling
+				}
 			}
 		}
 
@@ -143,12 +155,12 @@ func handleLighting(ws *websocket.Conn) {
 		// Brightness: default to 1.0 only when omitted; otherwise clamp to [0,1]
 		brightness := 1.0
 		if command.Brightness != nil {
-			brightness = *command.Brightness
-			if brightness < 0.0 {
-				brightness = 0.0
-			} else if brightness > 1.0 {
-				brightness = 1.0
-			}
+			brightness = clampFloat(*command.Brightness, 0.0, 1.0)
+		}
+
+		// Interval: guard against negatives
+		if command.Interval < 0 {
+			command.Interval = 0
 		}
 
 		// Build the command for the Python script (includes brightness as the 5th argument)
@@ -158,9 +170,15 @@ func handleLighting(ws *websocket.Conn) {
 		)
 		log.Printf("Executing: %s", pythonCmd)
 
-		// Run the Python script to control the LEDs
-		cmd := exec.Command("bash", "-c", pythonCmd)
+		// Run the Python script to control the LEDs with a short timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		cmd := exec.CommandContext(ctx, "bash", "-c", pythonCmd)
 		output, err := cmd.CombinedOutput()
+		cancel()
+
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("Command timed out after 5s")
+		}
 		if err != nil {
 			log.Printf("Command execution failed: %v", err)
 			log.Printf("Output: %s", string(output))
