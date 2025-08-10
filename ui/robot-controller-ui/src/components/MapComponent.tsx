@@ -1,103 +1,156 @@
 /*
-# File: /Omega-Code/ui/robot-controller-ui/src/components/MapComponent.tsx
+# File: /src/components/MapComponent.tsx
 # Summary:
-This component renders an interactive map using the Leaflet library. It includes features to display the robot's location on the map in real-time using WebSocket data. The component initializes a map, adds a marker with a custom robot icon, and updates the marker's position based on incoming WebSocket messages.
+Leaflet map that shows the robot’s GPS with a live WebSocket update.
+- Uses env-resolved WS: NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_*
+- Accepts many payload shapes: {lat,lng} | {latitude,longitude} | {location:{lat,lng}} | {gps:{lat,lon}}
+- Tiny status dot in header (connecting/connected/disconnected)
 */
 
-import React, { useEffect, useRef } from 'react';
-import L from 'leaflet'; // Leaflet library for maps
-import 'leaflet/dist/leaflet.css'; // Leaflet default styles
+import React, { useEffect, useRef, useState } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { resolveWsUrl } from '@/utils/resolveWsUrl';
 
-// Define the MapComponent functional component
-const MapComponent: React.FC = () => {
-  const mapRef = useRef<L.Map | null>(null); // Ref to store the Leaflet map instance
-  const ws = useRef<WebSocket | null>(null); // Ref to store the WebSocket instance
+type ServerStatus = 'connecting' | 'connected' | 'disconnected';
+
+function StatusDot({ status }: { status: ServerStatus }) {
+  const color =
+    status === 'connected' ? 'bg-emerald-500'
+      : status === 'connecting' ? 'bg-slate-500'
+      : 'bg-rose-500';
+  return <span className={`inline-block rounded-full ${color}`} style={{ width: 8, height: 8 }} />;
+}
+
+function parseLatLng(raw: any): { lat: number; lng: number } | null {
+  if (!raw) return null;
+  if (typeof raw.lat === 'number' && typeof raw.lng === 'number') return { lat: raw.lat, lng: raw.lng };
+  if (typeof raw.latitude === 'number' && typeof raw.longitude === 'number') return { lat: raw.latitude, lng: raw.longitude };
+  if (raw.location) return parseLatLng(raw.location);
+  if (raw.gps) {
+    const g = raw.gps;
+    if (typeof g.lat === 'number' && typeof g.lon === 'number') return { lat: g.lat, lng: g.lon };
+  }
+  return null;
+}
+
+export default function MapComponent({
+  initialCenter = [51.505, -0.09] as [number, number],
+  zoom = 13,
+  className = '',
+  title = 'GPS',
+}: {
+  initialCenter?: [number, number];
+  zoom?: number;
+  className?: string;
+  title?: string;
+}) {
+  const mapEl = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  const [status, setStatus] = useState<ServerStatus>('connecting');
+
+  // Resolve location WS from env
+  const LOCATION_WS = resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_LOCATION');
 
   useEffect(() => {
-    // Initialize the map with default view and zoom level
-    mapRef.current = L.map('map').setView([51.505, -0.09], 13);
+    if (!mapEl.current) return;
 
-    // Add OpenStreetMap tile layer
+    // Init map
+    const map = L.map(mapEl.current, {
+      zoomControl: false,
+      attributionControl: false,
+    }).setView(initialCenter, zoom);
+    mapRef.current = map;
+
+    // Tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(mapRef.current);
+      maxZoom: 19,
+    }).addTo(map);
 
-    // Create a custom icon for the robot marker
+    // Robot marker (emoji to avoid icon assets)
     const robotIcon = L.divIcon({
       html: '🤖',
-      className: 'custom-robot-icon', // Custom CSS class for styling
-      iconSize: [30, 30], // Size of the icon
-      iconAnchor: [15, 15], // Anchor point of the icon
-      popupAnchor: [0, -15] // Popup position relative to the icon
+      className: 'custom-robot-icon',
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
     });
 
-    // Add a marker to the map with the custom icon
-    const marker = L.marker([51.505, -0.09], { icon: robotIcon }).addTo(mapRef.current)
-      .bindPopup('A pretty CSS3 popup.<br> Easily customizable.')
-      .openPopup();
+    markerRef.current = L.marker(initialCenter, { icon: robotIcon }).addTo(map);
 
-    // Establish WebSocket connection to receive real-time data
-    ws.current = new WebSocket('ws://localhost:8080/ws');
-
-    // WebSocket event handlers
-    ws.current.onopen = () => {
-      console.log('WebSocket connection established');
-    };
-
-    ws.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      // Update marker position based on location data
-      if (data.type === 'location') {
-        const { lat, lng } = data;
-        marker.setLatLng([lat, lng]);
-        mapRef.current?.setView([lat, lng], 13); // Center map on new location
-      }
-    };
-
-    ws.current.onclose = () => {
-      console.log('WebSocket connection closed');
-    };
-
-    ws.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    // Cleanup function to remove the map and close the WebSocket on unmount
     return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-      }
-      if (ws.current) {
-        ws.current.close();
-      }
+      map.remove();
+      mapRef.current = null;
+      markerRef.current = null;
     };
-  }, []); // Empty dependency array to ensure this effect runs only once
+  }, [initialCenter, zoom]);
 
-  // Render the map container
-  return <div id="map" className="w-full h-full" style={{ height: '100%', width: '100%' }}></div>;
-};
+  useEffect(() => {
+    if (!LOCATION_WS) {
+      setStatus('disconnected');
+      return;
+    }
+    let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | null = null;
 
-export default MapComponent;
+    const open = (attempt = 0) => {
+      if (cancelled) return;
+      setStatus('connecting');
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(LOCATION_WS);
+      } catch {
+        const backoff = Math.min(1000 * 2 ** attempt, 10000);
+        retry = setTimeout(() => open(attempt + 1), backoff);
+        return;
+      }
+      wsRef.current = ws;
 
-/*
-## Steps to Resolve TypeScript Error:
-The error indicates missing type declarations for the `leaflet` module. To fix this, you must install the corresponding type declarations.
+      ws.onopen = () => setStatus('connected');
+      ws.onclose = () => {
+        setStatus('disconnected');
+        const backoff = Math.min(1000 * 2 ** attempt, 10000);
+        retry = setTimeout(() => open(attempt + 1), backoff);
+      };
+      ws.onerror = () => {/* onclose handles state */};
 
-1. Install the Leaflet type definitions:
-```bash
-npm install --save-dev @types/leaflet
-```
+      ws.onmessage = (evt) => {
+        try {
+          const data = JSON.parse(evt.data);
+          const p = parseLatLng(data);
+          if (!p || !mapRef.current || !markerRef.current) return;
+          markerRef.current.setLatLng([p.lat, p.lng]);
+          // Smooth recenter a bit
+          mapRef.current.setView([p.lat, p.lng], mapRef.current.getZoom(), { animate: true });
+        } catch {
+          /* ignore */
+        }
+      };
+    };
 
-2. Restart your development server and ensure TypeScript recognizes the `leaflet` types.
+    open(0);
+    return () => {
+      cancelled = true;
+      if (retry) clearTimeout(retry);
+      try { wsRef.current?.close(); } catch {}
+      wsRef.current = null;
+    };
+  }, [LOCATION_WS]);
 
-3. Ensure your `tsconfig.json` includes the following to locate type declarations:
-```json
-{
-  "compilerOptions": {
-    "typeRoots": ["./node_modules/@types"]
-  }
+  return (
+    <div className={`rounded-lg shadow-md overflow-hidden border border-white/10 bg-gray-900 ${className}`}>
+      <div className="flex items-center justify-between px-3 py-2 bg-black/40 border-b border-white/10">
+        <div className="flex items-center gap-2 text-white/90">
+          <StatusDot status={status} />
+          <span className="text-sm font-semibold">{title}</span>
+          <span className="text-xs text-white/70 ml-2">
+            {status === 'connected' ? 'Live' : status === 'connecting' ? 'Connecting…' : 'Disconnected'}
+          </span>
+        </div>
+      </div>
+      <div ref={mapEl} className="w-full h-44" />
+    </div>
+  );
 }
-```
-
-These steps ensure that TypeScript correctly handles the `leaflet` library.
-*/

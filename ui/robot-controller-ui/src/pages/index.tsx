@@ -16,9 +16,23 @@ import CameraControlPanel from '../components/control/CameraControlPanel';
 import { useCommand } from '../context/CommandContext';
 import { COMMAND } from '../control_definitions';
 import Header from '../components/Header';
-import VideoFeed from '../components/VideoFeed';
+// import VideoFeed from '../components/VideoFeed'; // replaced by CameraFrame on this page
+import CameraFrame from '../components/CameraFrame';
 import LedModal from '../components/lighting/LedModal';
 import { v4 as uuidv4 } from 'uuid';
+
+// Utility to pick endpoints by profile (lan | tailscale | local)
+const getEnvVar = (base: string) => {
+  const profile = process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local';
+  return (
+    process.env[`${base}_${profile.toUpperCase()}`] ||
+    process.env[`${base}_LOCAL`] ||
+    ''
+  );
+};
+
+// Video stream URL (used by CameraFrame)
+const videoUrl = getEnvVar('NEXT_PUBLIC_VIDEO_STREAM_URL');
 
 const Home: React.FC = () => {
   const { sendCommand, addCommand } = useCommand();
@@ -73,17 +87,20 @@ const Home: React.FC = () => {
     };
   }, [connectWebSocket]);
 
-  const sendCommandWithLog = useCallback((command: string, angle: number = 0) => {
-    const requestId = uuidv4();
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      const payload = { command, angle, request_id: requestId };
-      ws.current.send(JSON.stringify(payload));
-      addCommand(`Sent: ${command} (ID: ${requestId})`);
-    } else {
-      console.error('WebSocket is not open');
-      addCommand('Failed to send command: WebSocket is not open');
-    }
-  }, [addCommand]);
+  const sendCommandWithLog = useCallback(
+    (command: string, angle: number = 0) => {
+      const requestId = uuidv4();
+      if (ws.current?.readyState === WebSocket.OPEN) {
+        const payload = { command, angle, request_id: requestId };
+        ws.current.send(JSON.stringify(payload));
+        addCommand(`Sent: ${command} (ID: ${requestId})`);
+      } else {
+        console.error('WebSocket is not open');
+        addCommand('Failed to send command: WebSocket is not open');
+      }
+    },
+    [addCommand]
+  );
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -126,7 +143,16 @@ const Home: React.FC = () => {
           <div className="flex-shrink-0">
             <CarControlPanel sendCommand={sendCommandWithLog} />
           </div>
-          <VideoFeed />
+
+          {/* Replaced <VideoFeed /> with framed camera */}
+          <div className="flex-shrink-0">
+            <CameraFrame
+              src={videoUrl}
+              title="Front Camera"
+              className="w-[720px] max-w-[42vw]"
+            />
+          </div>
+
           <div className="flex-shrink-0">
             <CameraControlPanel sendCommand={sendCommandWithLog} />
           </div>
@@ -150,7 +176,10 @@ const Home: React.FC = () => {
       </main>
 
       {isLedModalOpen && (
-        <LedModal isOpen={isLedModalOpen} onClose={() => setIsLedModalOpen(false)} />
+        <LedModal
+          isOpen={isLedModalOpen}
+          onClose={() => setIsLedModalOpen(false)}
+        />
       )}
     </div>
   );
