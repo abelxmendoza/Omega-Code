@@ -1,18 +1,22 @@
 # File: /Omega-Code/servers/robot-controller-backend/requirements.txt
 
-# --- Core hardware libs (Pi) ---
-RPi.GPIO==0.7.0          # Legacy Pi 3/4 support (pip)
-lgpio                     # Pi 5 GPIO (usually installed via apt, see notes)
-rpi_ws281x                # WS281x LED strips (pip wheel available for Pi)
+# --- Core hardware libs (Raspberry Pi) ---
+# Pi 4/3 use RPi.GPIO. Use the a4 build if possible (works well on 64-bit).
+RPi.GPIO==0.7.1a4 ; platform_machine == "armv7l" or platform_machine == "aarch64"
 
-smbus2==0.4.1            # I2C comms (ADC, etc.)
+# Pi 5 uses lgpio via apt, not pip. Keep this commented to avoid pip errors.
+# Install with: sudo apt-get install -y python3-lgpio
+# lgpio
+
+rpi_ws281x            # WS281x LED strips (pip wheel available for Pi)
+smbus2==0.4.1         # I2C comms (ADC, etc.)
 Adafruit-PCA9685==1.0.1  # PWM driver
 
 # --- Web servers / sockets ---
 Flask==2.1.1
 Flask-SocketIO==5.3.2
 eventlet==0.33.1
-websockets>=12,<13       # For Python WS servers (line tracker, movement if Python)
+websockets>=12,<13    # Python WS servers (line tracker, etc.)
 
 # --- Utilities ---
 python-dotenv==0.19.2
@@ -24,5 +28,5 @@ pytest==8.2.2
 pytest-mock==3.14.0
 mock==4.0.3
 
-# --- Vision ---
+# --- Vision (headless OpenCV) ---
 opencv-python-headless==4.5.5.64
