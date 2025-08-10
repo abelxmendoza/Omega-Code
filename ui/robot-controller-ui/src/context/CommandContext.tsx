@@ -2,7 +2,9 @@
 # File: /src/context/CommandContext.tsx
 # Summary:
 Centralized context for managing WebSocket communication and command logging with timestamps.
-Features WebSocket lifecycle event handling, command history management, and offline command logging.
+Features WebSocket lifecycle event handling, command history management, offline command logging,
+and now exposes live connection status (connecting/connected/disconnected) plus optional latency
+from a JSON ping/pong heartbeat.
 */
 
 import React, {
@@ -15,18 +17,25 @@ import React, {
 } from 'react';
 import { connectMovementWs } from '@/utils/connectMovementWs';
 
+type ServerStatus = 'connecting' | 'connected' | 'disconnected';
+
 // Define the structure of a command entry with a timestamp
 interface CommandEntry {
-  command: string; // The command string
-  timestamp: number; // The timestamp when the command was logged
+  command: string;
+  timestamp: number;
 }
 
 // Define the shape of the CommandContext
 interface CommandContextType {
-  sendCommand: (command: string, data?: Record<string, any>) => void; // Function to send commands
-  commands: CommandEntry[]; // Array of logged commands with timestamps
-  addCommand: (command: string) => void; // Function to add commands to the log
-  popCommand: () => void; // Function to remove the most recent command
+  sendCommand: (command: string, data?: Record<string, any>) => void;
+  commands: CommandEntry[];
+  addCommand: (command: string) => void;
+  popCommand: () => void;
+
+  // NEW: movement connection state
+  status: ServerStatus;
+  latencyMs: number | null; // null if unknown/degraded
+  wsUrl?: string;
 }
 
 // Create the CommandContext with an undefined default value
@@ -46,19 +55,31 @@ export const useCommand = (): CommandContextType => {
 
 /*
 # Component: CommandProvider
-Manages WebSocket connection, command logging, and state handling. Provides CommandContext to children.
+Manages WebSocket connection, command logging, status, and heartbeat. Provides CommandContext to children.
 */
 export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [commands, setCommands] = useState<CommandEntry[]>([]); // Command log state
-  const ws = useRef<WebSocket | null>(null); // Reference to WebSocket instance
+  const [commands, setCommands] = useState<CommandEntry[]>([]);
+  const [status, setStatus] = useState<ServerStatus>('disconnected');
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [wsUrl, setWsUrl] = useState<string | undefined>(undefined);
+
+  const ws = useRef<WebSocket | null>(null);
+
+  // Heartbeat refs
+  const hbTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pongTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pingSentAt = useRef<number | null>(null);
+
+  // Reconnect control
+  const shouldReconnect = useRef(true);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
    * Logs a command with the current timestamp.
-   * @param command - The command string to log.
    */
   const addCommand = (command: string) => {
     const timestamp = Date.now();
-    setCommands((prev) => [{ command, timestamp }, ...prev]); // Add to the top of the stack
+    setCommands((prev) => [{ command, timestamp }, ...prev]);
     console.log(`[Command Log] ${command}`);
   };
 
@@ -66,17 +87,11 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
    * Removes the most recent command from the log.
    */
   const popCommand = () => {
-    if (commands.length > 0) {
-      setCommands((prev) => prev.slice(1)); // Remove the latest command
-    } else {
-      console.warn('No commands to pop. Command log is empty.');
-    }
+    setCommands((prev) => (prev.length > 0 ? prev.slice(1) : prev));
   };
 
   /**
    * Sends a command via WebSocket, or logs it as offline if the WebSocket is closed.
-   * @param command - The command string to send.
-   * @param data - Optional additional data to send with the command.
    */
   const sendCommand = (command: string, data?: Record<string, any>) => {
     const payload = JSON.stringify({ command, ...data });
@@ -89,27 +104,79 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  /**
-   * Establishes and manages the WebSocket connection lifecycle.
-   */
+  // ---- Heartbeat helpers (JSON ping/pong) ----
+  const cleanupHeartbeat = () => {
+    if (hbTimer.current) {
+      clearInterval(hbTimer.current);
+      hbTimer.current = null;
+    }
+    if (pongTimeout.current) {
+      clearTimeout(pongTimeout.current);
+      pongTimeout.current = null;
+    }
+    pingSentAt.current = null;
+  };
+
+  const startHeartbeat = () => {
+    cleanupHeartbeat();
+    hbTimer.current = setInterval(() => {
+      const sock = ws.current;
+      if (!sock || sock.readyState !== WebSocket.OPEN) return;
+      try {
+        pingSentAt.current = performance.now();
+        sock.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
+
+        if (pongTimeout.current) clearTimeout(pongTimeout.current);
+        pongTimeout.current = setTimeout(() => {
+          // No pong in time -> mark degraded latency but stay connected
+          pingSentAt.current = null;
+          setLatencyMs(null);
+        }, 6000);
+      } catch {
+        setStatus('disconnected');
+      }
+    }, 10000);
+  };
+
+  // ---- Connection lifecycle ----
   useEffect(() => {
-    let shouldReconnect = true;
+    shouldReconnect.current = true;
 
     const setupWebSocket = (wsInstance: WebSocket) => {
       ws.current = wsInstance;
+      setWsUrl(wsInstance.url);
 
       wsInstance.onopen = () => {
-        console.log('[WebSocket] Connected');
+        setStatus('connected');
+        setLatencyMs(null);
         addCommand('WebSocket connected');
+        startHeartbeat();
       };
 
       wsInstance.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          // Heartbeat pong
+          if (data?.type === 'pong') {
+            const end = performance.now();
+            const start = pingSentAt.current ?? end;
+            if (pongTimeout.current) {
+              clearTimeout(pongTimeout.current);
+              pongTimeout.current = null;
+            }
+            setLatencyMs(Math.max(0, Math.round(end - start)));
+            pingSentAt.current = null;
+            return;
+          }
+
+          // Normal echo/command log
           if (data.command) {
             addCommand(`Received: ${data.command}`);
+          } else if (data?.status === 'connected' && data?.service === 'movement') {
+            setStatus('connected');
           } else {
-            console.warn('[WebSocket] Unrecognized message:', event.data);
+            // Unknown payloads are OK; keep quiet
           }
         } catch (error) {
           console.error('[WebSocket] Error parsing message:', error);
@@ -117,12 +184,13 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
       };
 
       wsInstance.onclose = () => {
-        console.warn('[WebSocket] Disconnected. Attempting to reconnect...');
+        setStatus('disconnected');
         addCommand('WebSocket disconnected');
-        if (shouldReconnect) {
-          setTimeout(() => {
-            connectAndSetup();
-          }, 2000);
+        cleanupHeartbeat();
+
+        if (shouldReconnect.current) {
+          const backoff = 2000; // keep your original cadence
+          reconnectTimer.current = setTimeout(connectAndSetup, backoff);
         }
       };
 
@@ -131,38 +199,44 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         const errMsg =
           event instanceof ErrorEvent ? event.message : 'Unknown WebSocket error';
         addCommand(`WebSocket error: ${errMsg}`);
+        // onclose will handle reconnect
       };
     };
 
     const connectAndSetup = () => {
+      setStatus('connecting');
       connectMovementWs()
         .then(setupWebSocket)
         .catch(() => {
           addCommand('WebSocket failed to connect (Tailscale and LAN)');
-          setTimeout(connectAndSetup, 2000);
+          reconnectTimer.current = setTimeout(connectAndSetup, 2000);
         });
     };
 
     connectAndSetup();
 
-    // Cleanup WebSocket connection on component unmount
+    // Cleanup on unmount
     return () => {
-      shouldReconnect = false;
+      shouldReconnect.current = false;
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = null;
+      }
+      cleanupHeartbeat();
       if (ws.current) {
-        ws.current.close();
+        try { ws.current.close(); } catch {}
         addCommand('WebSocket connection closed during cleanup');
       }
     };
   }, []);
 
-  // Provide the CommandContext values to children
   return (
-    <CommandContext.Provider value={{ sendCommand, commands, addCommand, popCommand }}>
+    <CommandContext.Provider
+      value={{ sendCommand, commands, addCommand, popCommand, status, latencyMs, wsUrl }}
+    >
       {children}
     </CommandContext.Provider>
   );
 };
 
 export { CommandContext };
-
-

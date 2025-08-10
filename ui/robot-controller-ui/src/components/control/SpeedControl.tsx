@@ -1,97 +1,162 @@
 /*
 # File: /src/components/control/SpeedControl.tsx
 # Summary:
-Provides a user interface for controlling the robot's speed, LEDs, and buzzer. 
-It includes controls for increasing/decreasing speed, performing an emergency stop, and toggling LED settings.
+Provides a user interface for controlling the robot's speed, LEDs, and buzzer.
+Now also shows a small connection status dot (connected/connecting/disconnected) for the Movement WS.
 */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { COMMAND } from '@/control_definitions'; // Import command definitions
-import { useCommand } from '@/context/CommandContext'; // Context for WebSocket commands
-import LedModal from '@/components/lighting/LedModal'; // Component for configuring LED settings
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { COMMAND } from '@/control_definitions';
+import { useCommand } from '@/context/CommandContext';
+import LedModal from '@/components/lighting/LedModal';
+import { resolveWsUrl } from '@/utils/resolveWsUrl';
+
+type ServerStatus = 'connecting' | 'connected' | 'disconnected';
+
+// Resolve movement WS from env (profile-aware)
+const MOVEMENT_WS = resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT');
+
+// tiny status dot
+function StatusDot({ status, title }: { status: ServerStatus; title: string }) {
+  const color =
+    status === 'connected'
+      ? 'bg-emerald-500'
+      : status === 'connecting'
+      ? 'bg-slate-500'
+      : 'bg-rose-500';
+  return (
+    <span
+      className={`inline-block rounded-full ${color} shrink-0`}
+      style={{ width: 8, height: 8 }}
+      title={title}
+      aria-label={title}
+    />
+  );
+}
 
 const SpeedControl: React.FC = () => {
-  const { sendCommand } = useCommand(); // Access WebSocket command utilities
-  const [speed, setSpeed] = useState(0); // State to track current speed (0-100%)
-  const [isLedActive, setIsLedActive] = useState(false); // State for LED toggle
-  const [isLedModalOpen, setIsLedModalOpen] = useState(false); // State for LED modal visibility
+  const { sendCommand } = useCommand();
 
-  /**
-   * Increase the robot's speed (capped at 100%).
-   */
+  const [speed, setSpeed] = useState(0);
+  const [isLedActive, setIsLedActive] = useState(false);
+  const [isLedModalOpen, setIsLedModalOpen] = useState(false);
+
+  // movement server status
+  const [moveStatus, setMoveStatus] = useState<ServerStatus>('disconnected');
+  const moveWsRef = useRef<WebSocket | null>(null);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useRef(false);
+
+  // --- Movement WS status monitor (separate, lightweight connection) ---
+  useEffect(() => {
+    mounted.current = true;
+    if (!MOVEMENT_WS) {
+      setMoveStatus('disconnected');
+      return () => { mounted.current = false; };
+    }
+
+    const open = (attempt = 0) => {
+      if (!mounted.current) return;
+      setMoveStatus('connecting');
+
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(MOVEMENT_WS);
+      } catch {
+        const backoff = Math.min(1000 * 2 ** attempt, 10000);
+        retryRef.current = setTimeout(() => open(attempt + 1), backoff);
+        return;
+      }
+
+      moveWsRef.current = ws;
+
+      ws.onopen = () => {
+        if (!mounted.current) return;
+        setMoveStatus('connected');
+      };
+
+      ws.onerror = () => {
+        // let onclose handle the state/backoff
+      };
+
+      ws.onclose = () => {
+        if (!mounted.current) return;
+        setMoveStatus('disconnected');
+        const backoff = Math.min(1000 * 2 ** attempt, 10000);
+        retryRef.current = setTimeout(() => open(attempt + 1), backoff);
+      };
+    };
+
+    open(0);
+
+    return () => {
+      mounted.current = false;
+      if (retryRef.current) clearTimeout(retryRef.current);
+      retryRef.current = null;
+      if (moveWsRef.current) {
+        moveWsRef.current.onopen = null;
+        moveWsRef.current.onclose = null;
+        moveWsRef.current.onerror = null;
+        try { moveWsRef.current.close(); } catch {}
+        moveWsRef.current = null;
+      }
+    };
+  }, []);
+
+  // --- Controls ---
   const increaseSpeed = useCallback(() => {
     const newSpeed = Math.min(speed + 10, 100);
     setSpeed(newSpeed);
     sendCommand(`${COMMAND.INCREASE_SPEED}-${newSpeed}`);
   }, [speed, sendCommand]);
 
-  /**
-   * Decrease the robot's speed (minimum of 0%).
-   */
   const decreaseSpeed = useCallback(() => {
     const newSpeed = Math.max(speed - 10, 0);
     setSpeed(newSpeed);
     sendCommand(`${COMMAND.DECREASE_SPEED}-${newSpeed}`);
   }, [speed, sendCommand]);
 
-  /**
-   * Perform an emergency stop (speed set to 0%).
-   */
   const emergencyStop = useCallback(() => {
     setSpeed(0);
     sendCommand(COMMAND.STOP);
   }, [sendCommand]);
 
-  /**
-   * Toggle the LED state and open the LED configuration modal.
-   */
   const toggleLed = useCallback(() => {
     setIsLedActive((prev) => !prev);
-    setIsLedModalOpen(true); // Open LED modal
+    setIsLedModalOpen(true);
   }, []);
 
-  /**
-   * Activate the buzzer for 5 seconds.
-   */
   const activateBuzzer = useCallback(() => {
     sendCommand(COMMAND.CMD_BUZZER);
-    setTimeout(() => sendCommand(COMMAND.CMD_BUZZER_STOP), 5000); // Stop buzzer after 5 seconds
+    setTimeout(() => sendCommand(COMMAND.CMD_BUZZER_STOP), 5000);
   }, [sendCommand]);
 
-  /**
-   * Handle keyboard shortcuts for controls.
-   */
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       switch (event.key.toLowerCase()) {
-        case 'p':
-          increaseSpeed();
-          break;
-        case 'o':
-          decreaseSpeed();
-          break;
-        case ' ':
-          emergencyStop();
-          break;
-        case 'i':
-          toggleLed();
-          break;
-        case '0':
-          activateBuzzer();
-          break;
-        default:
-          break;
+        case 'p': increaseSpeed(); break;
+        case 'o': decreaseSpeed(); break;
+        case ' ': emergencyStop(); break;
+        case 'i': toggleLed(); break;
+        case '0': activateBuzzer(); break;
+        default: break;
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [increaseSpeed, decreaseSpeed, emergencyStop, toggleLed, activateBuzzer]);
 
+  const moveTitle =
+    `Movement server: ${moveStatus[0].toUpperCase()}${moveStatus.slice(1)}`;
+
   return (
     <div className="bg-gray-800 text-white p-4 rounded-md shadow-md w-full max-w-sm flex flex-col items-center">
-      {/* Header */}
-      <h2 className="text-lg font-bold mb-4">Speed & Light Control</h2>
+      {/* Header with status dot */}
+      <div className="w-full flex items-center justify-between mb-4">
+        <h2 className="text-lg font-bold">Speed & Light Control</h2>
+        <StatusDot status={moveStatus} title={moveTitle} />
+      </div>
 
       {/* Speed Progress Bar */}
       <div className="w-full mb-4">
@@ -102,7 +167,7 @@ const SpeedControl: React.FC = () => {
               speed <= 20 ? 'bg-red-500' : speed <= 60 ? 'bg-yellow-500' : 'bg-green-500'
             }`}
             style={{ width: `${speed}%` }}
-          ></div>
+          />
           <div className="absolute inset-0 flex justify-center items-center text-white text-sm font-bold">
             {speed}%
           </div>
@@ -111,34 +176,19 @@ const SpeedControl: React.FC = () => {
 
       {/* Control Buttons */}
       <div className="grid grid-cols-2 gap-3 w-full">
-        <button
-          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-          onClick={decreaseSpeed}
-        >
+        <button className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700" onClick={decreaseSpeed}>
           O (Brake)
         </button>
-        <button
-          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-          onClick={increaseSpeed}
-        >
+        <button className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700" onClick={increaseSpeed}>
           P (Gas)
         </button>
-        <button
-          className="bg-red-600 text-white py-2 rounded hover:bg-red-700 col-span-2"
-          onClick={emergencyStop}
-        >
+        <button className="bg-red-600 text-white py-2 rounded hover:bg-red-700 col-span-2" onClick={emergencyStop}>
           Space (Stop)
         </button>
-        <button
-          className="bg-yellow-600 text-white py-2 rounded hover:bg-yellow-700 col-span-2"
-          onClick={toggleLed}
-        >
+        <button className="bg-yellow-600 text-white py-2 rounded hover:bg-yellow-700 col-span-2" onClick={toggleLed}>
           I (LED)
         </button>
-        <button
-          className="bg-purple-600 text-white py-2 rounded hover:bg-purple-700 col-span-2"
-          onClick={activateBuzzer}
-        >
+        <button className="bg-purple-600 text-white py-2 rounded hover:bg-purple-700 col-span-2" onClick={activateBuzzer}>
           0 (Buzzer)
         </button>
       </div>
@@ -152,4 +202,3 @@ const SpeedControl: React.FC = () => {
 };
 
 export default SpeedControl;
-
