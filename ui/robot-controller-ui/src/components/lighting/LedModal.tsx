@@ -4,96 +4,252 @@
 Modal interface for controlling LED lighting on the robot. Supports single and rainbow modes,
 power toggle, pattern selection, brightness control, and interval configuration for dynamic patterns.
 Sends configuration to the backend via WebSocket.
+Includes a live connection indicator (connecting/connected/disconnected) with a heartbeat and
+layout tweaks so the status never overlaps the Close button. Adds safe cleanup + auto-reconnect.
 */
 
 import React, { useState, useEffect, useRef } from 'react';
+import type { ColorResult } from 'react-color';
 import { SketchPicker } from 'react-color';
-import { COMMAND } from '../../control_definitions';
 import { connectLightingWs } from '../../utils/connectLightingWs';
 
-const LIGHTING_MODES = ['single', 'rainbow'];
-const LIGHTING_PATTERNS = ['static', 'pulse', 'blink'];
+const LIGHTING_MODES = ['single', 'rainbow'] as const;
+const LIGHTING_PATTERNS = ['static', 'pulse', 'blink'] as const;
+
+type LightingMode = (typeof LIGHTING_MODES)[number];
+type LightingPattern = (typeof LIGHTING_PATTERNS)[number];
 
 interface LedModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+type ServerStatus = 'connecting' | 'connected' | 'disconnected';
+
 const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   const [ledOn, setLedOn] = useState(true);
   const [color1, setColor1] = useState('#ffffff');
-  const [mode, setMode] = useState(LIGHTING_MODES[0]);
-  const [pattern, setPattern] = useState(LIGHTING_PATTERNS[0]);
-  const [interval, setInterval] = useState(1000);
+  const [mode, setMode] = useState<LightingMode>(LIGHTING_MODES[0]);
+  const [pattern, setPattern] = useState<LightingPattern>(LIGHTING_PATTERNS[0]);
+  const [intervalMs, setIntervalMs] = useState(1000);
   const [brightness, setBrightness] = useState(100); // 0–100%
+
+  // --- connection status & heartbeat state ---
+  const [serverStatus, setServerStatus] = useState<ServerStatus>('disconnected');
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
+
   const ws = useRef<WebSocket | null>(null);
+  const heartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const heartbeatInFlightAt = useRef<number | null>(null);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useRef(false);
 
-  // Connect WS only when modal is open
+  // Helpers
+  const wsOpen = () => ws.current && ws.current.readyState === WebSocket.OPEN;
+
+  const clearHeartbeat = () => {
+    if (heartbeatTimer.current) {
+      clearInterval(heartbeatTimer.current);
+      heartbeatTimer.current = null;
+    }
+    heartbeatInFlightAt.current = null;
+  };
+
+  const startHeartbeat = () => {
+    clearHeartbeat();
+    heartbeatTimer.current = setInterval(() => {
+      if (!wsOpen()) {
+        setServerStatus('disconnected');
+        return;
+      }
+      try {
+        heartbeatInFlightAt.current = performance.now();
+        ws.current!.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
+        // simple timeout if no pong
+        setTimeout(() => {
+          if (heartbeatInFlightAt.current) {
+            // no pong received within window; mark degraded latency
+            heartbeatInFlightAt.current = null;
+            setLatencyMs(null);
+          }
+        }, 6000);
+      } catch (e) {
+        console.warn('Heartbeat send failed:', e);
+        setServerStatus('disconnected');
+      }
+    }, 10000);
+  };
+
+  // Connection lifecycle w/ auto-reconnect while modal is open
   useEffect(() => {
-    if (!isOpen) return;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
-    let wsInstance: WebSocket | null = null;
-    connectLightingWs().then((wsObj) => {
-      ws.current = wsObj;
-      wsInstance = wsObj;
-      wsObj.onopen = () => console.log('Lighting WS connection established');
-      wsObj.onclose = () => console.log('Lighting WS connection closed');
-      wsObj.onerror = (error) => console.error('Lighting WS error:', error);
-    }).catch((err) => {
-      console.error('Lighting WS failed to connect', err);
-    });
+  useEffect(() => {
+    if (!isOpen) {
+      // Cleanup when modal closes
+      clearHeartbeat();
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = null;
+      }
+      if (ws.current) {
+        // Avoid invoking handlers post-close
+        ws.current.onopen = null;
+        ws.current.onclose = null;
+        ws.current.onerror = null;
+        ws.current.onmessage = null;
+        try {
+          ws.current.close();
+        } catch {}
+        ws.current = null;
+      }
+      setLatencyMs(null);
+      setServerStatus('disconnected');
+      return;
+    }
+
+    let cancelled = false;
+
+    const openWs = async (attempt = 0) => {
+      if (cancelled) return;
+
+      setServerStatus('connecting');
+      try {
+        const wsObj = await connectLightingWs();
+        if (cancelled) {
+          try { wsObj.close(); } catch {}
+          return;
+        }
+        ws.current = wsObj;
+
+        wsObj.onopen = () => {
+          if (!mounted.current) return;
+          setServerStatus('connected');
+          setLatencyMs(null);
+          startHeartbeat();
+        };
+
+        wsObj.onclose = () => {
+          if (!mounted.current) return;
+          setServerStatus('disconnected');
+          clearHeartbeat();
+          // schedule reconnect if still open
+          if (isOpen) {
+            const backoff = Math.min(1000 * Math.pow(2, attempt), 10000); // 1s → 10s
+            if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+            reconnectTimer.current = setTimeout(() => openWs(attempt + 1), backoff);
+          }
+        };
+
+        wsObj.onerror = () => {
+          if (!mounted.current) return;
+          // Let onclose handle the reconnect
+          try { wsObj.close(); } catch {}
+        };
+
+        wsObj.onmessage = (event) => {
+          if (!mounted.current) return;
+          try {
+            const data = JSON.parse(event.data);
+            if (data?.status === 'connected' && data?.service === 'lighting') {
+              setServerStatus('connected');
+            }
+            if (data?.type === 'pong' && typeof data?.ts === 'number') {
+              const end = performance.now();
+              const start = heartbeatInFlightAt.current ?? end;
+              setLatencyMs(Math.max(0, Math.round(end - start)));
+              heartbeatInFlightAt.current = null;
+            }
+          } catch {
+            // ignore non-JSON messages
+          }
+        };
+      } catch (err) {
+        if (!mounted.current) return;
+        console.error('Lighting WS failed to connect', err);
+        setServerStatus('disconnected');
+        // retry
+        const backoff = Math.min(1000 * Math.pow(2, attempt), 10000);
+        if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = setTimeout(() => openWs(attempt + 1), backoff);
+      }
+    };
+
+    openWs(0);
 
     return () => {
-      wsInstance?.close();
+      cancelled = true;
+      clearHeartbeat();
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = null;
+      }
+      if (ws.current) {
+        ws.current.onopen = null;
+        ws.current.onclose = null;
+        ws.current.onerror = null;
+        ws.current.onmessage = null;
+        try { ws.current.close(); } catch {}
+        ws.current = null;
+      }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  const handleColor1Change = (color: any) => setColor1(color.hex);
-  const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => setMode(e.target.value);
-  const handlePatternChange = (e: React.ChangeEvent<HTMLSelectElement>) => setPattern(e.target.value);
+  // Handlers
+  const handleColor1Change = (color: ColorResult) => setColor1(color.hex);
+  const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) =>
+    setMode(e.target.value as LightingMode);
+  const handlePatternChange = (e: React.ChangeEvent<HTMLSelectElement>) =>
+    setPattern(e.target.value as LightingPattern);
   const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(e.target.value);
-    if (value >= 100) setInterval(value);
-    else console.warn('Interval must be at least 100 ms.');
+    setIntervalMs(Number.isFinite(value) ? Math.max(100, Math.floor(value)) : 100);
   };
   const handleBrightnessChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(e.target.value);
-    if (value >= 0 && value <= 100) setBrightness(value);
+    if (Number.isFinite(value)) setBrightness(Math.min(100, Math.max(0, Math.floor(value))));
   };
 
-  // ----- Updated Power Button Handler -----
+  const send = (payload: Record<string, unknown>) => {
+    if (!wsOpen()) {
+      console.error('Lighting WS not open.');
+      return;
+    }
+    ws.current!.send(JSON.stringify(payload));
+  };
+
   const handleTogglePower = () => {
     const newState = !ledOn;
     setLedOn(newState);
 
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      if (!newState) {
-        // Turn OFF: send pattern "off" (other values are ignored by backend)
-        ws.current.send(
-          JSON.stringify({
-            color: color1,
-            mode,
-            pattern: "off",
-            interval,
-            brightness: 0,
-          })
-        );
-        console.log("LED OFF command sent!");
-      } else {
-        // Turn ON: immediately apply current settings (as if user hit Apply)
-        ws.current.send(
-          JSON.stringify({
-            color: color1,
-            mode,
-            pattern,
-            interval,
-            brightness: brightness / 100,
-          })
-        );
-        console.log("LED ON command sent!");
-      }
-    } else {
+    if (!wsOpen()) {
       console.error('Lighting WS not open.');
+      return;
+    }
+
+    if (!newState) {
+      send({
+        color: color1,
+        mode,
+        pattern: 'off',
+        interval: intervalMs,
+        brightness: 0,
+      });
+      console.log('LED OFF command sent!');
+    } else {
+      send({
+        color: color1,
+        mode,
+        pattern,
+        interval: intervalMs,
+        brightness: brightness / 100,
+      });
+      console.log('LED ON command sent!');
     }
   };
 
@@ -102,38 +258,72 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       console.log('LED is off, skipping apply.');
       return;
     }
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      const commandData: any = {
-        color: color1,              // Send as hex string (e.g. "#ff0000")
-        mode,
-        pattern,
-        interval,
-        brightness: brightness / 100,
-      };
-      ws.current.send(JSON.stringify(commandData));
-      console.log('LED settings applied:', commandData);
-    } else {
+    if (!wsOpen()) {
       console.error('Lighting WS not open.');
+      return;
     }
+    const commandData = {
+      color: color1,
+      mode,
+      pattern,
+      interval: intervalMs,
+      brightness: brightness / 100,
+    };
+    send(commandData);
+    console.log('LED settings applied:', commandData);
   };
+
+  // STATUS PILL COLORS
+  const statusColor =
+    serverStatus === 'connected'
+      ? 'bg-emerald-500'
+      : serverStatus === 'connecting'
+      ? 'bg-slate-600'
+      : 'bg-rose-600';
+
+  const statusLabel =
+    serverStatus === 'connected'
+      ? latencyMs != null
+        ? `Connected • ${latencyMs}ms`
+        : 'Connected'
+      : serverStatus === 'connecting'
+      ? 'Connecting…'
+      : 'Disconnected';
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex justify-center items-center z-50">
-      <div className="bg-gray-900 rounded-lg p-6 w-full max-w-lg relative text-white">
-        {/* Close Button */}
+    <div
+      className="fixed inset-0 bg-gray-800/75 flex justify-center items-center z-50"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="led-config-title"
+    >
+      <div className="bg-gray-900 rounded-lg p-6 w-full max-w-lg relative text-white shadow-xl">
+        {/* Close Button (absolute) */}
         <button
-          className="absolute top-3 right-3 text-white bg-red-500 hover:bg-red-600 p-2 rounded"
+          type="button"
+          className="absolute top-3 right-3 text-white bg-red-500 hover:bg-red-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-red-400"
           onClick={onClose}
+          aria-label="Close LED configuration"
         >
           Close
         </button>
 
-        {/* Title */}
-        <h2 className="text-lg font-bold text-green-400 border-b-2 border-green-400 pb-2 mb-4">
-          LED Configuration
-        </h2>
+        {/* Title + Connection Status */}
+        <div className="flex items-center justify-between border-b-2 border-green-400 pb-2 mb-4 pr-20">
+          <h2 id="led-config-title" className="text-lg font-bold text-green-400">
+            LED Configuration
+          </h2>
+          <div
+            className={`flex items-center gap-2 px-2 py-1 rounded-full text-xs ${statusColor}`}
+            title="Lighting server connection status"
+            aria-live="polite"
+          >
+            <span className="inline-block w-2 h-2 rounded-full bg-white/90" />
+            <span className="font-semibold">{statusLabel}</span>
+          </div>
+        </div>
 
         {/* LED Power Toggle */}
         <div className="mt-2 mb-4 flex justify-between items-center">
@@ -142,29 +332,43 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
           </span>
           <button
             onClick={handleTogglePower}
-            className={`px-4 py-2 rounded text-white ${ledOn ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`}
+            disabled={serverStatus !== 'connected'}
+            className={`px-4 py-2 rounded text-white focus:outline-none focus:ring-2 ${
+              serverStatus !== 'connected'
+                ? 'bg-gray-600 cursor-not-allowed'
+                : ledOn
+                ? 'bg-red-500 hover:bg-red-600 focus:ring-red-400'
+                : 'bg-green-500 hover:bg-green-600 focus:ring-green-400'
+            }`}
           >
-            Turn {ledOn ? 'Off' : 'On'}
+            {serverStatus !== 'connected'
+              ? 'Server Unavailable'
+              : `Turn ${ledOn ? 'Off' : 'On'}`}
           </button>
         </div>
 
-        <fieldset disabled={!ledOn} className={ledOn ? '' : 'opacity-50'}>
+        <fieldset
+          disabled={!ledOn || serverStatus !== 'connected'}
+          className={ledOn && serverStatus === 'connected' ? '' : 'opacity-50'}
+        >
           {/* Color Picker 1 */}
           <label className="block text-green-300 font-semibold mb-1">Primary Color:</label>
           <SketchPicker color={color1} onChange={handleColor1Change} />
 
           {/* Mode Selector */}
           <div className="mt-4">
-            <label htmlFor="mode" className="block text-green-300 font-semibold">Mode:</label>
+            <label htmlFor="mode" className="block text-green-300 font-semibold">
+              Mode:
+            </label>
             <select
               id="mode"
               value={mode}
               onChange={handleModeChange}
               className="w-full bg-gray-800 text-white p-2 rounded mt-1"
             >
-              {LIGHTING_MODES.map((modeOption) => (
-                <option key={modeOption} value={modeOption}>
-                  {modeOption.charAt(0).toUpperCase() + modeOption.slice(1)}
+              {LIGHTING_MODES.map((m) => (
+                <option key={m} value={m}>
+                  {m.charAt(0).toUpperCase() + m.slice(1)}
                 </option>
               ))}
             </select>
@@ -172,16 +376,18 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
 
           {/* Pattern Selector */}
           <div className="mt-4">
-            <label htmlFor="pattern" className="block text-green-300 font-semibold">Pattern:</label>
+            <label htmlFor="pattern" className="block text-green-300 font-semibold">
+              Pattern:
+            </label>
             <select
               id="pattern"
               value={pattern}
               onChange={handlePatternChange}
               className="w-full bg-gray-800 text-white p-2 rounded mt-1"
             >
-              {LIGHTING_PATTERNS.map((patternOption) => (
-                <option key={patternOption} value={patternOption}>
-                  {patternOption.charAt(0).toUpperCase() + patternOption.slice(1)}
+              {LIGHTING_PATTERNS.map((p) => (
+                <option key={p} value={p}>
+                  {p.charAt(0).toUpperCase() + p.slice(1)}
                 </option>
               ))}
             </select>
@@ -190,21 +396,26 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
           {/* Interval Input */}
           {pattern !== 'static' && (
             <div className="mt-4">
-              <label htmlFor="interval" className="block text-green-300 font-semibold">Interval (ms):</label>
+              <label htmlFor="interval" className="block text-green-300 font-semibold">
+                Interval (ms):
+              </label>
               <input
                 id="interval"
                 type="number"
-                value={interval}
+                value={intervalMs}
                 onChange={handleIntervalChange}
                 className="w-full bg-gray-800 text-white p-2 rounded mt-1"
                 min={100}
+                step={50}
               />
             </div>
           )}
 
           {/* Brightness Slider */}
           <div className="mt-4">
-            <label htmlFor="brightness" className="block text-green-300 font-semibold">Brightness (%):</label>
+            <label htmlFor="brightness" className="block text-green-300 font-semibold">
+              Brightness (%):
+            </label>
             <input
               id="brightness"
               type="range"
@@ -220,9 +431,14 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         {/* Apply Button */}
         <button
           onClick={handleApply}
-          className="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded mt-6 w-full"
+          disabled={serverStatus !== 'connected' || !ledOn}
+          className={`text-white p-3 rounded mt-6 w-full focus:outline-none focus:ring-2 ${
+            serverStatus !== 'connected' || !ledOn
+              ? 'bg-gray-600 cursor-not-allowed'
+              : 'bg-blue-500 hover:bg-blue-600 focus:ring-blue-400'
+          }`}
         >
-          Apply Settings
+          {serverStatus !== 'connected' ? 'Server Unavailable' : 'Apply Settings'}
         </button>
       </div>
     </div>

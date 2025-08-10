@@ -13,3 +13,4 @@ const GpsLocation = () => {
 };
 
 export default GpsLocation;
+
