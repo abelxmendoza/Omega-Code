@@ -1,156 +1,188 @@
 /*
 # File: /src/components/MapComponent.tsx
 # Summary:
-Leaflet map that shows the robot’s GPS with a live WebSocket update.
-- Uses env-resolved WS: NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_*
-- Accepts many payload shapes: {lat,lng} | {latitude,longitude} | {location:{lat,lng}} | {gps:{lat,lon}}
-- Tiny status dot in header (connecting/connected/disconnected)
+Leaflet map with optional dummy mode (no WS) to simulate movement.
+- Dummy mode animates a circular path with heading arrow and an optional trail.
+- Works inside tiny PiP tiles; can be interactive:false to avoid scroll/zoom.
 */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { resolveWsUrl } from '@/utils/resolveWsUrl';
 
-type ServerStatus = 'connecting' | 'connected' | 'disconnected';
-
-function StatusDot({ status }: { status: ServerStatus }) {
-  const color =
-    status === 'connected' ? 'bg-emerald-500'
-      : status === 'connecting' ? 'bg-slate-500'
-      : 'bg-rose-500';
-  return <span className={`inline-block rounded-full ${color}`} style={{ width: 8, height: 8 }} />;
-}
-
-function parseLatLng(raw: any): { lat: number; lng: number } | null {
-  if (!raw) return null;
-  if (typeof raw.lat === 'number' && typeof raw.lng === 'number') return { lat: raw.lat, lng: raw.lng };
-  if (typeof raw.latitude === 'number' && typeof raw.longitude === 'number') return { lat: raw.latitude, lng: raw.longitude };
-  if (raw.location) return parseLatLng(raw.location);
-  if (raw.gps) {
-    const g = raw.gps;
-    if (typeof g.lat === 'number' && typeof g.lon === 'number') return { lat: g.lat, lng: g.lon };
-  }
-  return null;
-}
-
-export default function MapComponent({
-  initialCenter = [51.505, -0.09] as [number, number],
-  zoom = 13,
-  className = '',
-  title = 'GPS',
-}: {
-  initialCenter?: [number, number];
-  zoom?: number;
+export interface MapComponentProps {
   className?: string;
-  title?: string;
-}) {
-  const mapEl = useRef<HTMLDivElement | null>(null);
+  interactive?: boolean;
+  wsUrl?: string;                 // reserved for real GPS later
+  initialCenter?: [number, number];
+  initialZoom?: number;
+  showAccuracy?: boolean;
+  dummy?: boolean;                // when true (or no wsUrl), simulate movement
+  showTrail?: boolean;            // show breadcrumb polyline
+  trailLength?: number;           // max trail points
+  demoSpeedMs?: number;           // tick interval in ms
+  demoRadiusDeg?: number;         // circle radius (in degrees)
+}
+
+const MapComponent: React.FC<MapComponentProps> = ({
+  className = '',
+  interactive = true,
+  wsUrl,
+  initialCenter = [37.7749, -122.4194], // SF default
+  initialZoom = 15,
+  showAccuracy = false,
+  dummy = false,
+  showTrail = true,
+  trailLength = 80,
+  demoSpeedMs = 150,
+  demoRadiusDeg = 0.0007, // ~70m
+}) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
+  const trailRef = useRef<L.Polyline | null>(null);
+  const accuracyRef = useRef<L.Circle | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-
-  const [status, setStatus] = useState<ServerStatus>('connecting');
-
-  // Resolve location WS from env
-  const LOCATION_WS = resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_LOCATION');
+  const demoTimer = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!mapEl.current) return;
+    if (!containerRef.current) return;
 
-    // Init map
-    const map = L.map(mapEl.current, {
-      zoomControl: false,
+    // Create the map
+    const map = L.map(containerRef.current, {
+      zoomControl: interactive,
+      dragging: interactive,
+      scrollWheelZoom: interactive,
+      doubleClickZoom: interactive,
+      boxZoom: interactive,
+      keyboard: interactive,
       attributionControl: false,
-    }).setView(initialCenter, zoom);
+      tap: interactive as any,
+    }).setView(initialCenter, initialZoom);
     mapRef.current = map;
 
     // Tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
+      maxZoom: 20,
     }).addTo(map);
 
-    // Robot marker (emoji to avoid icon assets)
-    const robotIcon = L.divIcon({
-      html: '🤖',
-      className: 'custom-robot-icon',
-      iconSize: [24, 24],
-      iconAnchor: [12, 12],
+    // Heading arrow marker (DivIcon so we can rotate)
+    const arrow = L.divIcon({
+      className: 'robot-heading-icon',
+      html: `<div style="
+        width:18px;height:18px;
+        transform: translate(-50%,-50%);
+        display:flex;align-items:center;justify-content:center;">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="white">
+          <path d="M12 2l4 10-4-2-4 2 4-10z"/>
+        </svg>
+      </div>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
     });
 
-    markerRef.current = L.marker(initialCenter, { icon: robotIcon }).addTo(map);
+    const marker = L.marker(initialCenter, { icon: arrow }).addTo(map);
+    markerRef.current = marker;
 
+    // Optional accuracy ring (static in dummy)
+    if (showAccuracy) {
+      const c = L.circle(initialCenter, { radius: 10, color: '#3b82f6', fillOpacity: 0.1 }).addTo(map);
+      accuracyRef.current = c;
+    }
+
+    // Optional trail
+    if (showTrail) {
+      trailRef.current = L.polyline([initialCenter], { color: '#22d3ee', opacity: 0.8, weight: 2 }).addTo(map);
+    }
+
+    // --- DUMMY MODE (or when wsUrl missing): animate a tiny loop ---
+    if (dummy || !wsUrl) {
+      let t = 0;
+      const center = L.latLng(initialCenter[0], initialCenter[1]);
+      demoTimer.current = window.setInterval(() => {
+        t += 0.08;
+        const lat = center.lat + demoRadiusDeg * Math.sin(t);
+        const lng = center.lng + demoRadiusDeg * Math.cos(t);
+        const pos = L.latLng(lat, lng);
+
+        // Update marker position
+        marker.setLatLng(pos);
+
+        // Rotate arrow to heading (derivative on the circle)
+        const headingRad = Math.atan2(
+          demoRadiusDeg * Math.cos(t),
+          -demoRadiusDeg * Math.sin(t)
+        );
+        const deg = (headingRad * 180) / Math.PI;
+        const el = marker.getElement();
+        if (el) el.style.transform = `translate(-50%,-50%) rotate(${deg}deg)`;
+
+        // Trail
+        if (trailRef.current) {
+          const latlngs = (trailRef.current.getLatLngs() as L.LatLng[]).concat([pos]);
+          if (latlngs.length > trailLength) latlngs.splice(0, latlngs.length - trailLength);
+          trailRef.current.setLatLngs(latlngs);
+        }
+
+        // Keep it centered without jerky zoom
+        map.panTo(pos, { animate: true });
+      }, Math.max(80, demoSpeedMs));
+    } else {
+      // --- Real WS mode (placeholder) ---
+      try {
+        wsRef.current = new WebSocket(wsUrl);
+        wsRef.current.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            // Expect { type: 'location', lat, lng, accuracy? }
+            if (msg?.type === 'location' && typeof msg.lat === 'number' && typeof msg.lng === 'number') {
+              const pos = L.latLng(msg.lat, msg.lng);
+              marker.setLatLng(pos);
+              if (trailRef.current) {
+                const latlngs = (trailRef.current.getLatLngs() as L.LatLng[]).concat([pos]);
+                if (latlngs.length > trailLength) latlngs.splice(0, latlngs.length - trailLength);
+                trailRef.current.setLatLngs(latlngs);
+              }
+              if (accuracyRef.current && typeof msg.accuracy === 'number') {
+                accuracyRef.current.setLatLng(pos).setRadius(msg.accuracy);
+              }
+              map.panTo(pos, { animate: true });
+            }
+          } catch { /* ignore */ }
+        };
+      } catch { /* ws optional */ }
+    }
+
+    // Cleanup
     return () => {
+      if (demoTimer.current) clearInterval(demoTimer.current);
+      try { wsRef.current?.close(); } catch {}
       map.remove();
       mapRef.current = null;
-      markerRef.current = null;
     };
-  }, [initialCenter, zoom]);
+  }, [
+    interactive,
+    wsUrl,
+    initialCenter,
+    initialZoom,
+    showAccuracy,
+    dummy,
+    showTrail,
+    trailLength,
+    demoSpeedMs,
+    demoRadiusDeg,
+  ]);
 
-  useEffect(() => {
-    if (!LOCATION_WS) {
-      setStatus('disconnected');
-      return;
-    }
-    let cancelled = false;
-    let retry: ReturnType<typeof setTimeout> | null = null;
-
-    const open = (attempt = 0) => {
-      if (cancelled) return;
-      setStatus('connecting');
-      let ws: WebSocket;
-      try {
-        ws = new WebSocket(LOCATION_WS);
-      } catch {
-        const backoff = Math.min(1000 * 2 ** attempt, 10000);
-        retry = setTimeout(() => open(attempt + 1), backoff);
-        return;
-      }
-      wsRef.current = ws;
-
-      ws.onopen = () => setStatus('connected');
-      ws.onclose = () => {
-        setStatus('disconnected');
-        const backoff = Math.min(1000 * 2 ** attempt, 10000);
-        retry = setTimeout(() => open(attempt + 1), backoff);
-      };
-      ws.onerror = () => {/* onclose handles state */};
-
-      ws.onmessage = (evt) => {
-        try {
-          const data = JSON.parse(evt.data);
-          const p = parseLatLng(data);
-          if (!p || !mapRef.current || !markerRef.current) return;
-          markerRef.current.setLatLng([p.lat, p.lng]);
-          // Smooth recenter a bit
-          mapRef.current.setView([p.lat, p.lng], mapRef.current.getZoom(), { animate: true });
-        } catch {
-          /* ignore */
-        }
-      };
-    };
-
-    open(0);
-    return () => {
-      cancelled = true;
-      if (retry) clearTimeout(retry);
-      try { wsRef.current?.close(); } catch {}
-      wsRef.current = null;
-    };
-  }, [LOCATION_WS]);
+  // Prevent scroll from "grabbing" the page when map is interactive:false
+  const pointerClasses = interactive ? '' : 'pointer-events-none';
 
   return (
-    <div className={`rounded-lg shadow-md overflow-hidden border border-white/10 bg-gray-900 ${className}`}>
-      <div className="flex items-center justify-between px-3 py-2 bg-black/40 border-b border-white/10">
-        <div className="flex items-center gap-2 text-white/90">
-          <StatusDot status={status} />
-          <span className="text-sm font-semibold">{title}</span>
-          <span className="text-xs text-white/70 ml-2">
-            {status === 'connected' ? 'Live' : status === 'connecting' ? 'Connecting…' : 'Disconnected'}
-          </span>
-        </div>
-      </div>
-      <div ref={mapEl} className="w-full h-44" />
-    </div>
+    <div
+      ref={containerRef}
+      className={`${className} ${pointerClasses}`}
+      style={{ width: '100%', height: '100%' }}
+    />
   );
-}
+};
+
+export default MapComponent;

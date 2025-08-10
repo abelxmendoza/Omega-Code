@@ -1,72 +1,47 @@
-// File: /src/components/GpsLocation.tsx
-// Summary:
-// Lightweight wrapper around MapComponent with dynamic import (no SSR).
-// - Resolves the location WS URL from NEXT_PUBLIC_NETWORK_PROFILE
-// - Lets callers toggle interactivity (great for PiP overlays)
-// - Pass-through props for initial center/zoom and accuracy display
+/*
+# File: /src/components/GpsLocation.tsx
+# Summary:
+Next.js-friendly wrapper around MapComponent (Leaflet) with SSR disabled.
+Pass `dummy` to simulate movement when you don't have a GPS server yet.
+*/
 
-import React from 'react';
 import dynamic from 'next/dynamic';
+import React from 'react';
+
+const MapComponent = dynamic(() => import('./MapComponent'), { ssr: false });
 
 type LatLng = [number, number];
 
-export interface GpsLocationProps {
-  className?: string;
-  interactive?: boolean;          // default true; set false for PiP overlay
-  wsUrl?: string;                 // override; otherwise resolved from env
-  initialCenter?: LatLng;         // default [51.505, -0.09]
-  initialZoom?: number;           // default 13
-  showAccuracy?: boolean;         // optional visual accuracy circle
-}
-
-/** Resolve endpoint from profile: lan | tailscale | local */
-const getEnvVar = (base: string) => {
-  const profile = process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local';
-  return (
-    process.env[`${base}_${profile.toUpperCase()}`] ||
-    process.env[`${base}_LOCAL`] ||
-    ''
-  );
-};
-
-// Prefer env-resolved WS for location updates
-const defaultLocationWs = getEnvVar('NEXT_PUBLIC_BACKEND_WS_URL_LOCATION');
-
-// Dynamically import the Leaflet map (client only)
-type MapProps = GpsLocationProps;
-const MapComponent = dynamic<MapProps>(() => import('./MapComponent'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full flex items-center justify-center text-xs text-white/70 bg-black/20">
-      Loading map…
-    </div>
-  ),
-});
-
-const GpsLocation: React.FC<GpsLocationProps> = ({
+export default function GpsLocation({
   className = '',
   interactive = true,
   wsUrl,
-  initialCenter = [51.505, -0.09],
-  initialZoom = 13,
-  showAccuracy,
-}) => {
-  const resolvedWs = wsUrl || defaultLocationWs;
-
-  // When used as a tiny overlay, disabling pointer events keeps the video scroll/drag intact.
-  const pointerClass = interactive ? '' : 'pointer-events-none';
-
+  initialCenter = [37.7749, -122.4194] as LatLng,
+  initialZoom = 15,
+  showAccuracy = false,
+  dummy = false,
+  showTrail = true,
+}: {
+  className?: string;
+  interactive?: boolean;
+  wsUrl?: string;
+  initialCenter?: LatLng;
+  initialZoom?: number;
+  showAccuracy?: boolean;
+  dummy?: boolean;
+  showTrail?: boolean;
+}) {
   return (
-    <div className={`w-full h-full ${pointerClass} ${className}`}>
+    <div className={`w-full h-full ${className}`}>
       <MapComponent
         interactive={interactive}
-        wsUrl={resolvedWs}
+        wsUrl={wsUrl}
         initialCenter={initialCenter}
         initialZoom={initialZoom}
         showAccuracy={showAccuracy}
+        dummy={dummy}
+        showTrail={showTrail}
       />
     </div>
   );
-};
-
-export default GpsLocation;
+}
