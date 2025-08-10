@@ -10,6 +10,12 @@ This Go application provides a WebSocket server for real-time control of address
 It receives JSON lighting commands from frontend clients, then launches a Python script (`led_control.py`)
 to apply the requested color, mode, pattern, interval, and brightness using the rpi_ws281x library.
 
+Updates in this version:
+- Adds WS heartbeat support: responds to {"type":"ping","ts"} with {"type":"pong","ts"} for UI latency/health.
+- Fixes brightness defaulting: brightness is now optional (*float64); default to 1.0 only when omitted (nil).
+  Explicit 0.0 is respected (e.g., to turn LEDs off) and all values are clamped to [0,1].
+- Minor: uses WriteJSON for the welcome envelope.
+
 Features:
 - Handles WebSocket connections for real-time control.
 - Receives lighting commands as JSON (color, mode, pattern, interval, brightness).
@@ -18,16 +24,20 @@ Features:
 Expected JSON payload from frontend (supports both int and hex string):
 {
     "color": "#ff0000",        // Hex string (recommended, e.g. "#ff0000" for red)
-    "mode": "single",          // e.g., "single", "multi"
-    "pattern": "static",       // e.g., "static", "blink"
+    "mode": "single",          // e.g., "single", "multi", "rainbow"
+    "pattern": "static",       // e.g., "static", "blink", "fade", "off"
     "interval": 500,           // For animation speed, in ms
-    "brightness": 0.85         // Float [0,1], optional (default: 1.0)
+    "brightness": 0.85         // Float [0,1], optional; omitted => 1.0; 0.0 is allowed
 }
 or
 {
     "color": 16711680,         // 24-bit RGB int (e.g., 0xFF0000 for red)
     ...
 }
+
+Heartbeat example:
+Client → {"type":"ping","ts": 1723220000000}
+Server ← {"type":"pong","ts": 1723220000000}
 */
 
 package main
@@ -44,13 +54,14 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// LightingCommand supports both string and int color fields for compatibility
+// LightingCommand supports both string and int color fields for compatibility.
+// Brightness is a *float64 so we can tell if it was omitted (nil) vs provided (including 0).
 type LightingCommand struct {
-	Color      interface{} `json:"color"`      // Can be hex string or int (e.g., "#ff0000" or 16711680)
-	Mode       string      `json:"mode"`       // e.g., "single", "multi", "rainbow"
-	Pattern    string      `json:"pattern"`    // e.g., "static", "blink", "fade"
-	Interval   int         `json:"interval"`   // For dynamic patterns, in milliseconds
-	Brightness float64     `json:"brightness"` // Optional, 0.0–1.0 (default: 1.0)
+	Color      interface{} `json:"color"`                // Can be hex string or int (e.g., "#ff0000" or 16711680)
+	Mode       string      `json:"mode"`                 // e.g., "single", "multi", "rainbow"
+	Pattern    string      `json:"pattern"`              // e.g., "static", "blink", "fade", "off"
+	Interval   int         `json:"interval"`             // For dynamic patterns, in milliseconds
+	Brightness *float64    `json:"brightness,omitempty"` // Optional, 0.0–1.0 (nil => default 1.0)
 }
 
 // WebSocket upgrader with permissive CORS
@@ -61,13 +72,10 @@ var upgrader = websocket.Upgrader{
 // hexColorString converts any supported color input to a 6-digit hex string
 func hexColorString(color interface{}) (string, error) {
 	switch c := color.(type) {
-	case float64:
-		// Received as a number (int in JSON comes as float64)
+	case float64: // JSON numbers come in as float64
 		return fmt.Sprintf("%06x", int(c)), nil
 	case string:
-		hex := c
-		hex = strings.TrimPrefix(hex, "#")
-		hex = strings.TrimPrefix(hex, "0x")
+		hex := strings.TrimPrefix(strings.TrimPrefix(c, "#"), "0x")
 		// Validate it's 6 hex digits
 		if len(hex) != 6 || !regexp.MustCompile(`^[0-9a-fA-F]{6}$`).MatchString(hex) {
 			return "", fmt.Errorf("invalid hex color: %s", c)
@@ -87,13 +95,11 @@ func handleLighting(ws *websocket.Conn) {
 	log.Println("Lighting WebSocket connection established")
 
 	// Send connection confirmation to the frontend
-	welcomeMsg := map[string]string{
+	_ = ws.WriteJSON(map[string]string{
 		"status":  "connected",
 		"service": "lighting",
 		"message": "Lighting WebSocket connection established",
-	}
-	welcomeBytes, _ := json.Marshal(welcomeMsg)
-	ws.WriteMessage(websocket.TextMessage, welcomeBytes)
+	})
 
 	for {
 		_, msg, err := ws.ReadMessage()
@@ -102,6 +108,25 @@ func handleLighting(ws *websocket.Conn) {
 			break
 		}
 
+		// Peek for heartbeat pings without assuming the payload is a LightingCommand
+		var envelope map[string]json.RawMessage
+		if err := json.Unmarshal(msg, &envelope); err != nil {
+			log.Printf("JSON parse error: %v", err)
+			continue
+		}
+		if tRaw, ok := envelope["type"]; ok {
+			var typ string
+			_ = json.Unmarshal(tRaw, &typ)
+			if typ == "ping" {
+				var ts int64
+				_ = json.Unmarshal(envelope["ts"], &ts)
+				_ = ws.WriteJSON(map[string]interface{}{"type": "pong", "ts": ts})
+				// Skip normal command handling
+				continue
+			}
+		}
+
+		// Handle lighting command
 		var command LightingCommand
 		if err := json.Unmarshal(msg, &command); err != nil {
 			log.Printf("JSON unmarshal error: %v", err)
@@ -115,17 +140,18 @@ func handleLighting(ws *websocket.Conn) {
 			continue
 		}
 
-		brightness := command.Brightness
-		if brightness < 0.0 || brightness > 1.0 {
-			log.Printf("Invalid brightness value: %v (should be 0.0–1.0); using 1.0", brightness)
-			brightness = 1.0
-		}
-		// Default to 1.0 if zero (assuming omitted)
-		if brightness == 0 {
-			brightness = 1.0
+		// Brightness: default to 1.0 only when omitted; otherwise clamp to [0,1]
+		brightness := 1.0
+		if command.Brightness != nil {
+			brightness = *command.Brightness
+			if brightness < 0.0 {
+				brightness = 0.0
+			} else if brightness > 1.0 {
+				brightness = 1.0
+			}
 		}
 
-		// Build the command for the Python script (now includes brightness as the 5th argument)
+		// Build the command for the Python script (includes brightness as the 5th argument)
 		pythonCmd := fmt.Sprintf(
 			"python3 led_control.py %s %s %s %d %.3f",
 			hexColor, command.Mode, command.Pattern, command.Interval, brightness,
