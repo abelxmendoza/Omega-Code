@@ -1,27 +1,80 @@
-//src/utils/resolveWsUrl.ts
+// src/utils/resolveWsUrl.ts
+'use client';
 
+type NetProfile = 'LAN' | 'TAILSCALE' | 'LOCAL';
+const PROFILE: NetProfile =
+  (process.env.NEXT_PUBLIC_NETWORK_PROFILE?.toUpperCase() as NetProfile) || 'LOCAL';
 
+const pick = (lan?: string, tailscale?: string, local?: string) =>
+  PROFILE === 'LAN'       ? (lan ?? local ?? '') :
+  PROFILE === 'TAILSCALE' ? (tailscale ?? local ?? '') :
+                             (local ?? lan ?? tailscale ?? '');
 
-/**
- * Resolve a WebSocket URL from env based on NEXT_PUBLIC_NETWORK_PROFILE.
- *
- * Usage:
- *  const url = resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER');
- *  const url2 = resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC');
- *
- * Env must define per-profile keys like:
- *  <BASE>_LAN, <BASE>_TAILSCALE, <BASE>_LOCAL
- */
-export function resolveWsUrl(baseKey: string): string | undefined {
-  const profile = (process.env.NEXT_PUBLIC_NETWORK_PROFILE || '').toLowerCase();
-  const pick = (suffix: string) => (process.env as any)[`${baseKey}_${suffix}`];
+/** All supported env bases (compile-time safe so Next inlines them). */
+export type WsKey =
+  | 'NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT'
+  | 'NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC'
+  | 'NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER'
+  | 'NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING'
+  | 'NEXT_PUBLIC_BACKEND_WS_URL_LOCATION'
+  | 'NEXT_PUBLIC_VIDEO_STREAM_URL';
 
-  // Preferred profile first
-  let chosen: string | undefined;
-  if (profile === 'tailscale') chosen = pick('TAILSCALE') || pick('LAN') || pick('LOCAL');
-  else if (profile === 'lan') chosen = pick('LAN') || pick('TAILSCALE') || pick('LOCAL');
-  else if (profile === 'local') chosen = pick('LOCAL') || pick('LAN') || pick('TAILSCALE');
-  else chosen = pick('TAILSCALE') || pick('LAN') || pick('LOCAL'); // default
+/** Resolve a WS/HTTP URL from env by profile (lan | tailscale | local). */
+export function resolveWsUrl(key: WsKey): string {
+  let url = '';
+  switch (key) {
+    case 'NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT':
+      url = pick(
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LAN,
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_TAILSCALE,
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LOCAL
+      );
+      break;
 
-  return chosen;
+    case 'NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC':
+      url = pick(
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_LAN,
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_TAILSCALE,
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_LOCAL
+      );
+      break;
+
+    case 'NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER':
+      url = pick(
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LAN,
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_TAILSCALE,
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LOCAL
+      );
+      break;
+
+    case 'NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING':
+      url = pick(
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LAN,
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_TAILSCALE,
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LOCAL
+      );
+      break;
+
+    case 'NEXT_PUBLIC_BACKEND_WS_URL_LOCATION':
+      url = pick(
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_LAN,
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_TAILSCALE,
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_LOCAL
+      );
+      break;
+
+    case 'NEXT_PUBLIC_VIDEO_STREAM_URL':
+      url = pick(
+        process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LAN,
+        process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE,
+        process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL
+      );
+      break;
+  }
+
+  if (!url) {
+    // Helpful dev hint without crashing
+    console.warn(`[resolveWsUrl] Missing env for ${key} (profile=${PROFILE})`);
+  }
+  return url;
 }
