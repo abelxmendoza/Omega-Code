@@ -7,17 +7,17 @@ motor = Motor()
 
 def on_press(key):
     try:
-        if key.char == 'w':
+        c = key.char.lower()
+        if c == 'w':
             motor.forward()
-        elif key.char == 's':
+        elif c == 's':
             motor.backward()
-        elif key.char == ' ':
+    except Exception:
+        if getattr(key, "name", "") == "space":
             motor.stop()
-    except AttributeError:
-        pass
+        elif getattr(key, "name", "") == "esc":
+            print("Bye"); motor.stop(); return False
 
-print("Controls: W = forward | S = backward | SPACE = stop | ESC to exit")
-
+print("W forward | S backward | SPACE stop | ESC exit")
 with keyboard.Listener(on_press=on_press) as listener:
     listener.join()
-
