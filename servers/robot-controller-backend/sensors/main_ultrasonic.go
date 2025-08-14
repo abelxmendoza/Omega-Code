@@ -21,14 +21,21 @@
 // $ go run main_ultrasonic.go
 //
 
+
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"math"
 	"net/http"
 	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -46,10 +53,87 @@ type UltrasonicData struct {
 	Error        string  `json:"error,omitempty"`
 }
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+type envCfg struct {
+	Port            int
+	Path            string
+	OriginAllow     map[string]struct{}
+	LogEvery        time.Duration // if >0, log a line this often
+	LogDeltaCM      int           // also log when change >= this (abs)
+	ReadLimit       int64
+	WriteTimeout    time.Duration
+	ReadTimeout     time.Duration
+	MeasureInterval time.Duration
 }
 
+func getenvInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
+func getenvDur(key string, def time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return def
+}
+func getenvSet(key string) map[string]struct{} {
+	s := strings.TrimSpace(os.Getenv(key))
+	if s == "" {
+		return nil
+	}
+	out := make(map[string]struct{})
+	for _, p := range strings.Split(s, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out[p] = struct{}{}
+		}
+	}
+	return out
+}
+
+func loadCfg() envCfg {
+	return envCfg{
+		Port:            getenvInt("PORT_ULTRASONIC", 8080),
+		Path:            firstNonEmpty(os.Getenv("ULTRA_PATH"), "/ultrasonic"),
+		OriginAllow:     getenvSet("ORIGIN_ALLOW"), // e.g. http://localhost:3000,http://192.168.1.107:3000
+		LogEvery:        getenvDur("ULTRA_LOG_EVERY", 5 * time.Second),
+		LogDeltaCM:      getenvInt("ULTRA_LOG_DELTA_CM", 10),
+		ReadLimit:       int64(getenvInt("ULTRA_READ_LIMIT", 4096)),
+		WriteTimeout:    getenvDur("ULTRA_WRITE_TIMEOUT", 1500*time.Millisecond),
+		ReadTimeout:     getenvDur("ULTRA_READ_TIMEOUT", 0), // 0 = no deadline (JSON pings keep it alive)
+		MeasureInterval: getenvDur("ULTRA_MEASURE_INTERVAL", 1*time.Second),
+	}
+}
+func firstNonEmpty(v, d string) string {
+	if v != "" {
+		return v
+	}
+	return d
+}
+
+func checkOriginFactory(allow map[string]struct{}) func(r *http.Request) bool {
+	// Allow CLI/non-browser (no Origin header). If allow list is empty, allow all.
+	return func(r *http.Request) bool {
+		if len(allow) == 0 {
+			return true
+		}
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		_, ok := allow[origin]
+		return ok
+	}
+}
+
+var upgrader websocket.Upgrader // set in main()
+
+// measureDistance triggers HC-SR04 and returns distance in cm.
 func measureDistance(trigger gpio.PinOut, echo gpio.PinIn) (int, error) {
 	// Ensure low, then 10µs high pulse
 	trigger.Out(gpio.Low)
@@ -58,125 +142,243 @@ func measureDistance(trigger gpio.PinOut, echo gpio.PinIn) (int, error) {
 	time.Sleep(10 * time.Microsecond)
 	trigger.Out(gpio.Low)
 
-	// Wait for echo to go high (start)
+	// Wait for echo high (start) with timeout
 	startWait := time.Now()
 	for echo.Read() == gpio.Low {
 		if time.Since(startWait) > time.Second {
 			return -1, os.ErrDeadlineExceeded
 		}
 	}
-	start := time.Now()
+	t0 := time.Now()
 
-	// Wait for echo to go low (end)
+	// Wait for echo low (end) with timeout
 	for echo.Read() == gpio.High {
-		if time.Since(start) > time.Second {
+		if time.Since(t0) > time.Second {
 			return -1, os.ErrDeadlineExceeded
 		}
 	}
-	duration := time.Since(start)
+	dur := time.Since(t0)
 
-	// Convert to cm (HC-SR04 ~58µs per cm round-trip)
-	distanceCM := int(float64(duration.Microseconds()) / 58.0)
-	if distanceCM <= 0 || distanceCM > 400 {
+	// Convert to cm (~58µs per cm round-trip)
+	cm := int(float64(dur.Microseconds()) / 58.0)
+	if cm <= 0 || cm > 400 {
 		return -1, os.ErrInvalid
 	}
-	return distanceCM, nil
+	return cm, nil
 }
 
-func handleUltrasonicSensor(ws *websocket.Conn) {
-	if _, err := host.Init(); err != nil {
-		log.Printf("Failed to initialize periph: %v", err)
-		_ = ws.WriteJSON(UltrasonicData{Status: "error", Error: "Periph init failed"})
-		return
-	}
+type outMsg struct {
+	kind string // "json"
+	data any
+}
 
-	trigger := rpi.P1_13 // GPIO27
-	echo := rpi.P1_15    // GPIO22
+func handleConn(ws *websocket.Conn, trigger gpio.PinOut, echo gpio.PinIn, cfg envCfg) {
+	defer ws.Close()
 
-	if err := trigger.Out(gpio.Low); err != nil {
-		_ = ws.WriteJSON(UltrasonicData{Status: "error", Error: "Trigger init failed"})
-		return
-	}
-	if err := echo.In(gpio.PullNoChange, gpio.NoEdge); err != nil {
-		_ = ws.WriteJSON(UltrasonicData{Status: "error", Error: "Echo init failed"})
-		return
-	}
-
-	// --- Welcome envelope so UI can mark connected immediately ---
-	welcome := map[string]any{
-		"status":  "connected",
-		"service": "ultrasonic",
-		"message": "Ultrasonic WebSocket connection established",
-		"ts":      time.Now().UnixMilli(),
-	}
-	_ = ws.WriteJSON(welcome)
-
-	// --- Concurrent reader: reply to JSON ping with pong ---
+	// Safety: single writer goroutine, reader posts pongs to 'send'
+	send := make(chan outMsg, 8)
 	done := make(chan struct{})
+
+	// Reader: respond to JSON pings by enqueueing a pong (no concurrent writes)
 	go func() {
 		defer close(done)
+		if cfg.ReadLimit > 0 {
+			ws.SetReadLimit(cfg.ReadLimit)
+		}
 		for {
+			if cfg.ReadTimeout > 0 {
+				_ = ws.SetReadDeadline(time.Now().Add(cfg.ReadTimeout))
+			}
 			_, msg, err := ws.ReadMessage()
 			if err != nil {
-				// client closed or read error
+				// Normal close or network error
 				return
 			}
 			var m map[string]any
 			if err := json.Unmarshal(msg, &m); err == nil {
 				if t, _ := m["type"].(string); t == "ping" {
-					pong := map[string]any{"type": "pong", "ts": m["ts"]}
-					_ = ws.WriteJSON(pong)
+					send <- outMsg{"json", map[string]any{
+						"type": "pong",
+						"ts":   m["ts"],
+					}}
 				}
 			}
 		}
 	}()
 
-	// --- Writer: stream distance once per second until disconnect ---
-	ticker := time.NewTicker(1 * time.Second)
+	// Welcome envelope (queued)
+	send <- outMsg{"json", map[string]any{
+		"status":  "connected",
+		"service": "ultrasonic",
+		"message": "Ultrasonic WebSocket connection established",
+		"ts":      time.Now().UnixMilli(),
+	}}
+
+	// Writer / sensor loop
+	ticker := time.NewTicker(cfg.MeasureInterval)
 	defer ticker.Stop()
+
+	lastLogTime := time.Time{}
+	lastCM := -1
+
+	writeJSON := func(v any) error {
+		_ = ws.SetWriteDeadline(time.Now().Add(cfg.WriteTimeout))
+		return ws.WriteJSON(v)
+	}
+
+	log.Printf("[ULTRA] client connected")
+	defer log.Printf("[ULTRA] client disconnected")
 
 	for {
 		select {
 		case <-done:
 			return
+		case m := <-send:
+			if m.kind == "json" {
+				if err := writeJSON(m.data); err != nil {
+					return
+				}
+			}
 		case <-ticker.C:
-			distanceCM, err := measureDistance(trigger, echo)
+			cm, err := measureDistance(trigger, echo)
 			if err != nil {
-				_ = ws.WriteJSON(UltrasonicData{Status: "error", Error: err.Error()})
+				// Emit an error sample (UI can display)
+				_ = writeJSON(UltrasonicData{Status: "error", Error: errString(err)})
+				// Log timeouts sparingly
+				if errors.Is(err, os.ErrDeadlineExceeded) {
+					// debounce repeated timeouts
+					if time.Since(lastLogTime) > 3*time.Second {
+						log.Printf("[ULTRA] timeout waiting for echo")
+						lastLogTime = time.Now()
+					}
+				}
 				continue
 			}
 
-			meters := float64(distanceCM) / 100.0
-			inches := float64(distanceCM) / 2.54
-			feet := float64(distanceCM) / 30.48
+			meters := float64(cm) / 100.0
+			inches := float64(cm) / 2.54
+			feet := float64(cm) / 30.48
 
-			data := UltrasonicData{
+			msg := UltrasonicData{
 				Status:       "success",
-				DistanceCM:   distanceCM,
-				DistanceM:    math.Round(meters*100) / 100,   // 2 decimals
-				DistanceInch: math.Round(inches*100) / 100,   // 2 decimals
-				DistanceFeet: math.Round(feet*100) / 100,     // 2 decimals
+				DistanceCM:   cm,
+				DistanceM:    round2(meters),
+				DistanceInch: round2(inches),
+				DistanceFeet: round2(feet),
 			}
-			if err := ws.WriteJSON(data); err != nil {
+			if err := writeJSON(msg); err != nil {
 				return
+			}
+
+			// Optional terminal logging (rate-limited and/or when changed significantly)
+			shouldLog := false
+			if cfg.LogEvery > 0 {
+				if time.Since(lastLogTime) >= cfg.LogEvery {
+					shouldLog = true
+				}
+			}
+			if cfg.LogDeltaCM > 0 && lastCM >= 0 && abs(cm-lastCM) >= cfg.LogDeltaCM {
+				shouldLog = true
+			}
+			if shouldLog {
+				log.Printf("[ULTRA] %d cm (%.2fm / %.2fin / %.2fft)", cm, msg.DistanceM, msg.DistanceInch, msg.DistanceFeet)
+				lastLogTime = time.Now()
+				lastCM = cm
 			}
 		}
 	}
 }
 
+func round2(v float64) float64 { return math.Round(v*100) / 100 }
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	// scrub generic errors
+	switch {
+	case errors.Is(err, os.ErrDeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, os.ErrInvalid):
+		return "invalid"
+	default:
+		return err.Error()
+	}
+}
+
 func main() {
 	log.SetOutput(os.Stdout)
-	log.Println("🌐 Starting ultrasonic WebSocket server on :8080")
+	cfg := loadCfg()
 
-	http.HandleFunc("/ultrasonic", func(w http.ResponseWriter, r *http.Request) {
-		ws, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Printf("WebSocket upgrade error: %v", err)
-			return
-		}
-		defer ws.Close()
-		handleUltrasonicSensor(ws)
+	// Init periph once (not per-connection)
+	if _, err := host.Init(); err != nil {
+		log.Fatalf("[ULTRA] periph init failed: %v", err)
+	}
+
+	// Prepare pins
+	trigger := rpi.P1_13 // GPIO27
+	echo := rpi.P1_15    // GPIO22
+
+	// Set defaults (low/no edge); connection handler toggles as needed
+	if err := trigger.Out(gpio.Low); err != nil {
+		log.Fatalf("[ULTRA] trigger init failed: %v", err)
+	}
+	if err := echo.In(gpio.PullNoChange, gpio.NoEdge); err != nil {
+		log.Fatalf("[ULTRA] echo init failed: %v", err)
+	}
+
+	upgrader = websocket.Upgrader{
+		CheckOrigin: checkOriginFactory(cfg.OriginAllow),
+	}
+
+	mux := http.NewServeMux()
+
+	// Health
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	// WebSocket endpoint (e.g., ws://host:8080/ultrasonic)
+	mux.HandleFunc(cfg.Path, func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf("[ULTRA] upgrade error: %v", err)
+			return
+		}
+		handleConn(ws, trigger, echo, cfg)
+	})
+
+	srv := &http.Server{
+		Addr:              ":" + strconv.Itoa(cfg.Port),
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	log.Printf("🌐 Ultrasonic WS server listening on :%d%s", cfg.Port, cfg.Path)
+
+	// Graceful shutdown
+	idle := make(chan struct{})
+	go func() {
+		// SIGINT/SIGTERM
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+		<-ch
+		log.Printf("[ULTRA] shutting down…")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+		close(idle)
+	}()
+
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatalf("[ULTRA] server error: %v", err)
+	}
+	<-idle
 }
