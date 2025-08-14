@@ -10,7 +10,7 @@ import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 
 interface HeaderProps {
-  isConnected?: boolean;
+  // NOTE: Avoid passing isConnected from the parent; we compute status from services.
   batteryLevel: number;
 }
 
@@ -18,8 +18,8 @@ interface HeaderProps {
 const getEnvVar = (base: string) => {
   const profile = process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local';
   return (
-    process.env[`${base}_${profile.toUpperCase()}`] ||
-    process.env[`${base}_LOCAL`] ||
+    (process.env as any)[`${base}_${profile.toUpperCase()}`] ||
+    (process.env as any)[`${base}_LOCAL`] ||
     ''
   );
 };
@@ -36,7 +36,7 @@ const Dot: React.FC<{state: ServiceStatus}> = ({ state }) => {
   return <span className={`inline-block w-2 h-2 rounded-full ${color}`} />;
 };
 
-/** Compact pill: glyph instead of full "connected/connecting/disconnected" text */
+/** Compact pill: glyph instead of long text */
 const Pill: React.FC<{
   label: string;
   state: ServiceStatus;
@@ -64,7 +64,7 @@ const Pill: React.FC<{
   );
 };
 
-const Header: React.FC<HeaderProps> = ({ isConnected, batteryLevel }) => {
+const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
   // Lighting + Line tracker support JSON pong → measure latency
   const light = useWsStatus(LIGHT, { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
   const line  = useWsStatus(LINE,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
@@ -75,11 +75,7 @@ const Header: React.FC<HeaderProps> = ({ isConnected, batteryLevel }) => {
 
   const states: ServiceStatus[] = [move.status, ultra.status, line.status, light.status];
   const upCount = states.filter(s => s === 'connected').length;
-  const overallState: ServiceStatus =
-    upCount === states.length ? 'connected' : (upCount > 0 ? 'connecting' : 'disconnected');
-
-  const effectiveConnected =
-    typeof isConnected === 'boolean' ? isConnected : (overallState !== 'disconnected');
+  const overallConnected = upCount === states.length ? true : upCount > 0;
 
   const batteryClass = batteryLevel > 75 ? 'bg-green-500'
                     : batteryLevel > 50 ? 'bg-yellow-500'
@@ -95,7 +91,7 @@ const Header: React.FC<HeaderProps> = ({ isConnected, batteryLevel }) => {
         <div className="flex items-center space-x-4">
           <div className="flex items-center text-sm">
             <span className="opacity-80">Status:</span>
-            {effectiveConnected ? (
+            {overallConnected ? (
               <FaCheckCircle data-testid="status-icon" className="text-green-500 ml-2" />
             ) : (
               <FaTimesCircle data-testid="status-icon" className="text-red-500 ml-2" />
