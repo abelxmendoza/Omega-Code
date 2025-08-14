@@ -3,42 +3,15 @@
 /*
 Lighting WebSocket Controller for LED Strips (NeoPixels)
 
-File Location:
-~/Omega-Code/servers/robot-controller-backend/controllers/lighting/main_lighting.go
-
 This Go application provides a WebSocket server for real-time control of addressable RGB LED strips.
-It receives JSON lighting commands from frontend clients, then launches a Python script (`led_control.py`)
-to apply the requested color, mode, pattern, interval, and brightness using the rpi_ws281x library.
+It receives JSON lighting commands from frontend clients, then launches a privileged wrapper script
+(run_led.sh → sudo + venv python led_control.py) to apply color/mode/pattern/interval/brightness.
 
-Updates in this version:
-- Adds WS heartbeat support: responds to {"type":"ping","ts"} with {"type":"pong","ts"} for UI latency/health.
-- Fixes brightness defaulting: brightness is now optional (*float64); default to 1.0 only when omitted (nil).
-  Explicit 0.0 is respected (e.g., to turn LEDs off) and all values are clamped to [0,1].
-- Minor: uses WriteJSON for the welcome envelope.
-- Safety: runs the Python effect command with a short timeout to avoid hanging processes.
-
-Features:
-- Handles WebSocket connections for real-time control.
-- Receives lighting commands as JSON (color, mode, pattern, interval, brightness).
-- Executes Python scripts to drive LED effects.
-
-Expected JSON payload from frontend (supports both int and hex string):
-{
-    "color": "#ff0000",        // Hex string (recommended, e.g., "#ff0000" for red)
-    "mode": "single",          // e.g., "single", "multi", "rainbow"
-    "pattern": "static",       // e.g., "static", "blink", "fade", "off"
-    "interval": 500,           // For animation speed, in ms
-    "brightness": 0.85         // Float [0,1], optional; omitted => 1.0; 0.0 is allowed
-}
-or
-{
-    "color": 16711680,         // 24-bit RGB int (e.g., 0xFF0000 for red)
-    ...
-}
-
-Heartbeat example:
-Client → {"type":"ping","ts": 1723220000000}
-Server ← {"type":"pong","ts": 1723220000000}
+Key points in this version:
+- Uses a wrapper (RUN_LED) so the Go process itself does not need sudo.
+- WS heartbeat supported: {"type":"ping","ts"} → {"type":"pong","ts"}.
+- Brightness is optional (*float64); default to 1.0 only when omitted (nil). 0.0 allowed and respected.
+- Short timeout on each invocation to avoid hanging processes.
 */
 
 package main
@@ -51,20 +24,26 @@ import (
 	"net/http"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
 
+// Path to your privileged wrapper that runs the Python script via sudo.
+// Make sure this exists and is executable:
+//   /home/omega1/Omega-Code/servers/robot-controller-backend/controllers/lighting/run_led.sh
+const RUN_LED = "/home/omega1/Omega-Code/servers/robot-controller-backend/controllers/lighting/run_led.sh"
+
 // LightingCommand supports both string and int color fields for compatibility.
 // Brightness is a *float64 so we can tell if it was omitted (nil) vs provided (including 0).
 type LightingCommand struct {
-	Color      interface{} `json:"color"`                // Can be hex string or int (e.g., "#ff0000" or 16711680)
-	Mode       string      `json:"mode"`                 // e.g., "single", "multi", "rainbow"
-	Pattern    string      `json:"pattern"`              // e.g., "static", "blink", "fade", "off"
-	Interval   int         `json:"interval"`             // For dynamic patterns, in milliseconds
-	Brightness *float64    `json:"brightness,omitempty"` // Optional, 0.0–1.0 (nil => default 1.0)
+	Color      interface{} `json:"color"`                // Hex string "#rrggbb" or 24-bit int
+	Mode       string      `json:"mode"`                 // "single", "multi", "rainbow", etc.
+	Pattern    string      `json:"pattern"`              // "static", "blink", "fade", "off", etc.
+	Interval   int         `json:"interval"`             // ms (animation speed)
+	Brightness *float64    `json:"brightness,omitempty"` // [0,1]; nil => default 1.0
 }
 
 // WebSocket upgrader with permissive CORS
@@ -72,14 +51,13 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// hexColorString converts any supported color input to a 6-digit hex string
+// hexColorString converts any supported color input to a 6-digit hex string (no leading '#').
 func hexColorString(color interface{}) (string, error) {
 	switch c := color.(type) {
-	case float64: // JSON numbers come in as float64
+	case float64: // JSON numbers arrive as float64
 		return fmt.Sprintf("%06x", int(c)), nil
 	case string:
 		hex := strings.TrimPrefix(strings.TrimPrefix(c, "#"), "0x")
-		// Validate it's 6 hex digits
 		if len(hex) != 6 || !regexp.MustCompile(`^[0-9a-fA-F]{6}$`).MatchString(hex) {
 			return "", fmt.Errorf("invalid hex color: %s", c)
 		}
@@ -163,16 +141,20 @@ func handleLighting(ws *websocket.Conn) {
 			command.Interval = 0
 		}
 
-		// Build the command for the Python script (includes brightness as the 5th argument)
-		pythonCmd := fmt.Sprintf(
-			"python3 led_control.py %s %s %s %d %.3f",
-			hexColor, command.Mode, command.Pattern, command.Interval, brightness,
-		)
-		log.Printf("Executing: %s", pythonCmd)
+		// Build an arg list for the wrapper (no shell needed)
+		args := []string{
+			hexColor,
+			command.Mode,
+			command.Pattern,
+			strconv.Itoa(command.Interval),
+			fmt.Sprintf("%.3f", brightness),
+		}
 
-		// Run the Python script to control the LEDs with a short timeout
+		log.Printf("Executing: %s %v", RUN_LED, args)
+
+		// Run the wrapper with a short timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		cmd := exec.CommandContext(ctx, "bash", "-c", pythonCmd)
+		cmd := exec.CommandContext(ctx, RUN_LED, args...)
 		output, err := cmd.CombinedOutput()
 		cancel()
 
@@ -182,8 +164,22 @@ func handleLighting(ws *websocket.Conn) {
 		if err != nil {
 			log.Printf("Command execution failed: %v", err)
 			log.Printf("Output: %s", string(output))
+			// Optionally notify client of failure
+			_ = ws.WriteJSON(map[string]any{
+				"type":   "lighting_result",
+				"ok":     false,
+				"error":  err.Error(),
+				"output": string(output),
+				"ts":     time.Now().UnixMilli(),
+			})
 		} else {
 			log.Printf("Command output: %s", string(output))
+			_ = ws.WriteJSON(map[string]any{
+				"type":   "lighting_result",
+				"ok":     true,
+				"output": string(output),
+				"ts":     time.Now().UnixMilli(),
+			})
 		}
 	}
 }
