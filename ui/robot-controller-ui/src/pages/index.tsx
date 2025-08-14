@@ -1,12 +1,14 @@
 /*
 # File: /src/pages/index.tsx
 # Summary:
-Main entry point for the robot controller application.
-Provides a UI for robot control, real-time command logging, and sensor data visualization.
-Manages WebSocket communication for command sending and response handling.
+Main entry for the robot controller UI.
+- Client-only CameraFrame (avoids SSR crashes)
+- Robot controls, logs, sensors, lighting modal
+- WebSocket keep-alive + hotkeys
 */
 
 import Head from 'next/head';
+import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import SpeedControl from '../components/control/SpeedControl';
 import CommandLog from '../components/CommandLog';
@@ -16,12 +18,24 @@ import CameraControlPanel from '../components/control/CameraControlPanel';
 import { useCommand } from '../context/CommandContext';
 import { COMMAND } from '../control_definitions';
 import Header from '../components/Header';
-// import VideoFeed from '../components/VideoFeed'; // replaced by CameraFrame on this page
-import CameraFrame from '../components/CameraFrame';
 import LedModal from '../components/lighting/LedModal';
 import { v4 as uuidv4 } from 'uuid';
 
-// Utility to pick endpoints by profile (lan | tailscale | local)
+// ⬇️ Load CameraFrame only in the browser (prevents SSR issues)
+const CameraFrame = dynamic(() => import('../components/CameraFrame'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-[720px] max-w-[42vw]">
+      <div className="relative bg-gray-900 rounded-lg shadow-md border border-white/10 overflow-hidden" style={{ paddingTop: '56.25%' }}>
+        <div className="absolute inset-0 flex items-center justify-center text-white/70 text-sm">
+          Loading camera…
+        </div>
+      </div>
+    </div>
+  ),
+});
+
+/** Pick endpoint by profile: lan | tailscale | local */
 const getEnvVar = (base: string) => {
   const profile = process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local';
   return (
@@ -34,45 +48,40 @@ const getEnvVar = (base: string) => {
 // Video stream URL (used by CameraFrame)
 const videoUrl = getEnvVar('NEXT_PUBLIC_VIDEO_STREAM_URL');
 
-const Home: React.FC = () => {
-  const { sendCommand, addCommand } = useCommand();
+export default function Home() {
+  const { addCommand } = useCommand();
   const [isLedModalOpen, setIsLedModalOpen] = useState(false);
   const ws = useRef<WebSocket | null>(null);
 
+  // --- WebSocket to your backend command endpoint ---
   const connectWebSocket = useCallback(() => {
     ws.current = new WebSocket('wss://100.82.88.25:8080/ws');
 
     ws.current.onopen = () => {
-      console.log('WebSocket connection established');
       addCommand('WebSocket connection established');
 
       const interval = setInterval(() => {
         if (ws.current?.readyState === WebSocket.OPEN) {
           ws.current.send(JSON.stringify({ type: 'keep-alive' }));
         }
-      }, 25000);
+      }, 25_000);
 
       if (ws.current) {
         ws.current.onclose = () => {
           clearInterval(interval);
-          console.warn('WebSocket connection closed. Reconnecting...');
           addCommand('WebSocket connection closed. Reconnecting...');
           setTimeout(connectWebSocket, 1000);
         };
 
         ws.current.onerror = (error) => {
-          console.error('WebSocket error:', error);
-          addCommand(`WebSocket error: ${error}`);
+          addCommand(`WebSocket error: ${String(error)}`);
         };
 
         ws.current.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data);
-            if (message.command) {
-              addCommand(`Received: ${message.command}`);
-            }
-          } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
+            if (message.command) addCommand(`Received: ${message.command}`);
+          } catch {
             addCommand('Error parsing WebSocket message');
           }
         };
@@ -82,50 +91,35 @@ const Home: React.FC = () => {
 
   useEffect(() => {
     connectWebSocket();
-    return () => {
-      ws.current?.close();
-    };
+    return () => ws.current?.close();
   }, [connectWebSocket]);
 
+  // --- Send command helper with logging ---
   const sendCommandWithLog = useCallback(
     (command: string, angle: number = 0) => {
       const requestId = uuidv4();
       if (ws.current?.readyState === WebSocket.OPEN) {
-        const payload = { command, angle, request_id: requestId };
-        ws.current.send(JSON.stringify(payload));
+        ws.current.send(JSON.stringify({ command, angle, request_id: requestId }));
         addCommand(`Sent: ${command} (ID: ${requestId})`);
       } else {
-        console.error('WebSocket is not open');
         addCommand('Failed to send command: WebSocket is not open');
       }
     },
     [addCommand]
   );
 
+  // --- Hotkeys ---
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       switch (event.key.toLowerCase()) {
-        case 'p':
-          sendCommandWithLog(COMMAND.INCREASE_SPEED);
-          break;
-        case 'o':
-          sendCommandWithLog(COMMAND.DECREASE_SPEED);
-          break;
-        case ' ':
-          sendCommandWithLog(COMMAND.CMD_BUZZER);
-          break;
-        case 'i':
-          setIsLedModalOpen(true);
-          break;
-        default:
-          break;
+        case 'p': return sendCommandWithLog(COMMAND.INCREASE_SPEED);
+        case 'o': return sendCommandWithLog(COMMAND.DECREASE_SPEED);
+        case ' ': return sendCommandWithLog(COMMAND.CMD_BUZZER);
+        case 'i': return setIsLedModalOpen(true);
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [sendCommandWithLog]);
 
   return (
@@ -136,7 +130,8 @@ const Home: React.FC = () => {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <Header isConnected={true} batteryLevel={75} />
+      {/* Header computes live service dots internally; passing battery for now */}
+      <Header batteryLevel={75} />
 
       <main className="p-4 space-y-4">
         <div className="flex justify-center items-center space-x-8">
@@ -144,7 +139,7 @@ const Home: React.FC = () => {
             <CarControlPanel sendCommand={sendCommandWithLog} />
           </div>
 
-          {/* Replaced <VideoFeed /> with framed camera */}
+          {/* Framed camera */}
           <div className="flex-shrink-0">
             <CameraFrame
               src={videoUrl}
@@ -183,6 +178,4 @@ const Home: React.FC = () => {
       )}
     </div>
   );
-};
-
-export default Home;
+}
