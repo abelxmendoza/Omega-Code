@@ -1,48 +1,29 @@
-// File: /src/utils/connectLightingWs.ts
+// File: /Omega-Code/ui/robot-controller-ui/src/utils/connectLightingWs.ts
+// Summary:
+//   Lighting WS helper with graceful fallback.
+//   - getLightingWsUrl(): returns the best URL for the active profile
+//   - connectLightingWs({ timeoutMs }): tries [profile, then others] until one connects
+//   - Uses HTTPS-aware upgrade (ws:// → wss://)
+
+'use client';
+
+import { resolveWsUrl, resolveWsCandidates } from './resolveWsUrl';
+import { connectWithFallback, upgradeWsForHttps } from './wsConnect';
 
 export function getLightingWsUrl(): string {
-  // Prefer Tailscale, fallback to LAN, then localhost
-  return (
-    process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_TAILSCALE ||
-    process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LAN ||
-    'ws://localhost:8082/lighting'
-  );
+  return resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING');
 }
 
-export function connectLightingWs(): Promise<WebSocket> {
-  const tailscaleUrl = process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_TAILSCALE;
-  const lanUrl = process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LAN;
-
-  return new Promise((resolve, reject) => {
-    let ws: WebSocket;
-    let settled = false;
-
-    // Try Tailscale first
-    if (tailscaleUrl) {
-      ws = new WebSocket(tailscaleUrl);
-      ws.onopen = () => {
-        settled = true;
-        resolve(ws);
-      };
-      ws.onerror = () => {
-        if (!settled && lanUrl) {
-          // Fallback to LAN
-          let ws2 = new WebSocket(lanUrl);
-          ws2.onopen = () => resolve(ws2);
-          ws2.onerror = reject;
-        } else {
-          reject();
-        }
-      };
-    } else if (lanUrl) {
-      ws = new WebSocket(lanUrl);
-      ws.onopen = () => resolve(ws);
-      ws.onerror = reject;
-    } else {
-      // Fallback to localhost for dev
-      ws = new WebSocket('ws://localhost:8082/lighting');
-      ws.onopen = () => resolve(ws);
-      ws.onerror = reject;
-    }
-  });
+export async function connectLightingWs(opts?: { timeoutMs?: number }): Promise<WebSocket> {
+  const timeoutMs = opts?.timeoutMs ?? 6000;
+  const candidates = resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING');
+  const { ws } = await connectWithFallback(candidates, timeoutMs);
+  return ws;
 }
+
+/** Optional: direct opener if you just want the preferred single URL */
+export function openLightingSocket(): WebSocket | null {
+  const url = getLightingWsUrl();
+  return url ? new WebSocket(upgradeWsForHttps(url)) : null;
+}
+

@@ -1,71 +1,27 @@
-// File: src/utils/connectLineTrackerWs.ts
-/**
- * Line Tracker WebSocket helper
- *
- * - connectLineTrackerWs(): Promise<WebSocket> — resolves when OPEN
- * - startJsonHeartbeat(ws, { onLatency, onDisconnect, intervalMs, timeoutMs }): () => void
- * - parseLineTrackingPayload(raw): { IR01, IR02, IR03 } | null
- *
- * Env (include full path):
- *  NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_TAILSCALE=ws://<pi-ip>:8090/line-tracker
- *  NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LAN=ws://<lan-ip>:8090/line-tracker
- *  NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LOCAL=ws://localhost:8090/line-tracker (optional)
- *  NEXT_PUBLIC_NETWORK_PROFILE=tailscale|lan|local
- */
+// File: /Omega-Code/ui/robot-controller-ui/src/utils/connectLineTrackerWs.ts
+// Summary:
+//   Line Tracker WS utilities.
+//   - getLineTrackerWsUrl(): profile-resolved single URL
+//   - connectLineTrackerWs({ timeoutMs }): fallback connect across candidates
+//   - startJsonHeartbeat(ws, ...): JSON ping/pong with latency reporting
+//   - parseLineTrackingPayload(raw): normalizes payload to { IR01, IR02, IR03 }
 
-import { resolveWsUrl } from '@/utils/resolveWsUrl';
+'use client';
 
-// Prefer profile-based URL, fall back to direct envs if resolver not present/misconfigured.
-const LINE_TRACKER_WS =
-  resolveWsUrl?.('NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER') ||
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_TAILSCALE ||
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LAN ||
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LOCAL;
+import { resolveWsUrl, resolveWsCandidates } from './resolveWsUrl';
+import { connectWithFallback } from './wsConnect';
 
 export function getLineTrackerWsUrl(): string {
-  if (!LINE_TRACKER_WS) {
-    throw new Error('LineTracker WS URL not set in env');
-  }
-  return LINE_TRACKER_WS;
+  const url = resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER');
+  if (!url) throw new Error('LineTracker WS URL not set for active profile (.env)');
+  return url;
 }
 
 export async function connectLineTrackerWs(opts?: { timeoutMs?: number }): Promise<WebSocket> {
-  const url = getLineTrackerWsUrl();
   const timeoutMs = opts?.timeoutMs ?? 6000;
-
-  return new Promise<WebSocket>((resolve, reject) => {
-    const ws = new WebSocket(url);
-    let settled = false;
-
-    const to = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        try { ws.close(); } catch {}
-        reject(new Error('LineTracker WS connect timeout'));
-      }
-    }, timeoutMs);
-
-    ws.onopen = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(to);
-      resolve(ws);
-    };
-
-    ws.onerror = (err) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(to);
-      reject(err instanceof Event ? new Error('LineTracker WS error') : (err as any));
-    };
-
-    ws.onclose = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(to);
-      reject(new Error('LineTracker WS closed during connect'));
-    };
-  });
+  const candidates = resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER');
+  const { ws } = await connectWithFallback(candidates, timeoutMs);
+  return ws;
 }
 
 /** Start JSON ping/pong heartbeat. Returns stop() cleanup. */
@@ -87,7 +43,7 @@ export function startJsonHeartbeat(
 
   const onMessage = (evt: MessageEvent) => {
     try {
-      const data = JSON.parse(evt.data);
+      const data = JSON.parse(evt.data as string);
       if (data?.type === 'pong') {
         const end = performance.now();
         const start = pingSentAt ?? end;

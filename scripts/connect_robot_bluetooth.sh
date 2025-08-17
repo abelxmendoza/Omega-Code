@@ -1,99 +1,68 @@
 #!/bin/bash
+# macOS: Connect Mac to iPhone PAN with blueutil, then make the Pi join via BlueZ.
 
-# Script: connect_robot_bluetooth.sh
-# 
-# This script connects both your **MacBook and Raspberry Pi (Omega1)** to the iPhone's Personal Hotspot via Bluetooth PAN.
-# Since macOS does not have `bt-network`, it uses `blueutil` instead.
+set -euo pipefail
 
-# Determine project root. Allow override via OMEGA_CODE_ROOT
 ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-
-# Path to the .env file (can be overridden with ENV_FILE)
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/servers/robot-controller-backend/.env}"
 
-# Load environment variables securely
+# Load .env safely (handles spaces)
 if [ -f "$ENV_FILE" ]; then
-  export $(grep -v '^#' "$ENV_FILE" | xargs)
+  set -o allexport
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +o allexport
 else
-  echo "❌ Error: .env file not found at $ENV_FILE"
+  echo "❌ .env not found at $ENV_FILE"; exit 1
+fi
+
+: "${PHONE_MAC:?❌ PHONE_MAC missing in .env}"
+: "${PI_HOST:?❌ PI_HOST missing in .env}"
+
+# macOS requirements
+if ! command -v blueutil >/dev/null 2>&1; then
+  echo "❌ 'blueutil' not installed. Install: brew install blueutil"; exit 1
+fi
+
+echo "🔗 macOS → connecting to iPhone ($PHONE_MAC) via Bluetooth..."
+# Pair if needed
+if ! blueutil --paired | grep -qi "$PHONE_MAC"; then
+  echo "   Pairing… (accept on phone if prompted)"
+  blueutil --pair "$PHONE_MAC" || true
+fi
+
+# Connect (this triggers PAN)
+blueutil --connect "$PHONE_MAC" || {
+  echo "❌ Failed to connect Mac to iPhone. Make sure Personal Hotspot is ON (Allow Others to Join)."
   exit 1
-fi
+}
 
-# Check if PHONE_MAC and PI_IP are set
-if [ -z "$PHONE_MAC" ]; then
-  echo "❌ Error: PHONE_MAC is not set. Please check your .env file."
-  exit 1
-fi
-if [ -z "$PI_IP" ]; then
-  echo "❌ Error: PI_IP is not set. Please check your .env file."
-  exit 1
-fi
-
-echo "🔗 Attempting to connect MacBook to iPhone Bluetooth PAN..."
-
-# Check if blueutil is installed
-if ! command -v blueutil &> /dev/null; then
-  echo "❌ Error: 'blueutil' is not installed. Install it with: brew install blueutil"
-  exit 1
-fi
-
-# Pair with iPhone if not already paired
-if ! blueutil --paired | grep -q "$PHONE_MAC"; then
-  echo "🔗 Pairing with iPhone..."
-  blueutil --pair "$PHONE_MAC"
-fi
-
-# Connect MacBook to iPhone Bluetooth PAN
-if blueutil --connect "$PHONE_MAC"; then
-  echo "✅ MacBook connected to iPhone Bluetooth PAN."
+# Show PAN interface info (macOS does NOT have bnep0)
+IFACE=$(networksetup -listnetworkserviceorder | \
+  awk '/Bluetooth PAN/ {getline; if ($0 ~ /Device:/) { sub(/.*Device: /,""); sub(/\)/,""); print }}')
+if [ -n "${IFACE:-}" ]; then
+  echo "📡 macOS Bluetooth PAN interface: $IFACE"
+  ifconfig "$IFACE" || true
 else
-  echo "❌ Error: Failed to connect MacBook to Bluetooth PAN."
-  exit 1
+  echo "ℹ️ Bluetooth PAN service present; interface becomes active once traffic flows."
 fi
 
-# Obtain an IP address for the Bluetooth network interface
-if ! sudo dhclient bnep0; then
-  echo "❌ Error: Failed to obtain an IP address for MacBook on Bluetooth PAN."
-  exit 1
-fi
-
-# Verify if bnep0 exists before displaying details
-if ip link show bnep0 &> /dev/null; then
-  echo "📡 Network interface bnep0 details:"
-  ip addr show bnep0
+echo "🌍 Quick connectivity probe…"
+if ping -c 2 -t 2 1.1.1.1 >/dev/null 2>&1; then
+  echo "✅ macOS has network connectivity via Bluetooth PAN."
 else
-  echo "❌ Error: bnep0 interface not found on MacBook. Check Bluetooth connection."
-  exit 1
+  echo "⚠️ Couldn’t confirm Internet; continuing anyway."
 fi
 
-# Test internet connectivity from MacBook
-echo "🌍 Testing internet connectivity from MacBook..."
-if ping -c 4 google.com &> /dev/null; then
-  echo "✅ MacBook successfully connected to iPhone's internet."
-else
-  echo "❌ Error: No internet access on MacBook via Bluetooth PAN."
-  exit 1
-fi
+# --- Pi side ---
+PI_HELPER="$ROOT_DIR/scripts/pi_connect_phone_pan.sh"
+[ -f "$PI_HELPER" ] || { echo "❌ Missing $PI_HELPER"; exit 1; }
 
-# SSH into Raspberry Pi (Omega1) and connect it to Bluetooth PAN
-echo "🔗 Attempting to SSH into Raspberry Pi (Omega1) at $PI_IP to connect it to Bluetooth PAN..."
+echo "📤 Copying Pi helper…"
+scp "$PI_HELPER" "$PI_HOST:/tmp/pi_connect_phone_pan.sh"
 
-if ssh "omega1@$PI_IP" "sudo blueutil --connect '$PHONE_MAC'"; then
-  echo "✅ Raspberry Pi (Omega1) connected to iPhone Bluetooth PAN."
-else
-  echo "❌ Error: Failed to connect Raspberry Pi (Omega1) to Bluetooth PAN."
-  exit 1
-fi
+echo "🔗 Asking Pi to connect to iPhone PAN…"
+ssh "$PI_HOST" "bash /tmp/pi_connect_phone_pan.sh '$PHONE_MAC'"
 
-# Check if Raspberry Pi (Omega1) has an IP on the Bluetooth network
-echo "📡 Checking Raspberry Pi (Omega1)'s network status..."
-if ssh "omega1@$PI_IP" "ip addr show bnep0"; then
-  echo "✅ Raspberry Pi (Omega1) successfully connected to Bluetooth PAN."
-else
-  echo "❌ Error: Raspberry Pi (Omega1) bnep0 interface not found. Check Bluetooth connection."
-  exit 1
-fi
-
-# Final SSH connection to Raspberry Pi (Omega1)
-echo "🚀 All connections successful. SSHing into Raspberry Pi (Omega1)..."
-ssh "omega1@$PI_IP"
+echo "✅ Mac and Pi should now both be on the iPhone Bluetooth PAN."
+echo "🔁 If flaky, toggle iPhone Personal Hotspot OFF/ON, then re-run."
