@@ -1,55 +1,128 @@
-// /src/hooks/useHttpStatus.ts
+/*
+# File: /Omega-Code/ui/robot-controller-ui/src/hooks/useHttpStatus.ts
+# Summary:
+#   Lightweight HTTP status probe for service health endpoints (e.g., /health).
+#   - Uses GET so we can read the JSON body and map states precisely:
+#       • 200                        → "connected"
+#       • 503 + { placeholder:true } → "no_camera"
+#       • 503 (other)                → "connecting"  (server reachable but not ready)
+#       • network/CORS errors        → "disconnected"
+#
+#   Options:
+#     - intervalMs : poll frequency (default 5000)
+#     - timeoutMs  : request timeout (default 2500)
+#     - treat503AsConnecting : map generic 503 to "connecting" (default true)
+*/
+
 import { useEffect, useRef, useState } from 'react';
 
-export type HttpStatus = 'connected' | 'connecting' | 'disconnected';
+export type HttpStatus = 'connected' | 'connecting' | 'disconnected' | 'no_camera';
+
+export interface HttpState {
+  status: HttpStatus;
+  latency: number | null;
+}
 
 type Options = {
-  intervalMs?: number;   // how often to probe
-  timeoutMs?: number;    // per-probe timeout
+  intervalMs?: number;            // how often to probe
+  timeoutMs?: number;             // per-probe timeout
+  treat503AsConnecting?: boolean; // map raw 503 to "connecting"
 };
 
-export function useHttpStatus(url: string | undefined, opts: Options = {}) {
-  const { intervalMs = 5000, timeoutMs = 2500 } = opts;
-  const [status, setStatus] = useState<HttpStatus>('connecting');
+export function useHttpStatus(url: string | undefined, opts: Options = {}): HttpState {
+  const {
+    intervalMs = 5000,
+    timeoutMs = 2500,
+    treat503AsConnecting = true,
+  } = opts;
+
+  const [status, setStatus] = useState<HttpStatus>('disconnected');
   const [latency, setLatency] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    // Clear any existing timer when URL/options change
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
     if (!url) {
       setStatus('disconnected');
       setLatency(null);
       return;
     }
 
+    let cancelled = false;
+
     const probe = async () => {
-      setStatus(s => (s === 'connected' ? s : 'connecting'));
+      // Only escalate to "connecting" if we aren't in a good known state
+      setStatus(s => (s === 'connected' || s === 'no_camera' ? s : 'connecting'));
+
       const start = performance.now();
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), timeoutMs);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
-        // no-cors => opaque response but resolves if reachable
-        await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal });
-        const ms = Math.round(performance.now() - start);
-        setLatency(ms);
-        setStatus('connected');
-      } catch {
+        // Use GET with CORS so we can read JSON body from /health
+        const res = await fetch(url, {
+          method: 'GET',
+          cache: 'no-store',
+          mode: 'cors' as RequestMode,
+          signal: controller.signal as any,
+        });
+        const end = performance.now();
+        const ms = Math.max(0, Math.round(end - start));
+
+        // Try to parse JSON (health endpoint should return JSON)
+        let body: any = null;
+        try { body = await res.clone().json(); } catch { /* non-JSON is fine */ }
+
+        if (cancelled) return;
+
+        if (res.ok) {
+          setLatency(ms);
+          setStatus('connected');
+          return;
+        }
+
+        // 503 + placeholder flag → explicit "no_camera"
+        if (res.status === 503 && body && body.placeholder === true) {
+          setLatency(ms);
+          setStatus('no_camera');
+          return;
+        }
+
+        // Generic 503 → treat as "connecting" (server reachable but not ready)
+        if (res.status === 503 && treat503AsConnecting) {
+          setLatency(ms);
+          setStatus('connecting');
+          return;
+        }
+
+        // Anything else → disconnected
         setLatency(null);
         setStatus('disconnected');
+      } catch {
+        if (!cancelled) {
+          setLatency(null);
+          setStatus('disconnected'); // network/CORS/timeout
+        }
       } finally {
-        clearTimeout(t);
+        clearTimeout(timeout);
       }
     };
 
-    // immediate probe, then interval
+    // Kick off immediately, then on interval
     probe();
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(probe, intervalMs);
+    timerRef.current = setInterval(probe, Math.max(1000, intervalMs));
 
     return () => {
+      cancelled = true;
       if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
     };
-  }, [url, intervalMs, timeoutMs]);
+  }, [url, intervalMs, timeoutMs, treat503AsConnecting]);
 
   return { status, latency };
 }

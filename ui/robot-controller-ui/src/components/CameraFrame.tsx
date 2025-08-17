@@ -1,35 +1,39 @@
 /*
-# File: /src/components/CameraFrame.tsx
+# File: /Omega-Code/ui/robot-controller-ui/src/components/CameraFrame.tsx
 # Summary:
-Camera frame for MJPEG feeds with overlay controls & status:
-- status dot + latency (HEAD ping) + FPS estimate
-- play/pause, fullscreen
-- snapshot (PNG), record (WebM*) — ONLY when connected & playing
-- fit/cover, rotate, flip H/V
-- optional filters (normal, mono, high-contrast, night)
-- shows "Not connected" overlay when stream unreachable
+#   MJPEG camera frame with controls (play/pause, fit, rotate, flip, filters,
+#   snapshot/record, fullscreen) and a status dot that matches the status bar.
+#
+#   Status mapping (via GET to /health):
+#     • 200 → "connected" (green)
+#     • 503 + { placeholder: true } → "no_camera" (blue)
+#     • 503 otherwise → "connecting" (amber)
+#     • network/CORS errors → "disconnected" (red)
 */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-type ServerStatus = 'connecting' | 'connected' | 'disconnected';
+type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'no_camera';
 type FitMode = 'cover' | 'contain';
 type FilterMode = 'none' | 'mono' | 'contrast' | 'night';
 
 export interface CameraFrameProps {
+  /** MJPEG stream URL, e.g. http(s)://robot/video_feed */
   src: string;
   title?: string;
   className?: string;
-  checkIntervalMs?: number;   // latency poll (HEAD) interval
+  /** latency poll interval */
+  checkIntervalMs?: number;
   initialFit?: FitMode;
   showGrid?: boolean;
 }
 
 const StatusDot: React.FC<{ status: ServerStatus; title?: string }> = ({ status, title }) => {
   const color =
-    status === 'connected' ? 'bg-emerald-500'
-    : status === 'connecting' ? 'bg-slate-500'
-    : 'bg-rose-500';
+    status === 'connected'   ? 'bg-emerald-500' :
+    status === 'connecting'  ? 'bg-amber-500'  :
+    status === 'no_camera'   ? 'bg-sky-500'    :
+                               'bg-rose-500';
   return (
     <span
       className={`inline-block rounded-full ${color} shrink-0`}
@@ -65,6 +69,13 @@ const filterClass = (mode: FilterMode) => {
   }
 };
 
+/** helper: derive /health from /video_feed */
+const toHealthUrl = (videoUrl?: string) => {
+  if (!videoUrl) return '';
+  const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
+  return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
+};
+
 const CameraFrame: React.FC<CameraFrameProps> = ({
   src,
   title = 'Camera',
@@ -97,30 +108,44 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
   const rafRef = useRef<number | null>(null);
   const fpsCounterRef = useRef<{ last: number; frames: number }>({ last: performance.now(), frames: 0 });
 
-  // ---------- Server availability + latency via HEAD ----------
+  // ---------- Availability + latency via GET /health ----------
   useEffect(() => {
     let cancelled = false;
+    const healthUrl = toHealthUrl(src);
+
     const check = async () => {
-      if (!src) {
+      if (!healthUrl) {
         if (!cancelled) { setStatus('disconnected'); setPingMs(null); }
         return;
       }
       try {
-        setStatus((s) => (s === 'connected' ? s : 'connecting'));
+        setStatus((s) => (s === 'connected' ? s : s === 'no_camera' ? s : 'connecting'));
         const start = performance.now();
-        const res = await fetch(src, { method: 'HEAD', cache: 'no-store', mode: 'cors' as RequestMode });
+        const res = await fetch(healthUrl, { method: 'GET', cache: 'no-store', mode: 'cors' as RequestMode });
         const end = performance.now();
         if (cancelled) return;
+
+        let body: any = null;
+        try { body = await res.clone().json(); } catch {}
+
         if (res.ok) {
           setStatus('connected');
           setPingMs(Math.max(0, Math.round(end - start)));
+        } else if (res.status === 503 && body && body.placeholder === true) {
+          setStatus('no_camera');
+          setPingMs(Math.max(0, Math.round(end - start)));
+        } else if (res.status === 503) {
+          setStatus('connecting');
+          setPingMs(Math.max(0, Math.round(end - start)));
         } else {
-          setStatus('disconnected'); setPingMs(null);
+          setStatus('disconnected');
+          setPingMs(null);
         }
       } catch {
         if (!cancelled) { setStatus('disconnected'); setPingMs(null); }
       }
     };
+
     check();
     const t = setInterval(check, Math.max(2000, checkIntervalMs));
     return () => { cancelled = true; clearInterval(t); };
@@ -200,7 +225,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
   const online = status === 'connected';
   const canCapture = online && playing;
 
-  // ---------- Snapshot PNG (only when connected & playing) ----------
+  // ---------- Snapshot PNG ----------
   const handleSnapshotDownload = async () => {
     if (!canCapture) return;
     await ensureCanvasDraw();
@@ -212,12 +237,11 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       a.download = `snapshot-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
     } catch {
-      // If CORS blocks canvas export, don't attempt download — we only capture from live Pi feed.
       console.warn('Snapshot blocked (likely CORS).');
     }
   };
 
-  // ---------- Record WebM via canvas.captureStream (only when connected & playing) ----------
+  // ---------- Record WebM via canvas.captureStream ----------
   const startRecording = () => {
     if (!canCapture) return;
     const cvs = canvasRef.current; if (!cvs) return;
@@ -251,7 +275,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
     recorderRef.current = null; recStreamRef.current = null; setRecording(false);
   };
 
-  // ---------- View transform (CSS) ----------
+  // ---------- View transform ----------
   const mediaTransform = useMemo(() => {
     const r = rotate;
     const sx = flipH ? -1 : 1;
@@ -273,13 +297,11 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       <IconBtn onClick={() => setFilter(f =>
         f === 'none' ? 'mono' : f === 'mono' ? 'contrast' : f === 'contrast' ? 'night' : 'none'
       )} title={`Filter: ${filter}`}>🎛️</IconBtn>
-      {/* Snapshot and Record are disabled unless we are connected AND playing */}
       <IconBtn onClick={handleSnapshotDownload} title="Snapshot PNG" disabled={!canCapture}>📸</IconBtn>
       <IconBtn
         onClick={recording ? stopRecording : startRecording}
         title={recording ? 'Stop recording' : 'Start recording'}
         active={recording}
-        // If not currently recording, disable when we can't capture
         disabled={!recording && !canCapture}
       >
         {recording ? '⏺︎⏹' : '⏺'}
@@ -293,12 +315,19 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
     </div>
   );
 
+  // Titles/tooltips
+  const titleText =
+    status === 'connected'  ? `Video: Connected • ${pingMs ?? '—'} ms` :
+    status === 'no_camera'  ? `Video: No camera`                          :
+    status === 'connecting' ? `Video: Connecting…`                        :
+                              `Video: Disconnected`;
+
   return (
     <div ref={containerRef} className={`relative bg-gray-900 rounded-lg shadow-md border border-white/10 overflow-hidden ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 bg-black/40 backdrop-blur border-b border-white/10">
         <div className="flex items-center gap-2 text-white/90">
-          <StatusDot status={status} title={`Video: ${status}`} />
+          <StatusDot status={status} title={titleText} />
           <span className="text-sm font-semibold">{title}</span>
           <span className="text-xs text-white/70 ml-2">
             {pingMs != null ? `${pingMs} ms` : '— ms'} • {fps} fps
@@ -310,7 +339,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       {/* Media area (16:9 default) */}
       <div className={`relative bg-black ${filterClass(filter)}`} style={{ paddingTop: '56.25%' }}>
         {/* Only render <img> when connected AND playing; avoids black box on failure */}
-        {online && playing && (
+        {status === 'connected' && playing && (
           <img
             ref={imgRef}
             src={src ? src + (src.includes('?') ? '&' : '?') + 'b=' + Date.now() : ''}
@@ -323,7 +352,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
         )}
 
         {/* Show last snapshot faintly when offline */}
-        {!online && snapshotUrl && (
+        {status !== 'connected' && snapshotUrl && (
           <img
             src={snapshotUrl}
             alt="Last frame"
@@ -333,13 +362,19 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
         )}
 
         {/* Overlay messages */}
-        {!online && (
+        {status === 'disconnected' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white/85">
             <div className="text-sm mb-3">Not connected</div>
             <IconBtn onClick={handlePlay} title="Retry">Retry</IconBtn>
           </div>
         )}
-        {online && !playing && !snapshotUrl && (
+        {status === 'no_camera' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white/85">
+            <div className="text-sm mb-1">Camera missing</div>
+            <div className="text-xs text-white/70">Check ribbon cable / device</div>
+          </div>
+        )}
+        {status === 'connected' && !playing && !snapshotUrl && (
           <div className="absolute inset-0 flex items-center justify-center text-white/70 text-sm">Paused</div>
         )}
       </div>

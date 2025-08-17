@@ -1,40 +1,78 @@
 /*
-# File: /src/components/VideoFeed.tsx
+# File: /Omega-Code/ui/robot-controller-ui/src/components/VideoFeed.tsx
 # Summary:
-Live MJPEG video with a mini GPS map (top-right). Clicking the mini map expands it.
-Endpoints are chosen by NEXT_PUBLIC_NETWORK_PROFILE. Includes stream availability
-checks, a tiny status dot with HEAD latency, and a generic WS auto-reconnect (optional).
+#   Live MJPEG preview with mini GPS map + robust status:
+#     - Uses /health (cheap JSON) to determine:
+#         • connected (200)
+#         • no_camera (503 + { placeholder:true })
+#         • connecting (generic 503)
+#         • disconnected (network/CORS/timeout)
+#     - Status dot colors: green (connected) / amber (connecting or no_camera) / red (disconnected)
+#     - Renders <img> for the MJPEG stream when connected. In `no_camera`, we *try* to render
+#       the stream as well (in case the backend is serving a placeholder MJPEG); if it errors
+#       we fall back to a clear overlay that says “No camera”.
+#     - Mini GPS map (click to expand) retained.
+#
+#   Env-driven endpoints:
+#     - Network profile: NEXT_PUBLIC_NETWORK_PROFILE = lan | tailscale | local
+#     - Video stream base keys:
+#         NEXT_PUBLIC_VIDEO_STREAM_URL_LAN
+#         NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE
+#         NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL
+#
+#   Parent callback:
+#     - onVideoStatusChange(ok: boolean) fires when effective “online” state changes
 */
 
-import React, { useState, useEffect, useRef } from 'react';
+'use client';
+
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import GpsLocation from './GpsLocation';
+import { useHttpStatus } from '../hooks/useHttpStatus';
+
+type NetProfile = 'LAN' | 'TAILSCALE' | 'LOCAL';
+const PROFILE = ((process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local').toUpperCase() as NetProfile);
+
+/** Pick per active profile with sensible fallbacks. */
+const pick = (lan?: string, tailscale?: string, local?: string) =>
+  PROFILE === 'LAN'       ? (lan ?? local ?? '') :
+  PROFILE === 'TAILSCALE' ? (tailscale ?? local ?? '') :
+                             (local ?? lan ?? tailscale ?? '');
+
+/** Convert .../video_feed[?...] → sibling /health */
+const toHealthUrl = (videoUrl?: string) => {
+  if (!videoUrl) return '';
+  const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
+  return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
+};
 
 /** Props */
 export type VideoFeedProps = {
   onVideoStatusChange?: (ok: boolean) => void; // notify parent when video becomes (un)available
+  className?: string;
+  objectFit?: 'cover' | 'contain';
 };
 
-/** Resolve endpoint from profile: lan | tailscale | local */
-const getEnvVar = (base: string) => {
-  const profile = process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local';
-  return (
-    (process.env as any)[`${base}_${profile.toUpperCase()}`] ||
-    (process.env as any)[`${base}_LOCAL`] ||
-    ''
-  );
-};
+// --- Resolve endpoints from env ---
+const VIDEO_STREAM = pick(
+  process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LAN,
+  process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE,
+  process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL
+);
+const VIDEO_HEALTH = toHealthUrl(VIDEO_STREAM);
 
-// Pull endpoints from env
-const wsUrl   = getEnvVar('NEXT_PUBLIC_BACKEND_WS_URL');      // optional generic WS (unused data)
-const videoUrl = getEnvVar('NEXT_PUBLIC_VIDEO_STREAM_URL');   // MJPEG stream
+// Status palette used elsewhere in your UI:
+//  - connected    → emerald
+//  - connecting   → amber
+//  - disconnected → rose
+//  - no_camera    → amber (but with explicit label)
+type ServerStatus = 'connected' | 'connecting' | 'disconnected' | 'no_camera';
 
-type ServerStatus = 'connecting' | 'connected' | 'disconnected';
-
-function StatusDot({ status, title }: { status: ServerStatus; title: string }) {
+const StatusDot: React.FC<{ status: ServerStatus; title?: string }> = ({ status, title }) => {
   const color =
     status === 'connected'   ? 'bg-emerald-500' :
-    status === 'connecting'  ? 'bg-slate-500'   :
-                                'bg-rose-500';
+    status === 'disconnected'? 'bg-rose-500'    :
+                               'bg-amber-400'; // connecting & no_camera
   return (
     <span
       className={`inline-block rounded-full ${color}`}
@@ -43,109 +81,101 @@ function StatusDot({ status, title }: { status: ServerStatus; title: string }) {
       aria-label={title}
     />
   );
-}
+};
 
-const VideoFeed: React.FC<VideoFeedProps> = ({ onVideoStatusChange }) => {
+const VideoFeed: React.FC<VideoFeedProps> = ({
+  onVideoStatusChange,
+  className = '',
+  objectFit = 'cover',
+}) => {
   const [mapExpanded, setMapExpanded] = useState(false);
-  const [videoAvailable, setVideoAvailable] = useState(true);
 
-  const [status, setStatus] = useState<ServerStatus>('connecting');
-  const [pingMs, setPingMs] = useState<number | null>(null);
+  // Probe /health (cheap + precise). Our hook returns:
+  //   status ∈ { connected | connecting | disconnected | no_camera }
+  //   latency: ms or null
+  const { status, latency } = useHttpStatus(VIDEO_HEALTH || undefined, {
+    intervalMs: 5000,
+    timeoutMs: 2500,
+    // keep default treat503AsConnecting: true
+  });
 
-  const ws = useRef<WebSocket | null>(null);
+  // Whether we should attempt to render the <img> MJPEG:
+  // - Always when "connected"
+  // - Also when "no_camera" (if backend streams a placeholder, it will load)
+  const allowImage = status === 'connected' || status === 'no_camera';
 
-  // Check the MJPEG stream with HEAD so we can show "not connected" + latency
-  const checkVideoStream = async () => {
-    if (!videoUrl) {
-      setVideoAvailable(false);
-      setStatus('disconnected');
-      setPingMs(null);
-      return;
-    }
-    try {
-      setStatus((s) => (s === 'connected' ? s : 'connecting'));
-      const start = performance.now();
-      const res = await fetch(videoUrl, { method: 'HEAD', cache: 'no-store' });
-      const end = performance.now();
-      if (res.ok) {
-        setVideoAvailable(true);
-        setStatus('connected');
-        setPingMs(Math.max(0, Math.round(end - start)));
-      } else {
-        setVideoAvailable(false);
-        setStatus('disconnected');
-        setPingMs(null);
-      }
-    } catch {
-      setVideoAvailable(false);
-      setStatus('disconnected');
-      setPingMs(null);
-    }
-  };
+  // Ensure the <img> cache-busts on each (re)attempt
+  const srcWithBuster = useMemo(() => {
+    if (!VIDEO_STREAM) return '';
+    const sep = VIDEO_STREAM.includes('?') ? '&' : '?';
+    return `${VIDEO_STREAM}${sep}b=${Date.now()}`;
+  }, [status]); // bust whenever status changes
 
-  // Poll availability
+  // Track <img> load error so we can suppress it when placeholder isn’t available
+  const [imgError, setImgError] = useState(false);
+  useEffect(() => { setImgError(false); }, [srcWithBuster]);
+
+  // Inform parent about effective “online” (green) state
   useEffect(() => {
-    checkVideoStream();
-    const id = setInterval(checkVideoStream, 5000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoUrl]);
+    onVideoStatusChange?.(status === 'connected');
+  }, [status, onVideoStatusChange]);
 
-  // Notify parent when availability changes
-  useEffect(() => {
-    onVideoStatusChange?.(status === 'connected' && videoAvailable);
-  }, [status, videoAvailable, onVideoStatusChange]);
+  const titleSuffix =
+    latency != null ? ` • ${latency}ms` : '';
 
-  // Optional generic WS (kept from your original; safe to remove if unused)
-  useEffect(() => {
-    if (!wsUrl) return;
-    const connect = () => {
-      ws.current = new WebSocket(wsUrl);
-      ws.current.onopen = () => console.log('✅ VideoFeed WS connected');
-      ws.current.onmessage = (e) => console.log('📡', e.data);
-      ws.current.onclose = () => setTimeout(connect, 5000);
-      ws.current.onerror = (err) => console.error('🚨 WS error:', err);
-    };
-    connect();
-    return () => ws.current?.close();
-  }, [wsUrl]);
+  const statusLabel =
+    status === 'no_camera' ? 'No camera' :
+    status.charAt(0).toUpperCase() + status.slice(1);
 
-  const statusTitle =
-    `Video: ${status[0].toUpperCase()}${status.slice(1)}${pingMs != null ? ` • ${pingMs}ms` : ''}`;
+  const isOnline = status === 'connected';
+  const showImg = allowImage && !!VIDEO_STREAM && !imgError;
 
   return (
     <div
-      className="relative w-2/5 bg-gray-900 rounded-lg shadow-md border border-white/10 overflow-hidden"
-      style={{ height: 'calc(60vw * 0.6)' }}
+      className={`relative bg-gray-900 rounded-lg shadow-md border border-white/10 overflow-hidden ${className}`}
+      style={{ aspectRatio: '16 / 9' }}
     >
       {/* Tiny status pill (top-left) */}
       <div className="absolute top-2 left-2 z-20 flex items-center gap-2 px-2 py-1 bg-black/45 backdrop-blur rounded border border-white/15 text-white text-xs">
-        <StatusDot status={status} title={statusTitle} />
+        <StatusDot status={status} title={`Video: ${statusLabel}${titleSuffix}`} />
         <span className="font-semibold">Video</span>
-        <span className="text-white/80">{pingMs != null ? `${pingMs}ms` : '… ms'}</span>
+        <span className="text-white/80">
+          {status === 'no_camera' ? 'No camera' : (latency != null ? `${latency}ms` : '… ms')}
+        </span>
       </div>
 
-      {/* Video or unavailable placeholder */}
-      {videoAvailable ? (
-        <img
-          src={videoUrl}
-          alt="Live Video Feed"
-          className="absolute inset-0 w-full h-full object-cover"
-          onLoad={() => setStatus('connected')}
-          onError={() => {
-            setVideoAvailable(false);
-            setStatus('disconnected');
-          }}
-        />
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-800 text-white/85">
-          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-rose-600/20 border border-rose-500/40">
-            Video feed not connected
-          </span>
-        </div>
-      )}
+      {/* Main media area */}
+      <div className="absolute inset-0 bg-black">
+        {showImg ? (
+          <img
+            src={srcWithBuster}
+            alt="Live Video Feed"
+            className={`w-full h-full ${objectFit === 'cover' ? 'object-cover' : 'object-contain'}`}
+            onLoad={() => {/* image loaded, status from /health already accurate */}}
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white/85">
+            <div className="text-sm mb-2">
+              {status === 'no_camera'
+                ? 'No camera detected'
+                : status === 'connecting'
+                ? 'Connecting...'
+                : 'Video feed not connected'}
+            </div>
+            {/* Offer retry when disconnected/errored */}
+            <button
+              type="button"
+              className="px-2 py-1 rounded bg-black/40 hover:bg-black/55 border border-white/20 text-xs"
+              onClick={() => window.location.reload()}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+      </div>
 
-      {/* Mini GPS map (top-right, dummy) */}
+      {/* Mini GPS map (top-right) */}
       {!mapExpanded && (
         <button
           type="button"
@@ -153,14 +183,13 @@ const VideoFeed: React.FC<VideoFeedProps> = ({ onVideoStatusChange }) => {
           onClick={() => setMapExpanded(true)}
           title="Open GPS map"
         >
-          {/* Disable interactions in mini view to avoid hijacking page scroll/drag */}
           <div className="pointer-events-none w-full h-full">
             <GpsLocation interactive={false} dummy showTrail={false} />
           </div>
         </button>
       )}
 
-      {/* Expanded full-frame map overlay (still dummy) */}
+      {/* Expanded map overlay */}
       {mapExpanded && (
         <div className="absolute inset-0 z-20 bg-black/70 backdrop-blur-sm">
           <div className="absolute inset-3 rounded-lg overflow-hidden border border-white/15 shadow-lg bg-gray-900">
