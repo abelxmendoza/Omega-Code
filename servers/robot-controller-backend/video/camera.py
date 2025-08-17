@@ -4,22 +4,23 @@ Summary
 -------
 Unified camera facade for Raspberry Pi robots.
 
-• Prefers Picamera2 (libcamera) for CSI ribbon cameras on Bookworm
-• Falls back to OpenCV/V4L2 for USB webcams (/dev/video*)
-• Background capture thread; returns latest frame as 3-channel BGR numpy array
-• Warm-up checks (fail-fast if no frames), smoothed FPS, throttled warnings
-• Works with video/video_server.py motion detection & tracking
+- Prefers Picamera2 (libcamera) for CSI ribbon cameras on Bookworm
+- Falls back to OpenCV/V4L2 for USB webcams (/dev/video*)
+- Background capture thread; returns latest frame as 3-channel BGR numpy array
+- Warm-up checks (fail-fast if no frames), smoothed FPS, throttled warnings
+- Drop-in for video/video_server.py (motion detection / tracking use BGR frames)
 
-Env (optional)
---------------
+Environment (optional)
+----------------------
 CAMERA_BACKEND = auto | picamera2 | v4l2   (default: auto)
 CAMERA_DEVICE  = V4L2 path/index (for v4l2 backend; default: /dev/video0)
 CAMERA_WIDTH   = 640
 CAMERA_HEIGHT  = 480
-FRAME_STALE_MS = 2500        # used by is_alive() default
+FRAME_STALE_MS = 2500   # used by is_alive() default
 """
 
 from __future__ import annotations
+
 import os
 import time
 import threading
@@ -29,18 +30,21 @@ from typing import Optional
 
 import numpy as np
 
-# --- OpenCV (used by V4L2 and for BGR conversion from Picamera2 RGB) ---
+# --- OpenCV (used by V4L2 and for RGB->BGR conversion in Picamera2 path) ---
 try:
     import cv2  # type: ignore
 except Exception as e:  # pragma: no cover
     cv2 = None  # type: ignore
-    warnings.warn(f"OpenCV not available ({e}). V4L2 capture and JPEG encoding need it.", ImportWarning)
+    warnings.warn(
+        f"OpenCV not available ({e}). V4L2 capture and JPEG encoding require it.",
+        ImportWarning,
+    )
 
-# --- Picamera2 (preferred for CSI ribbon cameras) ---
+# --- Picamera2 (preferred CSI ribbon backend) ---
 try:
     from picamera2 import Picamera2  # type: ignore
     _PICAM2_OK = True
-except Exception as e:  # pragma: no cover
+except Exception:
     _PICAM2_OK = False
 
 log = logging.getLogger(__name__)
@@ -50,8 +54,18 @@ log = logging.getLogger(__name__)
 # Backend: Picamera2 (CSI)
 # =========================
 class _PiCam2Backend:
-    def __init__(self, width: int, height: int, target_fps: int = 30,
-                 warmup_timeout_s: float = 1.2, warmup_min_frames: int = 2) -> None:
+    """
+    Threaded Picamera2 reader. Captures RGB888 and converts to BGR for OpenCV consumers.
+    """
+
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        target_fps: int = 30,
+        warmup_timeout_s: float = 1.2,
+        warmup_min_frames: int = 2,
+    ) -> None:
         if not _PICAM2_OK:
             raise RuntimeError("Picamera2 is not installed")
 
@@ -70,26 +84,32 @@ class _PiCam2Backend:
         self._frames_total = 0
         self._drops_total = 0
 
-        # Configure Picamera2: request RGB888, then convert to BGR for consistency
+        # Configure Picamera2 for RGB888 at requested size. Some control names differ
+        # across versions; wrap in a try so we always configure something workable.
         self.picam = Picamera2()
-        cfg = self.picam.create_video_configuration(
-            main={"size": (self.width, self.height), "format": "RGB888"},
-            controls={"FrameDurationLimits": (int(1e9/self.target_fps), int(1e9/self.target_fps))}
-        )
+        try:
+            cfg = self.picam.create_video_configuration(
+                main={"size": (self.width, self.height), "format": "RGB888"},
+                controls={"FrameDurationLimits": (int(1e9 / self.target_fps), int(1e9 / self.target_fps))},
+            )
+        except Exception:
+            cfg = self.picam.create_video_configuration(
+                main={"size": (self.width, self.height), "format": "RGB888"}
+            )
         self.picam.configure(cfg)
         self.picam.start()
 
+        # Start capture thread
         self._running = True
         self._thread = threading.Thread(target=self._loop, name="PiCam2Capture", daemon=True)
         self._thread.start()
 
         # Warm-up: require N frames within timeout
-        ok = self._wait_for_frames(warmup_timeout_s, warmup_min_frames)
-        if not ok:
+        if not self._wait_for_frames(warmup_timeout_s, warmup_min_frames):
             self.stop()
             raise RuntimeError("❌ Picamera2 did not deliver frames in time")
 
-        log.info("Camera backend: picamera2 (%dx%d@~%dfps)", self.width, self.height, self.target_fps)
+        log.info("📷 Camera backend: picamera2 (%dx%d@~%dfps)", self.width, self.height, self.target_fps)
 
     def _wait_for_frames(self, timeout_s: float, need: int) -> bool:
         got = 0
@@ -100,7 +120,7 @@ class _PiCam2Backend:
             time.sleep(0.03)
         return got >= need
 
-    def _loop(self):
+    def _loop(self) -> None:
         assert self.picam is not None
         last_fps_tick = time.time()
         frames_in_win = 0
@@ -113,12 +133,10 @@ class _PiCam2Backend:
                     time.sleep(0.01)
                     continue
 
-                # Convert to BGR (if cv2 available) to match downstream expectations
-                if cv2 is not None:
-                    frame = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-                else:
-                    # Keep RGB if OpenCV is missing; downstream code should tolerate.
-                    frame = rgb
+                # Convert to BGR for downstream OpenCV code (if OpenCV is available)
+                frame = (
+                    cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR) if cv2 is not None else rgb  # type: ignore[assignment]
+                )
 
                 with self._lock:
                     self._frame = frame
@@ -138,7 +156,7 @@ class _PiCam2Backend:
                 log.warning("Picamera2 capture error: %s", e)
                 time.sleep(0.03)
 
-    # --- public-ish API used by the facade ---
+    # -- API surface used by the facade --
     def get_frame(self) -> Optional[np.ndarray]:
         with self._lock:
             return None if self._frame is None else self._frame.copy()
@@ -151,7 +169,11 @@ class _PiCam2Backend:
         except Exception:
             pass
         try:
-            self.picam and self.picam.stop()
+            if self.picam:
+                try:
+                    self.picam.stop()
+                finally:
+                    self.picam.close()
         except Exception:
             pass
         self.picam = None
@@ -171,10 +193,22 @@ class _PiCam2Backend:
 # Backend: OpenCV / V4L2
 # ==========================
 class _V4L2Backend:
-    def __init__(self, device: str | int, width: int, height: int, *,
-                 target_fps: int = 30, fourcc: str = "MJPG",
-                 warmup_timeout_s: float = 1.0, warmup_min_frames: int = 2,
-                 warn_every_s: float = 2.0) -> None:
+    """
+    Threaded OpenCV VideoCapture reader. Works with USB webcams (/dev/videoN).
+    """
+
+    def __init__(
+        self,
+        device: str | int,
+        width: int,
+        height: int,
+        *,
+        target_fps: int = 30,
+        fourcc: str = "MJPG",
+        warmup_timeout_s: float = 1.0,
+        warmup_min_frames: int = 2,
+        warn_every_s: float = 2.0,
+    ) -> None:
         if cv2 is None:
             raise RuntimeError("OpenCV not available for V4L2 backend")
 
@@ -196,13 +230,15 @@ class _V4L2Backend:
         self._frames_total = 0
         self._drops_total = 0
 
+        # Open V4L2 device (with Linux CAP_V4L2 if available)
         flags = cv2.CAP_V4L2 if hasattr(cv2, "CAP_V4L2") else 0
         cap = cv2.VideoCapture(self.device, flags)
         if not cap or not cap.isOpened():
             raise RuntimeError(f"❌ Could not open V4L2 device: {self.device}")
 
+        # Best-effort hints
         try:
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.width)
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             cap.set(cv2.CAP_PROP_FPS, float(self._target_fps))
             if fourcc:
@@ -215,15 +251,15 @@ class _V4L2Backend:
         self._thread = threading.Thread(target=self._loop, name="V4L2Capture", daemon=True)
         self._thread.start()
 
-        ok = self._wait_for_frames(warmup_timeout_s, warmup_min_frames)
-        if not ok:
+        if not self._wait_for_frames(warmup_timeout_s, warmup_min_frames):
             self.stop()
             raise RuntimeError(f"❌ Could not open camera at {self.device} (no frames)")
 
-        log.info("Camera backend: v4l2 %s (%dx%d@~%dfps)", self.device, self.width, self.height, self._target_fps)
+        log.info("📷 Camera backend: v4l2 %s (%dx%d@~%dfps)", self.device, self.width, self.height, self._target_fps)
 
     def _wait_for_frames(self, timeout_s: float, need: int) -> bool:
-        got = 0; t0 = time.time()
+        got = 0
+        t0 = time.time()
         while time.time() - t0 < timeout_s and got < need:
             if self._last_frame_ts > 0.0:
                 got += 1
@@ -246,7 +282,7 @@ class _V4L2Backend:
                 time.sleep(0.02)
                 continue
 
-            # Normalize to BGR (3ch)
+            # Normalize to 3-channel BGR
             try:
                 if frame.ndim == 2:
                     frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
@@ -279,7 +315,8 @@ class _V4L2Backend:
         except Exception:
             pass
         try:
-            self._cap and self._cap.release()
+            if self._cap:
+                self._cap.release()
         except Exception:
             pass
         self._cap = None
@@ -313,26 +350,31 @@ class Camera:
             try Picamera2 (if installed), then V4L2 (/dev/video0)
     """
 
-    def __init__(self, device: str | int = "/dev/video0", width: int = 640, height: int = 480,
-                 target_fps: int = 30) -> None:
+    def __init__(
+        self,
+        device: str | int = "/dev/video0",
+        width: int = int(os.getenv("CAMERA_WIDTH", "640")),
+        height: int = int(os.getenv("CAMERA_HEIGHT", "480")),
+        target_fps: int = 30,
+    ) -> None:
         self.width = width
         self.height = height
         self.target_fps = target_fps
         self.backend_name: Optional[str] = None
 
         want = (os.getenv("CAMERA_BACKEND") or "auto").strip().lower()
-        dev  = os.getenv("CAMERA_DEVICE", str(device))
+        dev = os.getenv("CAMERA_DEVICE", str(device))
 
         self._backend: Optional[_PiCam2Backend | _V4L2Backend] = None
         last_err: Optional[Exception] = None
 
-        def try_picam():
+        def try_picam() -> _PiCam2Backend:
             return _PiCam2Backend(width=self.width, height=self.height, target_fps=self.target_fps)
 
-        def try_v4l2():
+        def try_v4l2() -> _V4L2Backend:
             return _V4L2Backend(device=dev, width=self.width, height=self.height, target_fps=self.target_fps)
 
-        attempts = []
+        attempts: list[tuple[str, callable]] = []
         if want in ("picamera2", "picam2"):
             attempts = [("picamera2", try_picam)]
         elif want == "v4l2":
@@ -390,6 +432,10 @@ class Camera:
     @property
     def drops_total(self) -> int:
         return 0 if self._backend is None else getattr(self._backend, "drops_total", 0)
+
+    @property
+    def backend(self) -> str:
+        return self.backend_name or "unknown"
 
     def stop(self) -> None:
         try:
