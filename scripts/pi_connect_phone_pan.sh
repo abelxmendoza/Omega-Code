@@ -1,64 +1,106 @@
 #!/usr/bin/env bash
-# Raspberry Pi: connect to iPhone Bluetooth PAN (NAP) via BlueZ.
+set -Eeuo pipefail
 
-set -euo pipefail
+QUERY_RAW="${1:?Usage: pi_connect_phone_pan.sh <iPhone-MAC or name-fragment>}"
 
-PHONE_MAC="${1:-}"
-if [[ -z "$PHONE_MAC" ]]; then
-  echo "Usage: $0 <PHONE_MAC>"; exit 1
-fi
+norm_mac() {
+  local s="${1//-/:}"; s="${s^^}"
+  [[ "$s" =~ ^([0-9A-F]{2}:){5}[0-9A-F]{2}$ ]] && { echo "$s"; return 0; }
+  return 1
+}
 
-echo "[Pi] Ensuring BlueZ tooling…"
-if ! dpkg -s bluez >/dev/null 2>&1; then
-  sudo apt update && sudo apt install -y bluez
-fi
-if ! command -v bt-network >/dev/null 2>&1 && ! command -v bt-pan >/dev/null 2>&1; then
-  sudo apt update && sudo apt install -y bluez-tools
-fi
+PHONE_MAC=""
+if norm_mac "$QUERY_RAW" >/dev/null 2>&1; then
+  PHONE_MAC="$(norm_mac "$QUERY_RAW")"
+else
+  # We got a name fragment (e.g., "iphone" or "abel"). Discover a matching device.
+  QUERY="$(echo "$QUERY_RAW" | tr '[:upper:]' '[:lower:]')"
 
-echo "[Pi] Starting bluetooth service…"
-sudo rfkill unblock bluetooth || true
-sudo systemctl enable bluetooth >/dev/null 2>&1 || true
-sudo systemctl start bluetooth
+  echo "[Pi] Ensuring BlueZ tooling…"
+  if ! command -v bt-network >/dev/null 2>&1; then
+    sudo apt-get update -y
+    sudo apt-get install -y bluez bluez-tools
+  fi
 
-echo "[Pi] Pair/trust iPhone ($PHONE_MAC)…"
-bluetoothctl <<BT
+  echo "[Pi] Starting bluetooth service…"
+  sudo rfkill unblock bluetooth || true
+  sudo systemctl enable bluetooth --now
+  sudo hciconfig hci0 up || true
+
+  # Clean agent, then register
+  echo "[Pi] Prepare agent + make discoverable/pairable…"
+  bluetoothctl <<BT
+agent off
 power on
-agent NoInputNoOutput
+agent on
 default-agent
-pair $PHONE_MAC
-trust $PHONE_MAC
+pairable on
+discoverable on
+scan on
 BT
 
-echo "[Pi] Connect to iPhone NAP…"
-if command -v bt-network >/dev/null 2>&1; then
-  sudo bt-network -c "$PHONE_MAC" nap || true
-elif command -v bt-pan >/dev/null 2>&1; then
-  sudo bt-pan client "$PHONE_MAC" || true
+  echo "[Pi] Scanning for device name containing \"$QUERY\" (keep iPhone Hotspot ON, screen awake)…"
+  # Give it up to ~25s to show
+  for i in {1..25}; do
+    LINE="$(bluetoothctl devices | awk '{$1=$1}1' | tr -d '\r' | grep -iE '^Device [0-9A-F:]{17} .*$' | grep -i "$QUERY" || true)"
+    if [[ -n "$LINE" ]]; then
+      PHONE_MAC="$(echo "$LINE" | awk '{print $2}' | head -n1)"
+      break
+    fi
+    sleep 1
+  done
+
+  if [[ -z "$PHONE_MAC" ]]; then
+    echo "[Pi] ❌ Could not find a device matching \"$QUERY\". Open iPhone Settings → Bluetooth and Hotspot, keep screen ON, then retry."
+    exit 1
+  fi
 fi
 
+echo "[Pi] Target device: $PHONE_MAC"
+
+# Remove stale record (ignore errors)
+bluetoothctl remove "$PHONE_MAC" >/dev/null 2>&1 || true
+
+# Pair / trust / connect (ignore harmless agent warnings)
+bluetoothctl <<BT
+power on
+agent on
+default-agent
+pairable on
+discoverable on
+pair $PHONE_MAC
+trust $PHONE_MAC
+connect $PHONE_MAC
+BT
+
+# Verify paired
+if ! bluetoothctl info "$PHONE_MAC" | grep -q "Paired: yes"; then
+  echo "[Pi] ❌ Pairing failed. If phone prompted, accept; otherwise open Bluetooth screen and retry."
+  exit 1
+fi
+
+echo "[Pi] Connect to iPhone NAP…"
+for attempt in 1 2 3; do
+  if sudo bt-network -c "$PHONE_MAC" nap; then
+    break
+  fi
+  echo "[Pi] bt-network failed (try $attempt). Brief rescan and retry…"
+  bluetoothctl --timeout 5 scan on >/dev/null 2>&1 || true
+  sleep 2
+done
+
 echo "[Pi] Waiting for bnep0…"
-for i in {1..8}; do
-  ip link show bnep0 >/dev/null 2>&1 && break
+for i in {1..15}; do
+  if ip link show bnep0 >/dev/null 2>&1; then
+    ip addr show bnep0 || true
+    echo "[Pi] ✅ bnep0 up. Internet should be available via iPhone PAN."
+    exit 0
+  fi
   sleep 1
 done
 
-ip link show bnep0 >/dev/null 2>&1 || {
-  echo "[Pi] ❌ bnep0 not present. Toggle Personal Hotspot OFF/ON and re-run."; exit 1; }
-
-echo "[Pi] Requesting IP on bnep0…"
-if command -v dhclient >/dev/null 2>&1; then
-  sudo dhclient -v bnep0 || true
-fi
-if command -v dhcpcd >/dev/null 2>&1; then
-  sudo dhcpcd -n bnep0 || true
-fi
-
-echo "[Pi] Interface status:"
-ip addr show bnep0
-
-if ping -c 2 -W 2 1.1.1.1 >/dev/null 2>&1; then
-  echo "[Pi] ✅ Connectivity OK via Bluetooth PAN."
-else
-  echo "[Pi] ⚠️ No ping; still fine for LAN to phone/Mac."
-fi
+echo "[Pi] ❌ bnep0 not present. Try:"
+echo "    • iPhone: Hotspot OFF→ON (stay on the Hotspot screen)"
+echo "    • Pi:     sudo systemctl restart bluetooth"
+echo "    • Re-run:  bash /tmp/pi_connect_phone_pan.sh '$QUERY_RAW'"
+exit 1
