@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-
 QUERY="${1:-iphone}"
 
-# Ensure tools + controller up
-sudo apt-get update -y >/dev/null 2>&1 || true
-sudo apt-get install -y bluez bluez-tools >/dev/null 2>&1 || true
+# Prep BT stack
 sudo rfkill unblock bluetooth || true
 sudo systemctl restart bluetooth
 sudo hciconfig hci0 up || true
 
-# Start a persistent agent (auto-accept, no input)
+# Start a persistent agent (auto-accept pairing)
 sudo pkill -f bt-agent >/dev/null 2>&1 || true
 sudo nohup bt-agent -c NoInputNoOutput >/dev/null 2>&1 &
 
-# Prep controller
+# Enable scan / discoverable
 bluetoothctl <<BT
 power on
 pairable on
@@ -22,36 +19,30 @@ discoverable on
 scan on
 BT
 
-# Resolve target by MAC or name
-norm_mac() { [[ "$1" =~ ^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$ ]]; }
-if norm_mac "$QUERY"; then
-  TARGET_MAC="$(echo "$QUERY" | tr '[:lower:]' '[:upper:]' | tr '-' ':')"
+# Resolve target by MAC or by name (e.g., "iphone" / "abel")
+if [[ "$QUERY" =~ ^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$ ]]; then
+  MAC=$(echo "$QUERY" | tr '[:lower:]' '[:upper:]' | tr '-' ':')
 else
-  TARGET_MAC=""
+  MAC=""
   for i in {1..30}; do
-    LINE="$(bluetoothctl devices | grep -i "$QUERY" || true)"
-    if [[ -n "$LINE" ]]; then TARGET_MAC="$(echo "$LINE" | awk '{print $2}' | head -n1)"; break; fi
+    MAC=$(bluetoothctl devices | grep -iE 'iphone|abel' | awk '{print $2}' | head -n1 || true)
+    [[ -n "$MAC" ]] && break
     sleep 1
   done
-  [[ -z "$TARGET_MAC" ]] && { echo "[Pi] ❌ No device matching \"$QUERY\". Open iPhone **Bluetooth** + **Hotspot** (ON), keep screen awake."; exit 1; }
 fi
-echo "[Pi] Using device: $TARGET_MAC"
+[[ -n "$MAC" ]] || { echo "[Pi] iPhone not discovered. Keep Bluetooth & Hotspot screens open, then rerun."; exit 1; }
+echo "[Pi] Using device $MAC"
 
-# Clean stale record
-bluetoothctl remove "$TARGET_MAC" >/dev/null 2>&1 || true
-
-# Pair / trust / connect (agent is persistent via bt-agent)
+# Pair / trust / connect (idempotent; agent handles prompts)
 bluetoothctl <<BT
-pair $TARGET_MAC
-trust $TARGET_MAC
-connect $TARGET_MAC
+pair $MAC
+trust $MAC
+connect $MAC
 BT
 
-# Try NAP connect a few times
+# Bring up PAN (NAP), with a couple retries
 for attempt in 1 2 3; do
-  if sudo bt-network -c "$TARGET_MAC" nap; then
-    break
-  fi
+  if sudo bt-network -c "$MAC" nap; then break; fi
   bluetoothctl --timeout 5 scan on >/dev/null 2>&1 || true
   sleep 2
 done
