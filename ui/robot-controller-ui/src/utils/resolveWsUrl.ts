@@ -1,39 +1,81 @@
 // File: /Omega-Code/ui/robot-controller-ui/src/utils/resolveWsUrl.ts
 // Summary:
-//   Profile-aware URL resolver for WS endpoints (robust).
-//   - Reads NEXT_PUBLIC_NETWORK_PROFILE ('lan' | 'tailscale' | 'local'), with ?profile= override.
-//   - Direct URL precedence: ?ws= override → BASE key → BASE_PROFILE keys.
-//   - Falls back to host-based envs (NEXT_PUBLIC_ROBOT_HOST_[PROFILE] + defaultPort + path).
-//   - Optional same-origin candidate (useful when reverse-proxying from the UI host).
-//   - Auto ws:// ↔ wss:// based on page scheme; careful path normalization; respects explicit ports.
-//   - Uses runtime window.__ENV__ (optional) in addition to build-time NEXT_PUBLIC_* env.
-//
-// Env examples:
-//   NEXT_PUBLIC_NETWORK_PROFILE=tailscale
-//   NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_TAILSCALE=ws://omega1-tailscale:8081
-//   NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT=ws://omega1-tailscale:8081     ← base (all profiles) optional
-//   NEXT_PUBLIC_ROBOT_HOST_TAILSCALE=omega1-tailscale
-//   NEXT_PUBLIC_ROBOT_HOST_LAN=omega1.local
-//
-// Dev override (highest precedence):
-//   https://app.example/?profile=tailscale&ws=ws://omega1-tailscale:8081
+//   Profile-aware URL resolver for WS endpoints (browser-safe).
+//   - Avoids dynamic process.env access in client bundles by using a static ENV shim.
+//   - ?profile and optional ?ws override supported.
+//   - Candidate generation with direct/base/host/same-origin + https→wss handling.
 
 'use client';
 
 export type NetProfile = 'lan' | 'tailscale' | 'local';
 
+/** STATIC env shim so Next.js can inline values safely into the client bundle. */
+const ENV = {
+  // flags
+  NEXT_PUBLIC_WS_DEBUG: process.env.NEXT_PUBLIC_WS_DEBUG,
+  NEXT_PUBLIC_NETWORK_PROFILE: process.env.NEXT_PUBLIC_NETWORK_PROFILE,
+
+  // robot host fallbacks (optional)
+  NEXT_PUBLIC_ROBOT_HOST_TAILSCALE: process.env.NEXT_PUBLIC_ROBOT_HOST_TAILSCALE,
+  NEXT_PUBLIC_ROBOT_HOST_LAN: process.env.NEXT_PUBLIC_ROBOT_HOST_LAN,
+  NEXT_PUBLIC_ROBOT_HOST_LOCAL: process.env.NEXT_PUBLIC_ROBOT_HOST_LOCAL,
+
+  // movement
+  NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT: process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT,
+  NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_TAILSCALE: process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_TAILSCALE,
+  NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LAN: process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LAN,
+  NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LOCAL: process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LOCAL,
+
+  // ultrasonic
+  NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC: process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC,
+  NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_TAILSCALE: process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_TAILSCALE,
+  NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_LAN: process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_LAN,
+  NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_LOCAL: process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_LOCAL,
+
+  // line-tracker
+  NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER: process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER,
+  NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_TAILSCALE: process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_TAILSCALE,
+  NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LAN: process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LAN,
+  NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LOCAL: process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LOCAL,
+
+  // lighting
+  NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING: process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING,
+  NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_TAILSCALE: process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_TAILSCALE,
+  NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LAN: process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LAN,
+  NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LOCAL: process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LOCAL,
+
+  // location
+  NEXT_PUBLIC_BACKEND_WS_URL_LOCATION: process.env.NEXT_PUBLIC_BACKEND_WS_URL_LOCATION,
+  NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_TAILSCALE: process.env.NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_TAILSCALE,
+  NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_LAN: process.env.NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_LAN,
+  NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_LOCAL: process.env.NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_LOCAL,
+
+  // video (used indirectly by VideoFeed; kept here for completeness)
+  NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE: process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE,
+  NEXT_PUBLIC_VIDEO_STREAM_URL_LAN: process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LAN,
+  NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL: process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL,
+} as const;
+
+type EnvKey = keyof typeof ENV;
+
+const readEnv = (k: string): string | undefined => {
+  // build-time inlined values
+  if ((ENV as Record<string, string | undefined>)[k as EnvKey] != null) {
+    return (ENV as Record<string, string | undefined>)[k as EnvKey];
+  }
+  // optional runtime injection window.__ENV__ = { KEY: "value" }
+  if (typeof window !== 'undefined' && (window as any).__ENV__) {
+    const v = (window as any).__ENV__[k];
+    if (typeof v === 'string' && v.length) return v;
+  }
+  return undefined;
+};
+
 const DEBUG =
-  typeof window !== 'undefined' &&
-  (process.env.NEXT_PUBLIC_WS_DEBUG === '1' ||
-    (window as any).__ENV__?.NEXT_PUBLIC_WS_DEBUG === '1');
+  (readEnv('NEXT_PUBLIC_WS_DEBUG') === '1') ||
+  (typeof window !== 'undefined' && (window as any).__ENV__?.NEXT_PUBLIC_WS_DEBUG === '1');
 
 const dlog = (...a: any[]) => DEBUG && console.info('[WS:resolve]', ...a);
-
-const readEnv = (k: string): string | undefined =>
-  // Build-time (Next.js)
-  (process.env as any)?.[k] ??
-  // Optional runtime injection (window.__ENV__ = { … })
-  (typeof window !== 'undefined' ? (window as any).__ENV__?.[k] : undefined);
 
 function getQueryParam(name: string): string | undefined {
   if (typeof window === 'undefined') return undefined;
@@ -64,61 +106,43 @@ function ensureLeadingSlash(path: string): string {
   return path.startsWith('/') ? path : '/' + path;
 }
 
-/** Does the host string already contain an explicit port? (IPv4/hostname:port or [IPv6]:port) */
 function hasExplicitPort(host: string): boolean {
   if (!host) return false;
-  // bracketed IPv6 with port: [2001:db8::1]:8081
-  if (/^\[.*\]:\d+$/.test(host)) return true;
-  // hostname/IPv4 with port: foo.local:8081 or 192.168.1.10:8081
-  if (/^[^[\]/:]+:\d+$/.test(host)) return true;
-  // bare IPv6 without brackets isn't URL-safe; treat as no explicit port
+  if (/^\[.*\]:\d+$/.test(host)) return true;       // [v6]:port
+  if (/^[^[\]/:]+:\d+$/.test(host)) return true;    // host:port or ipv4:port
   return false;
 }
 
-/** Convert a url/host into a ws(s) URL with optional port + path, honoring https→wss and explicit ports. */
 function toWs(urlOrHost: string, port?: string, path = ''): string {
   const p = ensureLeadingSlash(path);
 
-  // Already ws(s):// → append path
   if (/^wss?:\/\//i.test(urlOrHost)) return urlOrHost + p;
 
-  // http(s):// → convert to ws(s)://
   if (/^https?:\/\//i.test(urlOrHost)) {
     const u = new URL(urlOrHost);
     u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
-    if (port) u.port = port; // override if caller set
+    if (port) u.port = port;
     u.pathname = (u.pathname || '/') + p;
     return u.toString();
   }
 
-  // Bare host (maybe includes port like host:1234 or [v6]:1234)
   const scheme = pageWss() ? 'wss' : 'ws';
   const needsPort = port && !hasExplicitPort(urlOrHost);
   const hostPort = needsPort ? `${urlOrHost}:${port}` : urlOrHost;
   return `${scheme}://${hostPort}${p}`;
 }
 
-/**
- * Direct URL for baseKey + profile, if provided:
- *   e.g. baseKey='NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT', prof='tailscale'
- *   → reads NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_TAILSCALE
- */
 function directUrlFor(baseKey: string, prof: NetProfile): string | undefined {
   const key = `${baseKey}_${prof.toUpperCase().replace(/-/g, '_')}`;
   const v = readEnv(key);
   return v && v.trim() ? v.trim() : undefined;
 }
 
-/** Base direct URL for baseKey without profile suffix (highest env precedence after ?ws=). */
 function directBaseUrl(baseKey: string): string | undefined {
   const v = readEnv(baseKey);
   return v && v.trim() ? v.trim() : undefined;
 }
 
-/**
- * Host-based URL for profile when direct URL missing:
- *   NEXT_PUBLIC_ROBOT_HOST_[PROFILE] + defaultPort + path
- */
 function hostUrlFor(
   prof: NetProfile,
   opts: { defaultPort: string; path?: string }
@@ -145,29 +169,12 @@ export type WsKey =
   | 'NEXT_PUBLIC_VIDEO_STREAM_URL';
 
 export interface ResolveOpts {
-  /** Port to use when building URLs from hosts (e.g., 8081 for movement). */
   defaultPort?: string;
-  /** Optional WS path (e.g., '/ws' or '/ultrasonic'). */
   path?: string;
-  /** Include a same-origin candidate at the end. Default: true. */
   includeSameOrigin?: boolean;
-  /**
-   * Allow a dev-time query override ?ws=ws://host:port/path.
-   * Default: true (handy for quick testing).
-   */
   allowQueryWsOverride?: boolean;
 }
 
-/**
- * Returns candidate URLs ordered as:
- *   [ ?ws= override ] →
- *   [ BASE (no profile) ] →
- *   [ active profile: direct → host ] →
- *   [ other profiles: direct → host ] →
- *   [ optional same-origin ]
- *
- * Blanks skipped; duplicates de-duped (first occurrence wins).
- */
 export function resolveWsCandidates(
   baseKey: WsKey,
   opts: ResolveOpts = {}
@@ -185,24 +192,15 @@ export function resolveWsCandidates(
     active === 'lan'       ? ['tailscale', 'local'] :
                               ['lan', 'tailscale'];
 
-  // 0) Optional query override (?ws=ws://...)
   const fromQuery = allowQueryWsOverride ? getQueryParam('ws') : undefined;
 
-  // 1) Base direct URL (env without profile suffix)
-  const baseDirect = directBaseUrl(baseKey);
-
-  // 2) Active profile candidates (prefer direct, then host)
+  const baseDirect   = directBaseUrl(baseKey);
   const activeDirect = directUrlFor(baseKey, active);
   const activeHost   = hostUrlFor(active, { defaultPort, path });
-
-  // 3) Other profiles (each: direct then host)
   const otherDirects = others.map((p) => directUrlFor(baseKey, p));
   const otherHosts   = others.map((p) => hostUrlFor(p, { defaultPort, path }));
+  const same         = includeSameOrigin ? sameOriginUrl({ defaultPort, path }) : undefined;
 
-  // 4) Same-origin (often behind reverse proxy)
-  const same = includeSameOrigin ? sameOriginUrl({ defaultPort, path }) : undefined;
-
-  // Build, normalize, and de-dupe
   const seen = new Set<string>();
   const raw = [
     fromQuery,
@@ -215,21 +213,19 @@ export function resolveWsCandidates(
   ].filter(Boolean) as string[];
 
   const list = raw
-    .map((u) => toWs(u, '', path)) // toWs is idempotent for ws(s):// and converts http(s)://
+    .map((u) => toWs(u, '', path))
     .filter((u) => (seen.has(u) ? false : (seen.add(u), true)));
 
   dlog('candidates', { active, list });
   return list;
 }
 
-/** Return the first/best URL ('' if none). */
 export function resolveWsUrl(baseKey: WsKey, opts: ResolveOpts = {}): string {
   return resolveWsCandidates(baseKey, opts)[0] ?? '';
 }
 
-/** Optional: return a structured explanation for debugging UIs. */
 export function explainWsResolution(baseKey: WsKey, opts: ResolveOpts = {}) {
   const active = getActiveProfile();
-  const list = resolveWsCandidates(baseKey, opts);
-  return { activeProfile: active, candidates: list };
+  const candidates = resolveWsCandidates(baseKey, opts);
+  return { activeProfile: active, candidates };
 }
