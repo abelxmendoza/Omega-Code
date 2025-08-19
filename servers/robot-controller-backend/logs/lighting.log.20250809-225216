@@ -1,0 +1,150 @@
+bash: line 1: go: command not found
+2025/08/09 22:30:22 Lighting WebSocket server is running on port 8082
+2025/08/09 23:00:20 [CONNECTED] Lighting client: 100.71.94.12:59757
+2025/08/09 23:00:20 Lighting WebSocket connection established
+2025/08/09 23:00:22 Received Lighting Command: {Color:#b62f2f Mode:single Pattern:static Interval:1000 Brightness:0x4000118590}
+2025/08/09 23:00:22 Executing: python3 led_control.py b62f2f single static 1000 1.000
+2025/08/09 23:00:22 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:22 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:23 Received Lighting Command: {Color:#b62f2f Mode:single Pattern:static Interval:1000 Brightness:0x4000118750}
+2025/08/09 23:00:23 Executing: python3 led_control.py b62f2f single static 1000 1.000
+2025/08/09 23:00:23 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:23 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:24 Received Lighting Command: {Color:#b62f2f Mode:single Pattern:static Interval:1000 Brightness:0x4000118910}
+2025/08/09 23:00:24 Executing: python3 led_control.py b62f2f single static 1000 1.000
+2025/08/09 23:00:24 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:24 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:28 Received Lighting Command: {Color:#e00303 Mode:single Pattern:off Interval:1000 Brightness:0x4000118ac8}
+2025/08/09 23:00:28 Executing: python3 led_control.py e00303 single off 1000 0.000
+2025/08/09 23:00:28 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:28 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:29 Received Lighting Command: {Color:#e00303 Mode:single Pattern:static Interval:1000 Brightness:0x4000118c80}
+2025/08/09 23:00:29 Executing: python3 led_control.py e00303 single static 1000 1.000
+2025/08/09 23:00:29 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:29 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:31 Received Lighting Command: {Color:#ca2121 Mode:single Pattern:static Interval:1000 Brightness:0x4000118e40}
+2025/08/09 23:00:31 Executing: python3 led_control.py ca2121 single static 1000 1.000
+2025/08/09 23:00:31 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:31 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:32 Received Lighting Command: {Color:#ca2121 Mode:single Pattern:static Interval:1000 Brightness:0x4000119000}
+2025/08/09 23:00:32 Executing: python3 led_control.py ca2121 single static 1000 1.000
+2025/08/09 23:00:32 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:32 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:33 Received Lighting Command: {Color:#ca2121 Mode:single Pattern:static Interval:1000 Brightness:0x40001191c0}
+2025/08/09 23:00:33 Executing: python3 led_control.py ca2121 single static 1000 1.000
+2025/08/09 23:00:33 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:33 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:33 Received Lighting Command: {Color:#ca2121 Mode:single Pattern:static Interval:1000 Brightness:0x4000119380}
+2025/08/09 23:00:33 Executing: python3 led_control.py ca2121 single static 1000 1.000
+2025/08/09 23:00:33 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:33 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:33 Received Lighting Command: {Color:#ca2121 Mode:single Pattern:static Interval:1000 Brightness:0x4000119540}
+2025/08/09 23:00:33 Executing: python3 led_control.py ca2121 single static 1000 1.000
+2025/08/09 23:00:34 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:34 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:36 Received Lighting Command: {Color:#d80d0d Mode:single Pattern:static Interval:1000 Brightness:0x4000119700}
+2025/08/09 23:00:36 Executing: python3 led_control.py d80d0d single static 1000 1.000
+2025/08/09 23:00:36 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:36 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:36 Received Lighting Command: {Color:#d80d0d Mode:single Pattern:static Interval:1000 Brightness:0x4000222090}
+2025/08/09 23:00:36 Executing: python3 led_control.py d80d0d single static 1000 1.000
+2025/08/09 23:00:36 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:36 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:36 Received Lighting Command: {Color:#d80d0d Mode:single Pattern:static Interval:1000 Brightness:0x4000096090}
+2025/08/09 23:00:36 Executing: python3 led_control.py d80d0d single static 1000 1.000
+2025/08/09 23:00:36 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:36 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:36 Received Lighting Command: {Color:#d80d0d Mode:single Pattern:static Interval:1000 Brightness:0x4000096250}
+2025/08/09 23:00:36 Executing: python3 led_control.py d80d0d single static 1000 1.000
+2025/08/09 23:00:36 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:36 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:45 Received Lighting Command: {Color:#d80d0d Mode:single Pattern:static Interval:1000 Brightness:0x4000096410}
+2025/08/09 23:00:45 Executing: python3 led_control.py d80d0d single static 1000 1.000
+2025/08/09 23:00:45 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:45 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:46 Received Lighting Command: {Color:#d80d0d Mode:single Pattern:static Interval:1000 Brightness:0x40000965d0}
+2025/08/09 23:00:46 Executing: python3 led_control.py d80d0d single static 1000 1.000
+2025/08/09 23:00:46 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:46 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:46 Received Lighting Command: {Color:#d80d0d Mode:single Pattern:static Interval:1000 Brightness:0x40001198c0}
+2025/08/09 23:00:46 Executing: python3 led_control.py d80d0d single static 1000 1.000
+2025/08/09 23:00:46 Command execution failed: signal: segmentation fault
+2025/08/09 23:00:46 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:00:48 WebSocket read error: websocket: close 1005 (no status)
+2025/08/09 23:00:48 [DISCONNECTED] Lighting client connection closed
+2025/08/09 23:36:51 [CONNECTED] Lighting client: 100.71.94.12:62536
+2025/08/09 23:36:51 Lighting WebSocket connection established
+2025/08/09 23:36:54 Received Lighting Command: {Color:#bf1717 Mode:single Pattern:off Interval:1000 Brightness:0x4000119af0}
+2025/08/09 23:36:54 Executing: python3 led_control.py bf1717 single off 1000 0.000
+2025/08/09 23:36:54 Command execution failed: signal: segmentation fault
+2025/08/09 23:36:54 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:36:54 Received Lighting Command: {Color:#bf1717 Mode:single Pattern:static Interval:1000 Brightness:0x4000119ca0}
+2025/08/09 23:36:54 Executing: python3 led_control.py bf1717 single static 1000 1.000
+2025/08/09 23:36:54 Command execution failed: signal: segmentation fault
+2025/08/09 23:36:54 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:36:56 Received Lighting Command: {Color:#bf1717 Mode:single Pattern:static Interval:1000 Brightness:0x4000119e60}
+2025/08/09 23:36:56 Executing: python3 led_control.py bf1717 single static 1000 1.000
+2025/08/09 23:36:56 Command execution failed: signal: segmentation fault
+2025/08/09 23:36:56 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:36:56 Received Lighting Command: {Color:#bf1717 Mode:single Pattern:static Interval:1000 Brightness:0x40001e6020}
+2025/08/09 23:36:56 Executing: python3 led_control.py bf1717 single static 1000 1.000
+2025/08/09 23:36:56 Command execution failed: signal: segmentation fault
+2025/08/09 23:36:56 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:36:57 Received Lighting Command: {Color:#bf1717 Mode:single Pattern:static Interval:1000 Brightness:0x4000014120}
+2025/08/09 23:36:57 Executing: python3 led_control.py bf1717 single static 1000 1.000
+2025/08/09 23:36:57 Command execution failed: signal: segmentation fault
+2025/08/09 23:36:57 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:36:57 Received Lighting Command: {Color:#bf1717 Mode:single Pattern:static Interval:1000 Brightness:0x40000142e0}
+2025/08/09 23:36:57 Executing: python3 led_control.py bf1717 single static 1000 1.000
+2025/08/09 23:36:57 Command execution failed: signal: segmentation fault
+2025/08/09 23:36:57 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:36:57 Received Lighting Command: {Color:#bf1717 Mode:single Pattern:static Interval:1000 Brightness:0x40000144a0}
+2025/08/09 23:36:57 Executing: python3 led_control.py bf1717 single static 1000 1.000
+2025/08/09 23:36:57 Command execution failed: signal: segmentation fault
+2025/08/09 23:36:57 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:36:59 Received Lighting Command: {Color:#e11616 Mode:single Pattern:static Interval:1000 Brightness:0x40001e61e0}
+2025/08/09 23:36:59 Executing: python3 led_control.py e11616 single static 1000 1.000
+2025/08/09 23:36:59 Command execution failed: signal: segmentation fault
+2025/08/09 23:36:59 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:36:59 Received Lighting Command: {Color:#e11616 Mode:single Pattern:static Interval:1000 Brightness:0x40001e63a0}
+2025/08/09 23:36:59 Executing: python3 led_control.py e11616 single static 1000 1.000
+2025/08/09 23:37:00 Command execution failed: signal: segmentation fault
+2025/08/09 23:37:00 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:37:00 Received Lighting Command: {Color:#e11616 Mode:single Pattern:static Interval:1000 Brightness:0x40001e6560}
+2025/08/09 23:37:00 Executing: python3 led_control.py e11616 single static 1000 1.000
+2025/08/09 23:37:00 Command execution failed: signal: segmentation fault
+2025/08/09 23:37:00 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:37:00 Received Lighting Command: {Color:#e11616 Mode:single Pattern:static Interval:1000 Brightness:0x4000096790}
+2025/08/09 23:37:00 Executing: python3 led_control.py e11616 single static 1000 1.000
+2025/08/09 23:37:00 Command execution failed: signal: segmentation fault
+2025/08/09 23:37:00 Output: Can't open /dev/mem: Permission denied
+Startup error: ws2811_init failed with code -5 (mmap() failed)
+2025/08/09 23:37:01 WebSocket read error: websocket: close 1005 (no status)
+2025/08/09 23:37:01 [DISCONNECTED] Lighting client connection closed
