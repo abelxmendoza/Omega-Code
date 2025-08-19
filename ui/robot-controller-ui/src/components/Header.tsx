@@ -1,69 +1,63 @@
-'use client';
 /*
-Header with live per-service status (movement, ultrasonic, line, lighting, video)
-and battery bar. Uses env profile (lan|tailscale|local) to pick URLs.
+# File: /Omega-Code/ui/robot-controller-ui/src/components/Header.tsx
+# Summary:
+#   App header with overall health + battery and per-service status pills.
+#   - Uses profile-aware resolver (`netProfile`) for all endpoints
+#   - WS services (movement/line/lighting): JSON ping→pong for latency
+#   - Ultrasonic: marks alive on any message (no pong)
+#   - Video: probes sibling `/health` (cheap 200/503) instead of touching MJPEG
+#   - Colors match ServiceStatusBar (green=connected, amber=connecting, red=disconnected, sky=no_camera)
 */
 
-import React from 'react';
+'use client';
+
+import React, { useMemo } from 'react';
 import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
+import { net } from '@/utils/netProfile';
 
-interface HeaderProps { batteryLevel: number; }
+interface HeaderProps {
+  batteryLevel: number;
+}
 
-/** Explicit env picking (Next.js requires dot-access at build time) */
-type NetProfile = 'LAN' | 'TAILSCALE' | 'LOCAL';
-const PROFILE = ((process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local').toUpperCase() as NetProfile);
+/** Convert an MJPEG URL (.../video_feed[?]) to the sibling `/health`. */
+function toHealthUrl(videoUrl?: string) {
+  if (!videoUrl) return '';
+  const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
+  return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
+}
 
-const pick = (lan?: string, tailscale?: string, local?: string) =>
-  PROFILE === 'LAN'       ? (lan ?? local ?? '') :
-  PROFILE === 'TAILSCALE' ? (tailscale ?? local ?? '') :
-                             (local ?? lan ?? tailscale ?? '');
+type HeaderState = ServiceStatus | HttpStatus; // allow 'no_camera' from http hook
 
-const MOVE  = pick(
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LAN,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_TAILSCALE,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LOCAL
-);
-const ULTRA = pick(
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_LAN,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_TAILSCALE,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_LOCAL
-);
-const LINE  = pick(
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LAN,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_TAILSCALE,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LOCAL
-);
-const LIGHT = pick(
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LAN,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_TAILSCALE,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LOCAL
-);
-const VIDEO = pick(
-  process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LAN,
-  process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE,
-  process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL
-);
-
-type Status = 'connected' | 'connecting' | 'disconnected';
-
-const Dot: React.FC<{state: Status}> = ({ state }) => {
+const Dot: React.FC<{ state: HeaderState }> = ({ state }) => {
   const color =
-    state === 'connected' ? 'bg-emerald-500' :
-    state === 'connecting' ? 'bg-amber-400' : 'bg-rose-500';
+    state === 'connected'   ? 'bg-emerald-500' :
+    state === 'connecting'  ? 'bg-amber-400'  :
+    state === 'no_camera'   ? 'bg-sky-500'    :
+                              'bg-rose-500';
   return <span className={`inline-block w-2 h-2 rounded-full ${color}`} aria-hidden />;
 };
 
-const Pill: React.FC<{ label: string; state: Status; latency?: number|null }> = ({ label, state, latency }) => {
-  const glyph = state === 'connected' ? '✓' : state === 'connecting' ? '…' : '×';
+const Pill: React.FC<{ label: string; state: HeaderState; latency?: number | null }> = ({
+  label,
+  state,
+  latency
+}) => {
+  const glyph =
+    state === 'connected'  ? '✓' :
+    state === 'connecting' ? '…' :
+    state === 'no_camera'  ? '○' : '×';
   const glyphClass =
-    state === 'connected' ? 'text-emerald-400' :
-    state === 'connecting' ? 'text-amber-300' : 'text-rose-400';
+    state === 'connected'  ? 'text-emerald-400' :
+    state === 'connecting' ? 'text-amber-300'  :
+    state === 'no_camera'  ? 'text-sky-300'    : 'text-rose-400';
 
   return (
-    <div className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md bg-black/30 border border-white/10"
-         title={`${label}: ${state}${latency != null ? ` • ${latency} ms` : ''}`}>
+    <div
+      className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md bg-black/30 border border-white/10"
+      title={`${label}: ${state}${latency != null ? ` • ${latency} ms` : ''}`}
+    >
       <Dot state={state} />
       <span className="text-white/90">{label}</span>
       <span className={`ml-0.5 ${glyphClass}`} aria-hidden>{glyph}</span>
@@ -72,6 +66,7 @@ const Pill: React.FC<{ label: string; state: Status; latency?: number|null }> = 
   );
 };
 
+// Graceful wrappers: if a URL is empty, pretend disconnected (keeps UI stable)
 const useMaybeWs = (url: string, opts: Parameters<typeof useWsStatus>[1]) =>
   url ? useWsStatus(url, opts) : { status: 'disconnected' as ServiceStatus, latency: null };
 
@@ -79,26 +74,40 @@ const useMaybeHttp = (url: string, opts: Parameters<typeof useHttpStatus>[1]) =>
   url ? useHttpStatus(url, opts) : { status: 'disconnected' as HttpStatus, latency: null };
 
 const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
+  // Resolve all endpoints via the profile-aware helper (honors ?profile).
+  const MOVE_URL  = net.ws.movement();
+  const ULTRA_URL = net.ws.ultrasonic();
+  const LINE_URL  = net.ws.line();
+  const LIGHT_URL = net.ws.lighting();
+  const VIDEO_URL = net.video();
+
+  // Prefer probing /health for video to avoid pulling the MJPEG stream.
+  const VIDEO_HEALTH = useMemo(() => toHealthUrl(VIDEO_URL), [VIDEO_URL]);
+
   // WS with pong → latency
-  const move  = useMaybeWs(MOVE,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
-  const line  = useMaybeWs(LINE,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
-  const light = useMaybeWs(LIGHT, { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
+  const move  = useMaybeWs(MOVE_URL,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
+  const line  = useMaybeWs(LINE_URL,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
+  const light = useMaybeWs(LIGHT_URL, { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
 
-  // Streaming WS (no pong)
-  const ultra = useMaybeWs(ULTRA, { treatAnyMessageAsAlive: true, pongTimeoutMs: 4000 });
+  // Streaming WS (any message marks alive)
+  const ultra = useMaybeWs(ULTRA_URL, { treatAnyMessageAsAlive: true, pongTimeoutMs: 4000 });
 
-  // HTTP MJPEG probe
-  const video = useMaybeHttp(VIDEO, { intervalMs: 5000, timeoutMs: 2500 });
+  // HTTP /health mapping (503+placeholder → "no_camera")
+  const video = useMaybeHttp(VIDEO_HEALTH, {
+    intervalMs: 5000,
+    timeoutMs: 2500,
+    treat503AsConnecting: true,
+  });
 
-  const states: Status[] = [move.status, ultra.status, line.status, light.status, video.status];
-  const upCount = states.filter(s => s === 'connected').length;
-  const overallConnected = upCount === states.length ? true : upCount > 0;
+  const states = [move.status, ultra.status, line.status, light.status, video.status] as const;
+  const upCount = states.filter((s) => s === 'connected').length;
+  const allGood = upCount === states.length;
 
   const batteryClass =
     batteryLevel > 75 ? 'bg-green-500' :
     batteryLevel > 50 ? 'bg-yellow-500' :
     batteryLevel > 20 ? 'bg-blue-500 neon-blue' :
-    'bg-red-500';
+                        'bg-red-500';
 
   return (
     <div className="flex flex-col gap-2 bg-gray-800 text-white p-4 sticky top-0 z-10 shadow-md">
@@ -109,7 +118,7 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
         <div className="flex items-center space-x-4">
           <div className="flex items-center text-sm">
             <span className="opacity-80">Status:</span>
-            {overallConnected ? (
+            {allGood ? (
               <FaCheckCircle aria-label="All services reachable" className="text-green-500 ml-2" />
             ) : (
               <FaTimesCircle aria-label="Some services down" className="text-red-500 ml-2" />
@@ -129,11 +138,11 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
 
       {/* Per-service pills */}
       <div className="flex flex-wrap gap-2">
-        <Pill label="Movement"    state={move.status} />
-        <Pill label="Ultrasonic"  state={ultra.status} />
-        <Pill label="Line"        state={line.status}   latency={line.latency} />
-        <Pill label="Lighting"    state={light.status}  latency={light.latency} />
-        <Pill label="Video"       state={video.status}  latency={video.latency} />
+        <Pill label="Movement"   state={move.status}   latency={move.latency} />
+        <Pill label="Ultrasonic" state={ultra.status} />
+        <Pill label="Line"       state={line.status}   latency={line.latency} />
+        <Pill label="Lighting"   state={light.status}  latency={light.latency} />
+        <Pill label="Video"      state={video.status}  latency={video.latency} />
       </div>
     </div>
   );

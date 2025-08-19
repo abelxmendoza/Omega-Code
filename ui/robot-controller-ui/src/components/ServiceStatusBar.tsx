@@ -1,84 +1,74 @@
 /*
 # File: /Omega-Code/ui/robot-controller-ui/src/components/ServiceStatusBar.tsx
 # Summary:
-#   Compact, live status bar for backend services:
+#   Compact, live status bar for backend services with a collapsible panel.
 #     - Movement   (WebSocket; JSON heartbeat)
 #     - Ultrasonic (WebSocket; streaming JSON, no pong)
 #     - Line       (WebSocket; JSON heartbeat)
 #     - Lighting   (WebSocket; JSON heartbeat)
-#     - Video      (HTTP; probes lightweight `/health` instead of the MJPEG stream)
+#     - Video      (HTTP; probes `/health`, avoids mixed-content on HTTPS)
 #
-#   It respects the active network profile (LAN | TAILSCALE | LOCAL) and picks
-#   the corresponding env var URL per service. Each pill shows:
-#     • connection state (connected / connecting / disconnected)
-#     • optional latency (ms) when heartbeat/ping is available
-#
-#   Notes:
-#   - WS heartbeats: services that reply to {type:"ping"}→{type:"pong"} report latency.
-#   - Ultrasonic streams JSON periodically; we mark it alive on any message.
-#   - Video is probed via GET/HEAD to `/health` (cheap 200/503) to avoid touching the MJPEG.
+#   Improvements:
+#   - Collapsible UI (persists state via localStorage)
+#   - Uses resolveWsUrl() + required subpaths (consistent with app resolver)
+#   - Mixed-content guard for /health probes
+#   - Accessible: aria-expanded, aria-controls, focus ring
 */
-
 
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
+import { resolveWsUrl } from '@/utils/resolveWsUrl';
 
-// -----------------------------
-// Profile selection + env pick
-// -----------------------------
-type NetProfile = 'LAN' | 'TAILSCALE' | 'LOCAL';
-const PROFILE = ((process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local').toUpperCase() as NetProfile);
+/* ----------------------------- helpers ------------------------------ */
 
-/** Pick the correct value for the active profile, with sensible fallbacks. */
-const pick = (lan?: string, tailscale?: string, local?: string) =>
-  PROFILE === 'LAN'       ? (lan ?? local ?? '') :
-  PROFILE === 'TAILSCALE' ? (tailscale ?? local ?? '') :
-                             (local ?? lan ?? tailscale ?? '');
-
-/** Convert an MJPEG URL (.../video_feed[?]) to its sibling `/health` endpoint. */
 const toHealthUrl = (videoUrl?: string) => {
   if (!videoUrl) return '';
   const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
   return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
 };
 
-// -----------------------------
-// Endpoints from env (per profile)
-// -----------------------------
-const ULTRA = pick(
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_LAN,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_TAILSCALE,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_LOCAL
-);
-const LINE  = pick(
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LAN,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_TAILSCALE,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LOCAL
-);
-const MOVE  = pick(
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LAN,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_TAILSCALE,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LOCAL
-);
-const LIGHT = pick(
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LAN,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_TAILSCALE,
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LOCAL
-);
-const VIDEO = pick(
-  process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LAN,
-  process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE,
-  process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL
-);
+const willBeMixedContent = (url?: string): boolean => {
+  if (!url || typeof window === 'undefined') return false;
+  if (window.location.protocol !== 'https:') return false;
+  try {
+    const u = new URL(url);
+    return u.protocol === 'http:' && u.hostname !== window.location.hostname;
+  } catch {
+    return false;
+  }
+};
 
-// -----------------------------
-// Visual helpers
-// -----------------------------
-/** Dot supports the extra "no_camera" state for video. */
-const Dot: React.FC<{state: ServiceStatus | HttpStatus}> = ({ state }) => {
+/** If a resolved WS URL is missing a required subpath (because of host fallback), append it once. */
+const ensurePath = (u: string, path: string) =>
+  u && !u.includes(path) ? `${u.replace(/\/$/, '')}${path}` : u;
+
+/* ----------------------- WS endpoints via resolver ------------------ */
+
+const MOVE  = resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT',     { defaultPort: '8081' });
+const ULTRA = ensurePath(resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC', { defaultPort: '8080' }), '/ultrasonic');
+const LINE  = ensurePath(resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER', { defaultPort: '8090' }), '/line-tracker');
+const LIGHT = ensurePath(resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING', { defaultPort: '8082' }), '/lighting');
+
+/* --------------------------- Video endpoints ------------------------ */
+
+const VIDEO_LAN       = process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LAN;
+const VIDEO_TAILSCALE = process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE;
+const VIDEO_LOCAL     = process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL;
+
+// Profile-aware pick (same behavior as elsewhere)
+const VIDEO = (() => {
+  const prof = (process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local').toLowerCase();
+  return prof === 'lan'       ? (VIDEO_LAN || VIDEO_LOCAL || '')
+       : prof === 'tailscale' ? (VIDEO_TAILSCALE || VIDEO_LOCAL || '')
+                              : (VIDEO_LOCAL || VIDEO_LAN || VIDEO_TAILSCALE || '');
+})();
+
+/* ------------------------------ UI bits ----------------------------- */
+
+const Dot: React.FC<{ state: ServiceStatus | HttpStatus }> = ({ state }) => {
   const color =
     state === 'connected'   ? 'bg-emerald-500' :
     state === 'connecting'  ? 'bg-amber-400'  :
@@ -91,10 +81,10 @@ const Item: React.FC<{
   label: string;
   state: ServiceStatus | HttpStatus;
   latency?: number | null;
-}> = ({label, state, latency}) => (
+}> = ({ label, state, latency }) => (
   <div
     className="flex items-center gap-2 text-xs text-white/90"
-    title={`${label}: ${state}${latency!=null?` • ${latency} ms`:''}`}
+    title={`${label}: ${state}${latency != null ? ` • ${latency} ms` : ''}`}
   >
     <Dot state={state} />
     <span className="font-medium">{label}</span>
@@ -103,50 +93,99 @@ const Item: React.FC<{
   </div>
 );
 
-// -----------------------------
-// Hook wrappers (graceful when URL is empty)
-// -----------------------------
-const useMaybeWs = (url: string, opts: Parameters<typeof useWsStatus>[1]) =>
-  url ? useWsStatus(url, opts) : { status: 'disconnected' as ServiceStatus, latency: null };
+// Generic chevron icon (no extra deps)
+const Chevron: React.FC<{ open: boolean }> = ({ open }) => (
+  <svg
+    className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`}
+    viewBox="0 0 20 20"
+    fill="currentColor"
+    aria-hidden
+  >
+    <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.17l3.71-2.94a.75.75 0 111.04 1.08l-4.24 3.36a.75.75 0 01-.94 0L5.21 8.31a.75.75 0 01.02-1.1z" />
+  </svg>
+);
 
-const useMaybeHttp = (url: string, opts: Parameters<typeof useHttpStatus>[1]) =>
-  url ? useHttpStatus(url, opts) : { status: 'disconnected' as HttpStatus, latency: null };
+/* ----------------------------- Component ---------------------------- */
 
-// -----------------------------
-// Component
-// -----------------------------
 const ServiceStatusBar: React.FC = () => {
+  const [collapsed, setCollapsed] = useState<boolean>(false);
+
+  // Restore persisted collapsed state
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem('serviceStatusBarCollapsed');
+      if (v === '1') setCollapsed(true);
+    } catch {}
+  }, []);
+  // Persist on change
+  useEffect(() => {
+    try {
+      localStorage.setItem('serviceStatusBarCollapsed', collapsed ? '1' : '0');
+    } catch {}
+  }, [collapsed]);
+
   const VIDEO_HEALTH = useMemo(() => toHealthUrl(VIDEO), [VIDEO]);
 
   // WS with pong → latency
-  const move  = useMaybeWs(MOVE,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
-  const line  = useMaybeWs(LINE,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
-  const light = useMaybeWs(LIGHT, { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
+  const move  = MOVE  ? useWsStatus(MOVE,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 }) : { status: 'disconnected' as ServiceStatus, latency: null };
+  const line  = LINE  ? useWsStatus(LINE,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 }) : { status: 'disconnected' as ServiceStatus, latency: null };
+  const light = LIGHT ? useWsStatus(LIGHT, { pingIntervalMs: 5000, pongTimeoutMs: 2500 }) : { status: 'disconnected' as ServiceStatus, latency: null };
 
   // WS streaming (any message alive)
-  const ultra = useMaybeWs(ULTRA, { treatAnyMessageAsAlive: true, pongTimeoutMs: 4000 });
+  const ultra = ULTRA ? useWsStatus(ULTRA, { treatAnyMessageAsAlive: true, pongTimeoutMs: 4000 }) : { status: 'disconnected' as ServiceStatus, latency: null };
 
-  // HTTP /health with special mapping (503+placeholder → "no_camera")
-  const video = useMaybeHttp(VIDEO_HEALTH, {
-    intervalMs: 5000,
-    timeoutMs: 2500,
-    treat503AsConnecting: true,
-  });
+  // HTTP /health (avoid mixed-content fetches: show “connecting” instead)
+  const canProbeVideo = VIDEO_HEALTH && !willBeMixedContent(VIDEO_HEALTH);
+  const video = canProbeVideo
+    ? useHttpStatus(VIDEO_HEALTH, { intervalMs: 5000, timeoutMs: 2500, treat503AsConnecting: true })
+    : { status: 'connecting' as HttpStatus, latency: null };
 
   const states = [move.status, ultra.status, line.status, light.status, video.status] as const;
   const up = states.filter(s => s === 'connected').length;
+  const allUp = up === states.length;
+  const anyUp = up > 0;
+
+  // Summary dot color for collapsed header
+  const summaryState: ServiceStatus | HttpStatus = allUp ? 'connected' : anyUp ? 'connecting' : 'disconnected';
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="text-xs text-white/70" aria-live="polite">
-        Services online: {up}/{states.length}
-      </div>
-      <div className="flex flex-wrap items-center gap-4 px-3 py-2 bg-black/40 border border-white/10 rounded-md">
-        <Item label="Movement"    state={move.status}   />
-        <Item label="Ultrasonic"  state={ultra.status}  />
-        <Item label="Line"        state={line.status}   latency={line.latency} />
-        <Item label="Lighting"    state={light.status}  latency={light.latency} />
-        <Item label="Video"       state={video.status}  latency={video.latency} />
+    <div className="text-white">
+      {/* Collapsed header / toggle */}
+      <button
+        type="button"
+        aria-expanded={!collapsed}
+        aria-controls="service-status-panel"
+        onClick={() => setCollapsed(v => !v)}
+        className="w-full flex items-center justify-between gap-3 px-3 py-2 bg-gray-800/70 hover:bg-gray-800 border border-white/10 rounded-md transition focus:outline-none focus:ring-2 focus:ring-amber-400"
+      >
+        <div className="flex items-center gap-3 text-sm">
+          <Dot state={summaryState} />
+          <span className="font-semibold">Services</span>
+          <span className="text-white/70">• {up}/{states.length} online</span>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-white/70">
+          <span>{collapsed ? 'Show' : 'Hide'}</span>
+          <Chevron open={!collapsed} />
+        </div>
+      </button>
+
+      {/* Collapsible panel */}
+      <div
+        id="service-status-panel"
+        className={`overflow-hidden transition-all duration-300 ease-out ${collapsed ? 'max-h-0 opacity-0 scale-[0.98]' : 'max-h-40 opacity-100 scale-100'}`}
+      >
+        <div className="mt-2 px-3 py-2 bg-black/40 border border-white/10 rounded-md">
+          <div className="text-xs text-white/70 mb-1" aria-live="polite">
+            Detailed status
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <Item label="Movement"    state={move.status}   latency={move.latency} />
+            <Item label="Ultrasonic"  state={ultra.status}  />
+            <Item label="Line"        state={line.status}   latency={line.latency} />
+            <Item label="Lighting"    state={light.status}  latency={light.latency} />
+            <Item label="Video"       state={video.status}  latency={video.latency} />
+          </div>
+        </div>
       </div>
     </div>
   );

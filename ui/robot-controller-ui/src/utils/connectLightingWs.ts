@@ -1,13 +1,15 @@
-// File: /Omega-Code/ui/robot-controller-ui/src/utils/connectLightingWs.ts
-// Summary:
-//   Lighting WS helper with graceful fallback.
-//   - lightingWsUrl(): best single URL for the active profile
-//   - lightingCandidates(): ordered fallback list (profile → others → same-origin)
-//   - connectLightingWs(opts): tries candidates until one connects; supports AbortSignal
-//   - openLightingSocket(): direct opener (no fallback), auto-upgrades ws:// → wss://
-//
-// Defaults here match your env: port 8082, path /lighting.
-// Enable debug logs by setting NEXT_PUBLIC_WS_DEBUG=1
+/*
+# File: /Omega-Code/ui/robot-controller-ui/src/utils/connectLightingWs.ts
+# Summary:
+#   Lighting WS helper with graceful fallback + path de-dup.
+#   - lightingWsUrl(): best single URL for the active profile
+#   - lightingCandidates(): ordered fallback list (profile → others → same-origin)
+#   - connectLightingWs(opts): tries candidates until one connects; supports AbortSignal
+#   - openLightingSocket(): direct opener (no fallback), auto-upgrades ws:// → wss://
+#
+# Defaults here match your env: port 8082, path /lighting.
+# Enable debug logs by setting NEXT_PUBLIC_WS_DEBUG=1
+*/
 
 'use client';
 
@@ -24,6 +26,21 @@ const DEBUG =
 
 const dlog = (...a: any[]) => DEBUG && console.info('[WS:lighting]', ...a);
 
+/** Ensure the lighting path appears exactly once (avoids ".../lighting/lighting"). */
+function ensurePathOnce(u: string, path = DEFAULT_PATH): string {
+  if (!u) return u;
+  const want = path.startsWith('/') ? path : `/${path}`;
+  // normalize trailing slash
+  const base = u.replace(/\/+$/, '');
+  return base.endsWith(want) ? base : `${base}${want}`;
+}
+
+/** Simple de-dupe preserving first occurrence. */
+function dedupe(list: string[]): string[] {
+  const seen = new Set<string>();
+  return list.filter((u) => (u && !seen.has(u) ? (seen.add(u), true) : false));
+}
+
 export interface LightingConnectOpts {
   /** Per-attempt timeout (ms). Default 6000. */
   timeoutMs?: number;
@@ -31,7 +48,7 @@ export interface LightingConnectOpts {
   signal?: AbortSignal;
   /** Called before each attempt with the normalized URL. */
   onAttempt?: (url: string, index: number, total: number) => void;
-  /** Delay between attempts (ms). Default 150. */
+  /** Delay between attempts (ms). Default in wsConnect. */
   backoffMs?: number;
   /** Optional ws path; default '/lighting'. */
   path?: string;
@@ -43,11 +60,14 @@ export interface LightingConnectOpts {
 export function lightingWsUrl(opts?: { path?: string; port?: string }): string {
   const port = opts?.port ?? DEFAULT_PORT;
   const path = opts?.path ?? DEFAULT_PATH;
-  const url = resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING', {
+
+  // IMPORTANT: don't pass `path` into the resolver; we normalize ourselves to avoid double-append.
+  const raw = resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING', {
     defaultPort: port,
-    path,
     includeSameOrigin: true,
   });
+
+  const url = raw ? ensurePathOnce(raw, path) : '';
   dlog('resolved URL', url);
   return url;
 }
@@ -56,11 +76,15 @@ export function lightingWsUrl(opts?: { path?: string; port?: string }): string {
 export function lightingCandidates(opts?: { path?: string; port?: string }): string[] {
   const port = opts?.port ?? DEFAULT_PORT;
   const path = opts?.path ?? DEFAULT_PATH;
-  const list = resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING', {
+
+  // IMPORTANT: don't pass `path` here; normalize ourselves.
+  const raw = resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING', {
     defaultPort: port,
-    path,
     includeSameOrigin: true,
   });
+
+  // normalize & de-dupe
+  const list = dedupe(raw.map((u) => ensurePathOnce(u, path)));
   dlog('candidates', list);
   return list;
 }
@@ -80,7 +104,7 @@ export async function connectLightingWs(
 
   const candidates = lightingCandidates({ path, port });
   if (!candidates.length) {
-    throw new Error('No lighting WebSocket candidates were generated (check env).');
+    throw new Error('Lighting WS: no candidates were generated (check env).');
   }
 
   try {
