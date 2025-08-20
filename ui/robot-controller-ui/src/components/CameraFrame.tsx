@@ -80,12 +80,34 @@ const filterClass = (mode: FilterMode) => {
   }
 };
 
-/** Derive /health from a direct /video_feed URL (OK for proxy too) */
-const toHealthUrl = (videoUrl?: string) => {
-  if (!videoUrl) return '';
+/** Build the correct health URL for whatever `src` we were given.
+ *  - If `src` is our same-origin MJPEG proxy (/api/video-proxy?...),
+ *    switch to the health proxy (/api/video-health?...).
+ *  - Otherwise, derive .../health from the upstream video URL. */
+const buildHealthUrl = (srcUrl?: string) => {
+  if (!srcUrl) return '';
   try {
-    const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
-    return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
+    // Normalize to a URL for reliable parsing, even if `src` is relative
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    const u = new URL(srcUrl, base);
+
+    // If the pathname indicates our same-origin proxy, mirror its query to /api/video-health
+    if (u.pathname.startsWith('/api/video-proxy')) {
+      const qs = new URLSearchParams(u.search);
+      qs.delete('b'); // drop our cache-buster
+      const q = qs.toString();
+      return `/api/video-health${q ? `?${q}` : ''}`;
+    }
+
+    // Direct upstream:
+    // .../video_feed[?...] → .../health, else <base>/health
+    if (/\/video_feed\/?$/i.test(u.pathname)) {
+      u.pathname = u.pathname.replace(/\/video_feed\/?$/i, '/health');
+      u.search = ''; // health doesn’t need stream query
+      return u.toString();
+    }
+    u.pathname = (u.pathname.replace(/\/+$/,'') || '') + '/health';
+    return u.toString();
   } catch {
     return '';
   }
@@ -139,7 +161,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
   // ---------- Availability + latency via GET /health ----------
   useEffect(() => {
     let cancelled = false;
-    const healthUrl = toHealthUrl(src);
+    const healthUrl = buildHealthUrl(src);
 
     const check = async () => {
       if (!healthUrl) {

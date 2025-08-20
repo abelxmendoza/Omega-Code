@@ -7,11 +7,17 @@
 #   - Profile-based endpoint selection (lan | tailscale | local)
 #   - WebSocket keep-alive + exponential backoff reconnect
 #   - Hotkeys (P/O/Space/I)
+#   - Camera wired through same-origin proxy (/api/video-proxy) to avoid mixed content/CORS
+#
+#   Notes:
+#   • Camera health ping inside CameraFrame derives /health from the src. Since we feed the proxy,
+#     the health latency badge will show “— ms” (that’s expected). The image onload/onerror still
+#     drives status reliably, and the stream avoids CORS issues via the proxy.
 */
 
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import SpeedControl from '../components/control/SpeedControl';
 import CommandLog from '../components/CommandLog';
 import SensorDashboard from '../components/sensors/SensorDashboard';
@@ -22,8 +28,6 @@ import { COMMAND } from '../control_definitions';
 import Header from '../components/Header';
 import LedModal from '../components/lighting/LedModal';
 import { v4 as uuidv4 } from 'uuid';
-// If you already have a util for active profile, you can import it:
-// import { getActiveProfile } from '@/utils/resolveWsUrl';
 
 const DEBUG = !!process.env.NEXT_PUBLIC_WS_DEBUG;
 
@@ -52,7 +56,7 @@ const getActiveProfile = (): 'lan' | 'tailscale' | 'local' => {
   return (['lan', 'tailscale', 'local'].includes(p) ? p : 'local') as any;
 };
 
-/** Read env var by profile, with LOCAL fallback. Example base: 'NEXT_PUBLIC_VIDEO_STREAM_URL'. */
+/** Read env var by profile, with LOCAL fallback. Example base: 'NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT'. */
 const getEnvByProfile = (base: string, profile?: string): string => {
   const p = (profile || getActiveProfile()).toUpperCase();
   return (
@@ -62,7 +66,7 @@ const getEnvByProfile = (base: string, profile?: string): string => {
   );
 };
 
-/** Optional host fallback like omega1-1.hartley-ghost.ts.net */
+/** Optional host fallback like omega1-1.hartley-ghost.ts.net (useful if you ever need direct URLs). */
 const getRobotHostFallback = (): string => {
   const prof = getActiveProfile().toUpperCase();
   return (
@@ -72,26 +76,16 @@ const getRobotHostFallback = (): string => {
   );
 };
 
-/** Build a sensible default video URL if env is missing. */
-const defaultVideoUrl = (): string => {
-  const prof = getActiveProfile();
-  const host = getRobotHostFallback();
-  if (!host) return ''; // no good fallback
-  // direct MJPEG feed path on backend
-  return `http://${host}:5000/video_feed`;
-};
-
 /** Honor NEXT_PUBLIC_WS_FORCE_INSECURE=1 to keep ws:// even on https pages. */
 const coerceWsScheme = (rawUrl: string): string => {
   if (!rawUrl) return rawUrl;
   try {
-    const u = new URL(rawUrl, window.location.href);
+    const u = new URL(rawUrl, typeof window !== 'undefined' ? window.location.href : 'http://localhost');
     const forceInsecure = !!process.env.NEXT_PUBLIC_WS_FORCE_INSECURE;
     if (forceInsecure) {
       if (u.protocol === 'wss:') u.protocol = 'ws:';
       return u.toString();
     }
-    // Otherwise: if page is https and url is ws://, upgrade to wss://
     if (typeof window !== 'undefined' && window.location.protocol === 'https:' && u.protocol === 'ws:') {
       u.protocol = 'wss:';
     }
@@ -106,14 +100,7 @@ const nextBackoff = (prev: number) => Math.min(10_000, Math.max(500, Math.floor(
 
 /* ---------------------- resolved endpoints (by profile) ---------------------- */
 
-// Direct video stream (we pass direct URL to CameraFrame so its /health derivation works)
-const videoUrlResolved =
-  getEnvByProfile('NEXT_PUBLIC_VIDEO_STREAM_URL') || defaultVideoUrl();
-
-// Movement control WS (envs you already have in .env.local)
-//   NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_TAILSCALE
-//   NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LAN
-//   NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LOCAL
+/** Movement control WS resolved from env (lan|tailscale|local). */
 const movementWsResolved = getEnvByProfile('NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT');
 
 /* --------------------------------- Page --------------------------------- */
@@ -123,14 +110,36 @@ export default function Home() {
 
   const [isLedModalOpen, setIsLedModalOpen] = useState(false);
 
+  /* -------- Camera proxy URL (built on client so we can read page query) -------- */
+  const cameraProxyUrl = useMemo(() => {
+    // Build /api/video-proxy?profile=<active>[&video=...]
+    const prof = getActiveProfile();
+    const qs = new URLSearchParams();
+    qs.set('profile', prof);
+
+    // honor page override ?video=… to force upstream
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      const override = url.searchParams.get('video');
+      const qProf = url.searchParams.get('profile'); // optional override for profile
+      if (override) qs.set('video', override);
+      if (qProf && ['lan', 'tailscale', 'local'].includes(qProf)) {
+        qs.set('profile', qProf);
+      }
+    }
+
+    const u = `/api/video-proxy?${qs.toString()}`;
+    if (DEBUG) console.log('[netProfile] camera proxy url:', u);
+    return u;
+  }, []);
+
+  /* --------------------------- WebSocket connect --------------------------- */
   const ws = useRef<WebSocket | null>(null);
   const keepAliveTimer = useRef<number | null>(null);
   const reconnectTimer = useRef<number | null>(null);
   const backoffRef = useRef<number>(800);
 
-  /* --------------------------- WebSocket connect --------------------------- */
   const connectWebSocket = useCallback(() => {
-    // Pick final WS URL with scheme fixes
     const rawUrl = movementWsResolved;
     if (!rawUrl) {
       addCommand('WS URL missing: set NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_* in your .env.local');
@@ -146,10 +155,8 @@ export default function Home() {
         addCommand('WebSocket connection established');
         if (DEBUG) console.log('[WS] open');
 
-        // reset backoff on success
         backoffRef.current = 800;
 
-        // keep-alive ping
         if (keepAliveTimer.current) window.clearInterval(keepAliveTimer.current);
         keepAliveTimer.current = window.setInterval(() => {
           try {
@@ -174,8 +181,8 @@ export default function Home() {
 
       ws.current.onerror = (error) => {
         if (DEBUG) console.warn('[WS] error', error);
-        addCommand(`WebSocket error`);
-        // Let onclose handle the reconnect/backoff; most browsers call close after error.
+        addCommand('WebSocket error');
+        // onclose will handle the backoff reconnect
       };
 
       ws.current.onmessage = (event) => {
@@ -188,7 +195,6 @@ export default function Home() {
       };
     } catch (err) {
       addCommand(`WebSocket connect failed: ${String(err)}`);
-      // schedule reconnect
       const delay = backoffRef.current;
       reconnectTimer.current = window.setTimeout(() => {
         backoffRef.current = nextBackoff(backoffRef.current);
@@ -256,10 +262,10 @@ export default function Home() {
             <CarControlPanel sendCommand={sendCommandWithLog} />
           </div>
 
-          {/* Framed camera */}
+          {/* Framed camera (via proxy to avoid mixed content/CORS) */}
           <div className="flex-shrink-0">
             <CameraFrame
-              src={videoUrlResolved}
+              src={cameraProxyUrl}
               title="Front Camera"
               className="w-[720px] max-w-[42vw]"
             />

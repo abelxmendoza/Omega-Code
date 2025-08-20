@@ -6,12 +6,13 @@
 #     - Ultrasonic (WebSocket; streaming JSON, no pong)
 #     - Line       (WebSocket; JSON heartbeat)
 #     - Lighting   (WebSocket; JSON heartbeat)
-#     - Video      (HTTP; probes `/health`, avoids mixed-content on HTTPS)
+#     - Video      (HTTP; probes `/api/video-health` by default to avoid mixed-content)
 #
 #   Improvements:
 #   - Collapsible UI (persists state via localStorage)
 #   - Uses resolveWsUrl() + required subpaths (consistent with app resolver)
-#   - Mixed-content guard for /health probes
+#   - Mixed-content guard for direct /health probes; proxy health preferred
+#   - Honors page overrides ?profile=lan|tailscale|local and ?video=<custom-url>
 #   - Accessible: aria-expanded, aria-controls, focus ring
 */
 
@@ -22,19 +23,38 @@ import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { resolveWsUrl } from '@/utils/resolveWsUrl';
 
+const DEBUG = !!process.env.NEXT_PUBLIC_WS_DEBUG;
+
 /* ----------------------------- helpers ------------------------------ */
 
+/** Read a query param from the current page (client only). */
+const getQueryParam = (name: string): string | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  const v = new URLSearchParams(window.location.search).get(name);
+  return v?.trim() || undefined;
+};
+
+/** Active UI profile: lan | tailscale | local (honor ?profile override). */
+const getActiveProfile = (): 'lan' | 'tailscale' | 'local' => {
+  const qp = (getQueryParam('profile') || '').toLowerCase();
+  if (qp === 'lan' || qp === 'tailscale' || qp === 'local') return qp;
+  const env = (process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local').toLowerCase();
+  return (['lan', 'tailscale', 'local'].includes(env) ? env : 'local') as any;
+};
+
+/** Convert direct .../video_feed → .../health. */
 const toHealthUrl = (videoUrl?: string) => {
   if (!videoUrl) return '';
   const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
   return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
 };
 
+/** Mixed-content check (block http:// off-origin when page is https://). */
 const willBeMixedContent = (url?: string): boolean => {
   if (!url || typeof window === 'undefined') return false;
   if (window.location.protocol !== 'https:') return false;
   try {
-    const u = new URL(url);
+    const u = new URL(url, window.location.href);
     return u.protocol === 'http:' && u.hostname !== window.location.hostname;
   } catch {
     return false;
@@ -53,18 +73,27 @@ const LINE  = ensurePath(resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER',
 const LIGHT = ensurePath(resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING', { defaultPort: '8082' }), '/lighting');
 
 /* --------------------------- Video endpoints ------------------------ */
+/*
+  Preferred: same-origin proxy HEALTH endpoint → /api/video-health?profile=<p>[&video=...]
+  This avoids mixed-content/CORS and matches your /api/video-proxy usage elsewhere.
+  We still compute a direct health URL for fallback/diagnostics when it's safe.
+*/
 
 const VIDEO_LAN       = process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LAN;
 const VIDEO_TAILSCALE = process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE;
 const VIDEO_LOCAL     = process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL;
 
-// Profile-aware pick (same behavior as elsewhere)
-const VIDEO = (() => {
-  const prof = (process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local').toLowerCase();
-  return prof === 'lan'       ? (VIDEO_LAN || VIDEO_LOCAL || '')
-       : prof === 'tailscale' ? (VIDEO_TAILSCALE || VIDEO_LOCAL || '')
-                              : (VIDEO_LOCAL || VIDEO_LAN || VIDEO_TAILSCALE || '');
-})();
+const pickDirectVideoByProfile = (): string => {
+  const prof = getActiveProfile();
+  const qpVideo = getQueryParam('video'); // page override wins
+  if (qpVideo) return qpVideo;
+
+  return prof === 'lan'
+    ? (VIDEO_LAN || VIDEO_LOCAL || '')
+    : prof === 'tailscale'
+    ? (VIDEO_TAILSCALE || VIDEO_LOCAL || '')
+    : (VIDEO_LOCAL || VIDEO_LAN || VIDEO_TAILSCALE || '');
+};
 
 /* ------------------------------ UI bits ----------------------------- */
 
@@ -124,7 +153,38 @@ const ServiceStatusBar: React.FC = () => {
     } catch {}
   }, [collapsed]);
 
-  const VIDEO_HEALTH = useMemo(() => toHealthUrl(VIDEO), [VIDEO]);
+  // Build proxy health URL (preferred): /api/video-health?profile=<p>[&video=...]
+  const VIDEO_PROXY_HEALTH = useMemo(() => {
+    const qs = new URLSearchParams();
+    qs.set('profile', getActiveProfile());
+    const qpVideo = getQueryParam('video');
+    if (qpVideo) qs.set('video', qpVideo);
+    const url = `/api/video-health?${qs.toString()}`;
+    if (DEBUG) console.log('[status] video proxy health:', url);
+    return url;
+  }, []);
+
+  // Also compute a direct health URL (for fallback only, if safe)
+  const VIDEO_DIRECT_HEALTH = useMemo(() => {
+    const directVideo = pickDirectVideoByProfile();
+    const h = toHealthUrl(directVideo);
+    if (DEBUG) console.log('[status] video direct health:', h || '(none)');
+    return h;
+  }, []);
+
+  // Choose health endpoint: prefer proxy; if unavailable for some reason, use direct when it will not be mixed-content.
+  const canUseProxyHealth = !!VIDEO_PROXY_HEALTH; // same-origin → always safe
+  const canUseDirectHealth = VIDEO_DIRECT_HEALTH && !willBeMixedContent(VIDEO_DIRECT_HEALTH);
+
+  const healthUrl = canUseProxyHealth
+    ? VIDEO_PROXY_HEALTH
+    : (canUseDirectHealth ? (VIDEO_DIRECT_HEALTH as string) : '');
+
+  // Video HTTP status polling
+  const video: { status: HttpStatus; latency: number | null } =
+    healthUrl
+      ? useHttpStatus(healthUrl, { intervalMs: 5000, timeoutMs: 2500, treat503AsConnecting: true })
+      : { status: 'connecting', latency: null };
 
   // WS with pong → latency
   const move  = MOVE  ? useWsStatus(MOVE,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 }) : { status: 'disconnected' as ServiceStatus, latency: null };
@@ -133,12 +193,6 @@ const ServiceStatusBar: React.FC = () => {
 
   // WS streaming (any message alive)
   const ultra = ULTRA ? useWsStatus(ULTRA, { treatAnyMessageAsAlive: true, pongTimeoutMs: 4000 }) : { status: 'disconnected' as ServiceStatus, latency: null };
-
-  // HTTP /health (avoid mixed-content fetches: show “connecting” instead)
-  const canProbeVideo = VIDEO_HEALTH && !willBeMixedContent(VIDEO_HEALTH);
-  const video = canProbeVideo
-    ? useHttpStatus(VIDEO_HEALTH, { intervalMs: 5000, timeoutMs: 2500, treat503AsConnecting: true })
-    : { status: 'connecting' as HttpStatus, latency: null };
 
   const states = [move.status, ultra.status, line.status, light.status, video.status] as const;
   const up = states.filter(s => s === 'connected').length;
