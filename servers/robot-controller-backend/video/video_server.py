@@ -1,55 +1,47 @@
 # File: /Omega-Code/servers/robot-controller-backend/video/video_server.py
 """
-Summary
--------
-Secure, hostname/proxy-friendly MJPEG video server for the robot.
+Hardened MJPEG video server for the robot.
 
-Key features:
-- Never logs raw IP bind addresses (privacy-friendly logs)
-- Strict, env-driven CORS allowlist (or explicit dev fallback "*")
-- Optional TLS via CERT_PATH/KEY_PATH
-- Motion detection + optional object tracking (OpenCV)
-- Graceful behavior when no camera is attached (placeholder MJPEG stream)
-- Rich /health endpoint for your UI (connected/absent/down + fps/counters)
-- Works as a module: `python -m video.video_server`
+Adds:
+- Background camera (re)init retries if startup fails
+- Optional stall watchdog to recreate the camera if frames go stale
+- Keeps /video_feed and /health usable while reconnecting (UI shows 'connecting')
 
-Environment (.env)
-- BIND_HOST                      (default "0.0.0.0")
-- VIDEO_PORT                     (default "5000")
-- ORIGIN_ALLOW                   (comma-separated origins)
-- PUBLIC_BASE_URL, PUBLIC_BASE_URL_ALT (for friendly logs ONLY)
-- CERT_PATH, KEY_PATH            (if both exist => SSL)
-- CAMERA_DEVICE                  (default "/dev/video0")
-- CAMERA_WIDTH, CAMERA_HEIGHT    (defaults "640", "480")
-- PLACEHOLDER_WHEN_NO_CAMERA     (default "0"; set "1"/"true" to stream a placeholder)
+Env:
+  BIND_HOST                (default "0.0.0.0")
+  VIDEO_PORT               (default "5000")
+  ORIGIN_ALLOW             (comma-separated origins, else "*" dev fallback)
+  PUBLIC_BASE_URL(_ALT)    (pretty logs only)
+  CERT_PATH, KEY_PATH      (TLS if both exist)
+  CAMERA_*                 (see camera.py)
+  PLACEHOLDER_WHEN_NO_CAMERA = 0|1
+
+  # New:
+  STARTUP_RETRY_SEC        (default 5)    # retry camera init when it fails
+  RESTART_ON_STALL         (default 1)    # 1=auto recreate on stall
+  STALE_MS                 (default 2500) # what 'stale' means
+  WATCHDOG_PERIOD_MS       (default 1500)
 """
-
-# ----------------------- Imports & setup -----------------------
 
 import os
 import time
-import warnings
 import logging
 from typing import Optional, List
 
 try:
-    import cv2  # type: ignore
-except Exception as e:  # pragma: no cover
+    import cv2  # noqa: F401
+except Exception:
     cv2 = None  # type: ignore
-    warnings.warn(f"OpenCV not available ({e}). Video streaming disabled.", ImportWarning)
 
 from flask import Flask, Response, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv, find_dotenv
 
-# Local modules (import as package so `python -m video.video_server` works)
+# Local
 from video.camera import Camera
 from video.motion_detection import MotionDetector
 from video.object_tracking import ObjectTracker
 
-# ----------------------- Configuration ------------------------
-
-# Load nearest .env (robust to different working directories)
 load_dotenv(find_dotenv())
 
 BIND_HOST = os.getenv("BIND_HOST", "0.0.0.0")
@@ -58,46 +50,42 @@ PORT = int(os.getenv("VIDEO_PORT", "5000"))
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")
 PUBLIC_BASE_URL_ALT = os.getenv("PUBLIC_BASE_URL_ALT")
 
-# TLS support (enabled only if both files exist)
 CERT_PATH = os.getenv("CERT_PATH") or None
 KEY_PATH  = os.getenv("KEY_PATH") or None
 SSL_ENABLED = bool(CERT_PATH and KEY_PATH and os.path.exists(CERT_PATH) and os.path.exists(KEY_PATH))
 
-# CORS allowlist. If empty → dev fallback "*".
 _raw_origins = [o.strip() for o in (os.getenv("ORIGIN_ALLOW", "")).split(",") if o.strip()]
 CORS_ORIGINS: Optional[List[str]] = _raw_origins or None
 ALLOWED_ORIGINS = CORS_ORIGINS if CORS_ORIGINS else "*"
 
-# Camera settings
-CAMERA_DEVICE  = os.getenv("CAMERA_DEVICE", "/dev/video0")
 CAMERA_WIDTH   = int(os.getenv("CAMERA_WIDTH", "640"))
 CAMERA_HEIGHT  = int(os.getenv("CAMERA_HEIGHT", "480"))
 PLACEHOLDER_WHEN_NO_CAMERA = os.getenv("PLACEHOLDER_WHEN_NO_CAMERA", "0").lower() in ("1", "true", "yes")
 
-# Logging
+STARTUP_RETRY_SEC = int(os.getenv("STARTUP_RETRY_SEC", "5"))
+RESTART_ON_STALL  = os.getenv("RESTART_ON_STALL", "1").lower() in ("1", "true", "yes")
+STALE_MS          = int(os.getenv("STALE_MS", os.getenv("FRAME_STALE_MS", "2500")))
+WATCHDOG_PERIOD_MS= int(os.getenv("WATCHDOG_PERIOD_MS", "1500"))
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
-# ----------------------- Flask app ----------------------------
-
 app = Flask(__name__)
-# Route-scoped CORS: only set headers on the endpoints we expose to the UI.
 CORS(app, resources={
     r"/video_feed":     {"origins": ALLOWED_ORIGINS},
     r"/start_tracking": {"origins": ALLOWED_ORIGINS},
     r"/health":         {"origins": ALLOWED_ORIGINS},
 })
 
-# Globals for the video pipeline (initialized in _init_video_stack)
+# Globals
 camera: Optional[Camera] = None
 motion_detector: Optional[MotionDetector] = None
 tracker: Optional[ObjectTracker] = None
 tracking_enabled = False
+_last_init_attempt = 0.0
 
-# ----------------------- Helpers ------------------------------
 
 def _log_startup() -> None:
-    """Print human-friendly startup info (no raw IPs)."""
     logging.info("🚀 Video server starting…")
     if PUBLIC_BASE_URL:
         base = PUBLIC_BASE_URL if "://" in PUBLIC_BASE_URL else (
@@ -114,93 +102,81 @@ def _log_startup() -> None:
     else:
         logging.info("   🔐 CORS allowlist: " + ", ".join(CORS_ORIGINS or []))
 
-def _init_video_stack() -> bool:
-    """Initialize camera + processing modules. Returns True if usable."""
-    global camera, motion_detector, tracker
-    if cv2 is None:
-        logging.warning("OpenCV not installed — video pipeline disabled.")
-        camera = motion_detector = tracker = None
-        return False
+
+def _create_camera() -> bool:
+    global camera, motion_detector, tracker, _last_init_attempt
+    _last_init_attempt = time.time()
     try:
-        camera = Camera(device=CAMERA_DEVICE, width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
+        camera = Camera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
         motion_detector = MotionDetector()
         tracker = ObjectTracker()
-        _ = camera.get_frame()  # probe once; OK if None (handled below)
+        logging.info("Initialization successful.")
         return True
     except Exception as e:
         logging.warning(f"Camera initialization failed ({e}). Running without camera.")
-        camera = motion_detector = tracker = None
+        camera = None
         return False
+
 
 def camera_present() -> bool:
-    """True when OpenCV is available and we have an initialized camera object."""
-    return cv2 is not None and camera is not None
+    return camera is not None
+
 
 def camera_connected() -> bool:
-    """
-    True when we consider streaming healthy: camera is present and has produced
-    a frame recently (≤ ~2.5s). Uses Camera.is_alive() if available.
-    """
-    if not camera_present():
-        return False
-    try:
-        return camera.is_alive(stale_ms=2500)  # type: ignore[attr-defined]
-    except Exception:
-        # Fallback: we at least have a camera object
-        return True
+    return camera_present() and camera.is_alive(stale_ms=STALE_MS)  # type: ignore[union-attr]
+
 
 def _placeholder_generator():
-    """
-    MJPEG placeholder when no camera is attached.
-    Generates a simple image with guidance text. If NumPy is missing,
-    we keep the connection open but yield empty chunks.
-    """
     if cv2 is None:
         while True:
             time.sleep(1)
             yield b""
-
     try:
-        import numpy as np  # Ensure your requirements are compatible with your OpenCV build
+        import numpy as np
     except Exception:
-        # No numpy -> yield empty chunks at a low rate
         while True:
             time.sleep(0.25)
             yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n\r\n")
     else:
+        import cv2 as _cv2  # type: ignore
         W, H = 640, 360
         last_log = 0.0
         while True:
             frame = np.zeros((H, W, 3), dtype=np.uint8)
-            cv2.putText(frame, "NO CAMERA", (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 2.0, (255, 255, 255), 3, cv2.LINE_AA)
-            cv2.putText(frame, "Connect ribbon cable", (30, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (200, 200, 200), 2, cv2.LINE_AA)
-            ok, buf = cv2.imencode(".jpg", frame)
+            _cv2.putText(frame, "CONNECTING…", (30, 80), _cv2.FONT_HERSHEY_SIMPLEX, 2.0, (255, 255, 255), 3, _cv2.LINE_AA)
+            _cv2.putText(frame, "Initializing camera", (30, 140), _cv2.FONT_HERSHEY_SIMPLEX, 0.9, (200, 200, 200), 2, _cv2.LINE_AA)
+            ok, buf = _cv2.imencode(".jpg", frame)
             if ok:
                 jpg = buf.tobytes()
                 yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n")
-            time.sleep(0.1)
+            time.sleep(0.12)
             now = time.time()
             if now - last_log > 5:
-                logging.info("📷 Placeholder streaming (no camera attached).")
+                logging.info("📷 Placeholder streaming (connecting).")
                 last_log = now
+
 
 def generate_frames():
     """
-    MJPEG generator: reads frames, overlays motion (and tracker if enabled),
-    yields JPEG frames. Falls back to placeholder when no camera and
-    PLACEHOLDER_WHEN_NO_CAMERA is enabled.
+    MJPEG generator: reads frames, overlays motion (and tracker if enabled).
+    If no camera yet, yields placeholder frames (when enabled).
     """
-    global tracking_enabled
+    global tracking_enabled, camera
 
-    if not camera_present():
-        return _placeholder_generator() if PLACEHOLDER_WHEN_NO_CAMERA else (b"" for _ in iter(int, 1))
-
-    assert camera is not None and motion_detector is not None
     while True:
+        if not camera_present():
+            if PLACEHOLDER_WHEN_NO_CAMERA:
+                yield from _placeholder_generator()
+                return
+            else:
+                # no camera and no placeholder → end stream (UI will retry)
+                yield b""
+                return
+
+        assert camera is not None and motion_detector is not None
         frame = camera.get_frame()
         if frame is None:
-            # Camera not delivering frames; brief backoff avoids a tight loop.
-            time.sleep(0.05)
+            time.sleep(0.03)
             continue
 
         # Motion overlay
@@ -211,7 +187,8 @@ def generate_frames():
             frame, _ = tracker.update_tracking(frame)
 
         # Encode JPEG
-        ok, buf = cv2.imencode(".jpg", frame)
+        import cv2 as _cv2  # type: ignore
+        ok, buf = _cv2.imencode(".jpg", frame)
         if not ok:
             logging.error("❌ JPEG encode failed.")
             continue
@@ -219,14 +196,13 @@ def generate_frames():
         jpg = buf.tobytes()
         yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n")
 
-# ----------------------- Routes -------------------------------
 
 @app.get("/video_feed")
 def video_feed():
     """
-    MJPEG stream endpoint. If no camera and no placeholder is configured,
-    return 503 so the UI can mark the stream as disconnected.
+    MJPEG stream endpoint.
     """
+    # If there’s no camera yet and placeholder is disabled, tell the client to try later
     if not camera_present() and not PLACEHOLDER_WHEN_NO_CAMERA:
         return jsonify({"ok": False, "error": "camera_unavailable"}), 503
 
@@ -241,32 +217,30 @@ def video_feed():
         },
     )
 
+
 @app.get("/health")
 def health():
     """
-    Lightweight liveness/readiness probe consumed by the UI.
-    - HTTP 200 when streaming is healthy (camera producing recent frames)
-    - HTTP 503 when down OR absent (UI can still read JSON and show 'absent')
+    Liveness/readiness for UI.
+    200 when actually streaming frames, 503 otherwise (down/connecting/absent).
     """
     present = camera_present()
     connected = camera_connected()
-    absent = (not present) and PLACEHOLDER_WHEN_NO_CAMERA
+    connecting = (not present) or (present and not connected)
 
-    # Expose useful metrics when available (safe defaults otherwise)
-    fps = getattr(camera, "fps", 0.0) if present else 0.0
+    status = "connected" if connected else ("connecting" if connecting else "down")
+
+    fps          = getattr(camera, "fps", 0.0) if present else 0.0
     frames_total = getattr(camera, "frames_total", 0) if present else 0
-    drops_total = getattr(camera, "drops_total", 0) if present else 0
-
-    status = "connected" if connected else ("absent" if absent else "down")
+    drops_total  = getattr(camera, "drops_total", 0) if present else 0
 
     payload = {
         "service": "video",
-        "status": status,             # "connected" | "absent" | "down"
-        "ok": connected,              # boolean convenience
-        "cv2": cv2 is not None,
+        "status": status,             # "connected" | "connecting" | "down"
+        "ok": connected,
         "camera_present": present,
-        "placeholder": absent,
-        "device": CAMERA_DEVICE,
+        "placeholder": PLACEHOLDER_WHEN_NO_CAMERA and not connected,
+        "device": os.getenv("CAMERA_DEVICE", "/dev/video0"),
         "size": [CAMERA_WIDTH, CAMERA_HEIGHT],
         "fps": round(float(fps), 2),
         "frames_total": int(frames_total),
@@ -275,29 +249,24 @@ def health():
     }
     return jsonify(payload), (200 if connected else 503)
 
+
 @app.post("/start_tracking")
 def start_tracking():
-    """
-    Enable object tracking by selecting a ROI (requires a GUI/`DISPLAY`).
-    Returns an error if no GUI is available, no frame is available,
-    or OpenCV/camera is missing.
-    """
     global tracking_enabled
 
-    if cv2 is None:
-        return "❌ OpenCV not available", 400
     if not camera_present():
         return "❌ Camera not available", 400
 
-    frame = camera.get_frame()  # type: ignore[union-attr]
-    if frame is None:
+    f = camera.get_frame()  # type: ignore[union-attr]
+    if f is None:
         return "❌ No frame available", 400
 
     try:
+        import cv2 as _cv2  # type: ignore
         if os.environ.get("DISPLAY"):
-            bbox = cv2.selectROI("Select Object to Track", frame, fromCenter=False)
+            bbox = _cv2.selectROI("Select Object to Track", f, fromCenter=False)
             if bbox and all(i > 0 for i in bbox):
-                tracker.start_tracking(frame, bbox)  # type: ignore[union-attr]
+                tracker.start_tracking(f, bbox)  # type: ignore[union-attr]
                 tracking_enabled = True
                 return "Tracking started", 200
             return "❌ No object selected", 400
@@ -306,11 +275,43 @@ def start_tracking():
         logging.error(f"⚠️ Tracking error: {e}")
         return f"❌ Tracking failed: {e}", 500
 
-# ----------------------- Entrypoint ---------------------------
+
+# ---------------- Watchdog / init loop ----------------
+
+def _watchdog_tick():
+    """Periodic camera init/restart logic."""
+    global _last_init_attempt, camera
+
+    # Retry init if none
+    if not camera_present():
+        if (time.time() - _last_init_attempt) >= STARTUP_RETRY_SEC:
+            _create_camera()
+        return
+
+    # Restart on stall (optional)
+    if RESTART_ON_STALL and not camera_connected():
+        logging.warning("Camera stalled > %dms – recreating…", STALE_MS)
+        try:
+            camera.stop()  # type: ignore[union-attr]
+        except Exception:
+            pass
+        camera = None
+        _create_camera()
+
+
+@app.after_request
+def _schedule_watchdog(resp):
+    # Very light-touch watchdog: run opportunistically with requests
+    try:
+        _watchdog_tick()
+    except Exception:
+        pass
+    return resp
+
 
 if __name__ == "__main__":
     _log_startup()
-    _init_video_stack()
+    _create_camera()  # first attempt (non-fatal if it fails)
     try:
         if SSL_ENABLED:
             logging.info("🔒 SSL enabled")
