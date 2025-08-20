@@ -16,25 +16,25 @@
 #   - Accessible: aria-expanded, aria-controls, focus ring
 */
 
+
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { resolveWsUrl } from '@/utils/resolveWsUrl';
+import { cameraStatusBus, CameraUiStatus } from '@/utils/cameraStatusBus';
 
 const DEBUG = !!process.env.NEXT_PUBLIC_WS_DEBUG;
 
 /* ----------------------------- helpers ------------------------------ */
 
-/** Read a query param from the current page (client only). */
 const getQueryParam = (name: string): string | undefined => {
   if (typeof window === 'undefined') return undefined;
   const v = new URLSearchParams(window.location.search).get(name);
   return v?.trim() || undefined;
 };
 
-/** Active UI profile: lan | tailscale | local (honor ?profile override). */
 const getActiveProfile = (): 'lan' | 'tailscale' | 'local' => {
   const qp = (getQueryParam('profile') || '').toLowerCase();
   if (qp === 'lan' || qp === 'tailscale' || qp === 'local') return qp;
@@ -42,14 +42,12 @@ const getActiveProfile = (): 'lan' | 'tailscale' | 'local' => {
   return (['lan', 'tailscale', 'local'].includes(env) ? env : 'local') as any;
 };
 
-/** Convert direct .../video_feed → .../health. */
 const toHealthUrl = (videoUrl?: string) => {
   if (!videoUrl) return '';
   const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
   return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
 };
 
-/** Mixed-content check (block http:// off-origin when page is https://). */
 const willBeMixedContent = (url?: string): boolean => {
   if (!url || typeof window === 'undefined') return false;
   if (window.location.protocol !== 'https:') return false;
@@ -61,7 +59,6 @@ const willBeMixedContent = (url?: string): boolean => {
   }
 };
 
-/** If a resolved WS URL is missing a required subpath (because of host fallback), append it once. */
 const ensurePath = (u: string, path: string) =>
   u && !u.includes(path) ? `${u.replace(/\/$/, '')}${path}` : u;
 
@@ -72,12 +69,10 @@ const ULTRA = ensurePath(resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC', {
 const LINE  = ensurePath(resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER', { defaultPort: '8090' }), '/line-tracker');
 const LIGHT = ensurePath(resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING', { defaultPort: '8082' }), '/lighting');
 
+// NEW: Speed Control server (default 8083). No required suffix by default.
+const SPEED = resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_SPEED', { defaultPort: '8083' });
+
 /* --------------------------- Video endpoints ------------------------ */
-/*
-  Preferred: same-origin proxy HEALTH endpoint → /api/video-health?profile=<p>[&video=...]
-  This avoids mixed-content/CORS and matches your /api/video-proxy usage elsewhere.
-  We still compute a direct health URL for fallback/diagnostics when it's safe.
-*/
 
 const VIDEO_LAN       = process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LAN;
 const VIDEO_TAILSCALE = process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE;
@@ -122,14 +117,8 @@ const Item: React.FC<{
   </div>
 );
 
-// Generic chevron icon (no extra deps)
 const Chevron: React.FC<{ open: boolean }> = ({ open }) => (
-  <svg
-    className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`}
-    viewBox="0 0 20 20"
-    fill="currentColor"
-    aria-hidden
-  >
+  <svg className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden>
     <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.17l3.71-2.94a.75.75 0 111.04 1.08l-4.24 3.36a.75.75 0 01-.94 0L5.21 8.31a.75.75 0 01.02-1.1z" />
   </svg>
 );
@@ -139,14 +128,13 @@ const Chevron: React.FC<{ open: boolean }> = ({ open }) => (
 const ServiceStatusBar: React.FC = () => {
   const [collapsed, setCollapsed] = useState<boolean>(false);
 
-  // Restore persisted collapsed state
+  // Restore/persist collapse
   useEffect(() => {
     try {
       const v = localStorage.getItem('serviceStatusBarCollapsed');
       if (v === '1') setCollapsed(true);
     } catch {}
   }, []);
-  // Persist on change
   useEffect(() => {
     try {
       localStorage.setItem('serviceStatusBarCollapsed', collapsed ? '1' : '0');
@@ -172,15 +160,14 @@ const ServiceStatusBar: React.FC = () => {
     return h;
   }, []);
 
-  // Choose health endpoint: prefer proxy; if unavailable for some reason, use direct when it will not be mixed-content.
-  const canUseProxyHealth = !!VIDEO_PROXY_HEALTH; // same-origin → always safe
+  const canUseProxyHealth = !!VIDEO_PROXY_HEALTH; // always same‑origin
   const canUseDirectHealth = VIDEO_DIRECT_HEALTH && !willBeMixedContent(VIDEO_DIRECT_HEALTH);
 
   const healthUrl = canUseProxyHealth
     ? VIDEO_PROXY_HEALTH
     : (canUseDirectHealth ? (VIDEO_DIRECT_HEALTH as string) : '');
 
-  // Video HTTP status polling
+  // Video HTTP status (backend /health)
   const video: { status: HttpStatus; latency: number | null } =
     healthUrl
       ? useHttpStatus(healthUrl, { intervalMs: 5000, timeoutMs: 2500, treat503AsConnecting: true })
@@ -194,12 +181,27 @@ const ServiceStatusBar: React.FC = () => {
   // WS streaming (any message alive)
   const ultra = ULTRA ? useWsStatus(ULTRA, { treatAnyMessageAsAlive: true, pongTimeoutMs: 4000 }) : { status: 'disconnected' as ServiceStatus, latency: null };
 
-  const states = [move.status, ultra.status, line.status, light.status, video.status] as const;
+  // NEW: Speed server (treat like movement: expects pong)
+  const speed = SPEED ? useWsStatus(SPEED, { pingIntervalMs: 5000, pongTimeoutMs: 2500 }) : { status: 'disconnected' as ServiceStatus, latency: null };
+
+  // NEW: Camera UI status (from CameraFrame bus)
+  const [cameraUi, setCameraUi] = useState<CameraUiStatus>(cameraStatusBus.getSnapshot());
+  useEffect(() => cameraStatusBus.subscribe(setCameraUi), []);
+
+  // Build summary
+  const states = [
+    move.status,
+    ultra.status,
+    line.status,
+    light.status,
+    video.status,                 // backend video server
+    cameraUi.state as HttpStatus, // frontend camera widget
+    speed.status,                 // speed server
+  ] as const;
+
   const up = states.filter(s => s === 'connected').length;
   const allUp = up === states.length;
   const anyUp = up > 0;
-
-  // Summary dot color for collapsed header
   const summaryState: ServiceStatus | HttpStatus = allUp ? 'connected' : anyUp ? 'connecting' : 'disconnected';
 
   return (
@@ -226,7 +228,7 @@ const ServiceStatusBar: React.FC = () => {
       {/* Collapsible panel */}
       <div
         id="service-status-panel"
-        className={`overflow-hidden transition-all duration-300 ease-out ${collapsed ? 'max-h-0 opacity-0 scale-[0.98]' : 'max-h-40 opacity-100 scale-100'}`}
+        className={`overflow-hidden transition-all duration-300 ease-out ${collapsed ? 'max-h-0 opacity-0 scale-[0.98]' : 'max-h-60 opacity-100 scale-100'}`}
       >
         <div className="mt-2 px-3 py-2 bg-black/40 border border-white/10 rounded-md">
           <div className="text-xs text-white/70 mb-1" aria-live="polite">
@@ -237,7 +239,9 @@ const ServiceStatusBar: React.FC = () => {
             <Item label="Ultrasonic"  state={ultra.status}  />
             <Item label="Line"        state={line.status}   latency={line.latency} />
             <Item label="Lighting"    state={light.status}  latency={light.latency} />
-            <Item label="Video"       state={video.status}  latency={video.latency} />
+            <Item label="Video (srv)" state={video.status}  latency={video.latency} />
+            <Item label="Camera UI"   state={cameraUi.state as HttpStatus} latency={cameraUi.pingMs ?? null} />
+            <Item label="Speed"       state={speed.status}  latency={speed.latency} />
           </div>
         </div>
       </div>

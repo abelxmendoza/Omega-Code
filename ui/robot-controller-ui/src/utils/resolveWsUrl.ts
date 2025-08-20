@@ -58,6 +58,12 @@ const ENV = {
   NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_LAN:           process.env.NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_LAN,
   NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_LOCAL:         process.env.NEXT_PUBLIC_BACKEND_WS_URL_LOCATION_LOCAL,
 
+  // speed control (NEW)
+  NEXT_PUBLIC_BACKEND_WS_URL_SPEED:                   process.env.NEXT_PUBLIC_BACKEND_WS_URL_SPEED,
+  NEXT_PUBLIC_BACKEND_WS_URL_SPEED_TAILSCALE:         process.env.NEXT_PUBLIC_BACKEND_WS_URL_SPEED_TAILSCALE,
+  NEXT_PUBLIC_BACKEND_WS_URL_SPEED_LAN:               process.env.NEXT_PUBLIC_BACKEND_WS_URL_SPEED_LAN,
+  NEXT_PUBLIC_BACKEND_WS_URL_SPEED_LOCAL:             process.env.NEXT_PUBLIC_BACKEND_WS_URL_SPEED_LOCAL,
+
   // video (kept here for completeness)
   NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE:            process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE,
   NEXT_PUBLIC_VIDEO_STREAM_URL_LAN:                  process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LAN,
@@ -195,6 +201,7 @@ export type WsKey =
   | 'NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER'
   | 'NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING'
   | 'NEXT_PUBLIC_BACKEND_WS_URL_LOCATION'
+  | 'NEXT_PUBLIC_BACKEND_WS_URL_SPEED'   // NEW
   | 'NEXT_PUBLIC_VIDEO_STREAM_URL';
 
 export interface ResolveOpts {
@@ -230,10 +237,10 @@ export function resolveWsCandidates(
     active === 'lan'       ? ['tailscale', 'local'] :
                               ['lan', 'tailscale'];
 
-  const fromQuery   = allowQueryWsOverride ? getQueryParam('ws') : undefined;
-  const baseDirect  = directBaseUrl(baseKey);
-  const activeDirect= directUrlFor(baseKey, active);
-  const activeHost  = hostUrlFor(active, { defaultPort, path });
+  const fromQuery    = allowQueryWsOverride ? getQueryParam('ws') : undefined;
+  const baseDirect   = directBaseUrl(baseKey);
+  const activeDirect = directUrlFor(baseKey, active);
+  const activeHost   = hostUrlFor(active, { defaultPort, path });
 
   const otherDirects = others.map((p) => directUrlFor(baseKey, p));
   const otherHosts   = others.map((p) => hostUrlFor(p, { defaultPort, path }));

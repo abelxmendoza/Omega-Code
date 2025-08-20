@@ -17,7 +17,9 @@
 #     • network/CORS errors → "disconnected" (red)
 */
 
+
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { cameraStatusBus } from '@/utils/cameraStatusBus';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'no_camera';
 type FitMode = 'cover' | 'contain';
@@ -80,10 +82,7 @@ const filterClass = (mode: FilterMode) => {
   }
 };
 
-/** Build the correct health URL for whatever `src` we were given.
- *  - If `src` is our same-origin MJPEG proxy (/api/video-proxy?...),
- *    switch to the health proxy (/api/video-health?...).
- *  - Otherwise, derive .../health from the upstream video URL. */
+/** Build the correct health URL for whatever `src` we were given. */
 const buildHealthUrl = (srcUrl?: string) => {
   if (!srcUrl) return '';
   try {
@@ -127,6 +126,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
 
   const [status, setStatus] = useState<ServerStatus>('connecting');
   const [pingMs, setPingMs] = useState<number | null>(null);
+  const [lastHttp, setLastHttp] = useState<number | null>(null);   // NEW: expose HTTP code
   const [fps, setFps] = useState<number>(0);
 
   const [playing, setPlaying] = useState(true);
@@ -158,6 +158,19 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
     return `${src}${sep}b=${buster}`;
   }, [src, buster]);
 
+  // Push current status to the bus
+  const publish = (s: Partial<Parameters<typeof cameraStatusBus.publish>[0]>) => {
+    cameraStatusBus.publish({
+      state:
+        s.state ||
+        (status as any),
+      pingMs: s.pingMs ?? pingMs,
+      lastHttp: s.lastHttp ?? lastHttp,
+      playing: s.playing ?? playing,
+      ts: Date.now(),
+    });
+  };
+
   // ---------- Availability + latency via GET /health ----------
   useEffect(() => {
     let cancelled = false;
@@ -165,15 +178,24 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
 
     const check = async () => {
       if (!healthUrl) {
-        if (!cancelled) { setStatus('disconnected'); setPingMs(null); }
+        if (!cancelled) {
+          setStatus('disconnected');
+          setPingMs(null);
+          setLastHttp(null);
+          publish({ state: 'disconnected', pingMs: null, lastHttp: null });
+        }
         return;
       }
       try {
         setStatus(s => (s === 'connected' || s === 'no_camera') ? s : 'connecting');
+        publish({ state: 'connecting' });
+
         const start = performance.now();
         const res = await fetch(healthUrl, { method: 'GET', cache: 'no-store' });
         const end = performance.now();
         if (cancelled) return;
+
+        setLastHttp(res.status);
 
         let body: any = null;
         try { body = await res.clone().json(); } catch {}
@@ -181,21 +203,30 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
         const rtt = Math.max(0, Math.round(end - start));
         if (res.ok) {
           setStatus('connected'); setPingMs(rtt);
+          publish({ state: 'connected', pingMs: rtt, lastHttp: res.status });
         } else if (res.status === 503 && body && body.placeholder === true) {
           setStatus('no_camera'); setPingMs(rtt);
+          publish({ state: 'no_camera', pingMs: rtt, lastHttp: res.status });
         } else if (res.status === 503) {
           setStatus('connecting'); setPingMs(rtt);
+          publish({ state: 'connecting', pingMs: rtt, lastHttp: res.status });
         } else {
           setStatus('disconnected'); setPingMs(null);
+          publish({ state: 'disconnected', pingMs: null, lastHttp: res.status });
         }
       } catch {
-        if (!cancelled) { setStatus('disconnected'); setPingMs(null); }
+        if (!cancelled) {
+          setStatus('disconnected'); setPingMs(null);
+          setLastHttp(null);
+          publish({ state: 'disconnected', pingMs: null, lastHttp: null });
+        }
       }
     };
 
     check();
     const t = window.setInterval(check, Math.max(2000, checkIntervalMs));
     return () => { cancelled = true; window.clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, checkIntervalMs]);
 
   // ---------- FPS estimate (only while recording or snapshotting to canvas) ----------
@@ -304,12 +335,14 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
 
     try { if (imgRef.current) imgRef.current.src = ''; } catch {}
     setPlaying(false);
+    publish({ playing: false });
     clearRetryTimer();
   };
 
   const handlePlay = () => {
     setSnapshotUrl(null);
     setPlaying(true);
+    publish({ playing: true });
     resetBackoff();
     // force new request once
     setBuster(Date.now());
@@ -382,17 +415,19 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
   // ---------- Image load/error → status + retries ----------
   const handleImgLoad = () => {
     setStatus('connected');
+    publish({ state: 'connected' });
     resetBackoff();
     if (DEBUG) console.log('[CameraFrame] <img> load OK');
   };
 
   const handleImgError = () => {
     setStatus(prev => (prev === 'no_camera' ? prev : 'disconnected'));
+    publish({ state: 'disconnected' });
     if (DEBUG) console.warn('[CameraFrame] <img> error');
     scheduleRetry();
   };
 
-  // Cleanup timers, blob URLs, recorder on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       clearRetryTimer();
@@ -405,39 +440,6 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       }
     };
   }, []);
-
-  // ---------- UI bits ----------
-  const headerRight = (
-    <div className="flex items-center gap-1">
-      <IconBtn onClick={handleTogglePlay} title={playing ? 'Pause' : 'Play'}>
-        {playing ? '⏸' : '▶️'}
-      </IconBtn>
-      <IconBtn onClick={() => setFitMode(fitMode === 'cover' ? 'contain' : 'cover')} title={`Fit: ${fitMode}`}>
-        {fitMode === 'cover' ? '◱' : '◰'}
-      </IconBtn>
-      <IconBtn onClick={() => setRotate((r) => ((r + 90) % 360) as 0 | 90 | 180 | 270)} title="Rotate 90°">↻</IconBtn>
-      <IconBtn onClick={() => setFlipH(v => !v)} title="Flip H" active={flipH}>⇆</IconBtn>
-      <IconBtn onClick={() => setFlipV(v => !v)} title="Flip V" active={flipV}>⥯</IconBtn>
-      <IconBtn onClick={() => setFilter(f =>
-        f === 'none' ? 'mono' : f === 'mono' ? 'contrast' : f === 'contrast' ? 'night' : 'none'
-      )} title={`Filter: ${filter}`}>🎛️</IconBtn>
-      <IconBtn onClick={handleSnapshotDownload} title="Snapshot PNG" disabled={!(status === 'connected' && playing)}>📸</IconBtn>
-      <IconBtn
-        onClick={recording ? stopRecording : startRecording}
-        title={recording ? 'Stop recording' : 'Start recording'}
-        active={recording}
-        disabled={!recording && !(status === 'connected' && playing)}
-      >
-        {recording ? '⏺︎⏹' : '⏺'}
-      </IconBtn>
-      <IconBtn onClick={() => {
-        const el = containerRef.current;
-        if (!el) return;
-        if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-        else el.requestFullscreen?.().catch(()=>{});
-      }} title="Fullscreen">⛶</IconBtn>
-    </div>
-  );
 
   // Titles/tooltips
   const titleText =
@@ -460,21 +462,47 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
             {pingMs != null ? `${pingMs} ms` : '— ms'} • {fps} fps
           </span>
         </div>
-        {headerRight}
+        <div className="flex items-center gap-1">
+          <IconBtn onClick={handleTogglePlay} title={playing ? 'Pause' : 'Play'}>
+            {playing ? '⏸' : '▶️'}
+          </IconBtn>
+          <IconBtn onClick={() => setFitMode(fitMode === 'cover' ? 'contain' : 'cover')} title={`Fit: ${fitMode}`}>
+            {fitMode === 'cover' ? '◱' : '◰'}
+          </IconBtn>
+          <IconBtn onClick={() => setRotate((r) => ((r + 90) % 360) as 0 | 90 | 180 | 270)} title="Rotate 90°">↻</IconBtn>
+          <IconBtn onClick={() => setFlipH(v => !v)} title="Flip H" active={flipH}>⇆</IconBtn>
+          <IconBtn onClick={() => setFlipV(v => !v)} title="Flip V" active={flipV}>⥯</IconBtn>
+          <IconBtn onClick={() => setFilter(f =>
+            f === 'none' ? 'mono' : f === 'mono' ? 'contrast' : f === 'contrast' ? 'night' : 'none'
+          )} title={`Filter: ${filter}`}>🎛️</IconBtn>
+          <IconBtn onClick={handleSnapshotDownload} title="Snapshot PNG" disabled={!(status === 'connected' && playing)}>📸</IconBtn>
+          <IconBtn
+            onClick={recording ? stopRecording : startRecording}
+            title={recording ? 'Stop recording' : 'Start recording'}
+            active={recording}
+            disabled={!recording && !(status === 'connected' && playing)}
+          >
+            {recording ? '⏺︎⏹' : '⏺'}
+          </IconBtn>
+          <IconBtn onClick={() => {
+            const el = containerRef.current;
+            if (!el) return;
+            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+            else el.requestFullscreen?.().catch(()=>{});
+          }} title="Fullscreen">⛶</IconBtn>
+        </div>
       </div>
 
       {/* Media area (16:9 default) */}
       <div className={`relative bg-black ${filterClass(filter)}`} style={{ paddingTop: '56.25%' }}>
-        {/* Always render <img> while playing; use a stable URL that only
-           changes when `buster` changes (play/retry/backoff). */}
         {playing ? (
           <img
             ref={imgRef}
-            key={IMG_SRC}               /* new request only when buster changes */
+            key={IMG_SRC}
             src={IMG_SRC}
             alt="Live Camera"
             className={`absolute inset-0 w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
-            style={{ transform: mediaTransform, transformOrigin: 'center center' }}
+            style={{ transform: `rotate(${rotate}deg) scale(${flipH ? -1 : 1}, ${flipV ? -1 : 1})`, transformOrigin: 'center center' }}
             onError={handleImgError}
             onLoad={handleImgLoad}
             draggable={false}
@@ -485,19 +513,25 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
               src={snapshotUrl}
               alt="Last frame"
               className={`absolute inset-0 w-full h-full opacity-25 ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
-              style={{ transform: mediaTransform, transformOrigin: 'center center' }}
+              style={{ transform: `rotate(${rotate}deg) scale(${flipH ? -1 : 1}, ${flipV ? -1 : 1})`, transformOrigin: 'center center' }}
             />
           )
         )}
 
-        {/* Overlay messages */}
         {!playing && !snapshotUrl && (
           <div className="absolute inset-0 flex items-center justify-center text-white/70 text-sm">Paused</div>
         )}
         {status === 'disconnected' && playing && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white/85">
             <div className="text-sm mb-3">Not connected</div>
-            <IconBtn onClick={handlePlay} title="Retry">Retry</IconBtn>
+            <button
+              type="button"
+              className="px-2 py-1 rounded bg-black/40 hover:bg-black/55 text-white text-xs backdrop-blur border border-white/15 transition"
+              onClick={() => { setSnapshotUrl(null); setPlaying(true); setBuster(Date.now()); resetBackoff(); publish({ playing: true }); }}
+              title="Retry"
+            >
+              Retry
+            </button>
           </div>
         )}
         {status === 'no_camera' && (
