@@ -1,21 +1,17 @@
 /*
 # File: /Omega-Code/ui/robot-controller-ui/src/components/VideoFeed.tsx
 # Summary:
-#   Live MJPEG preview with a mini GPS map and robust status handling.
+#   Live MJPEG preview with a mini GPS map, robust status handling, and
+#   automatic profile failover (tailscale → lan → local) when sources fail.
 #
-#   Key features:
-#   - Streams via same-origin proxy first: GET /api/video-proxy
-#       • avoids mixed-content blocks when the UI is served over HTTPS
-#       • honors ?profile=lan|tailscale|local and ?video=<override-url>
-#   - Health probing via same-origin: GET /api/video-health
-#       • reliable over HTTPS (no mixed-content/CORS issues)
-#       • status semantics:
-#           connected   → 200
-#           no_camera   → 503 + { placeholder:true }
-#           connecting  → generic 503
-#           disconnected→ network/timeout/other
-#   - Fallback: if proxy image fails, try the direct upstream URL when it’s safe (no mixed content)
-#   - Auto cache-busting on retries/status changes; accessible, debuggable (“proxy|direct” tag)
+#   Behavior:
+#   - Prefer same-origin proxy: GET /api/video-proxy?profile=<p>[&video=...]
+#   - Health via same-origin:   GET /api/video-health?profile=<p>[&video=...]
+#   - If the proxy image errors, try direct upstream (only if no mixed content).
+#   - If direct also fails, rotate to the next profile (unless ?profile pinned).
+#   - Honors page overrides:
+#       • ?video=<override-url>  → no rotation; use that upstream (proxy first)
+#       • ?profile=lan|tailscale|local → pin to that profile (no rotation)
 #
 #   Env inputs:
 #     NEXT_PUBLIC_NETWORK_PROFILE = lan | tailscale | local
@@ -24,12 +20,7 @@
 #     NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL
 #
 #   Parent callback:
-#     onVideoStatusChange(ok: boolean) – fires when effective “online” (green) changes
-#
-#   Notes:
-#     • This component expects the API routes we added:
-#         - /api/video-proxy     (streams MJPEG)
-#         - /api/video-health    (for status/latency)
+#     onVideoStatusChange(ok: boolean)
 */
 
 'use client';
@@ -39,25 +30,15 @@ import GpsLocation from './GpsLocation';
 import { useHttpStatus } from '../hooks/useHttpStatus';
 import { getActiveProfile } from '@/utils/resolveWsUrl';
 
+type Profile = 'lan' | 'tailscale' | 'local';
 type ServerStatus = 'connected' | 'connecting' | 'disconnected' | 'no_camera';
 
 /* ----------------------------- helpers ------------------------------ */
 
-/** Pick per active profile with sensible fallbacks (env-driven). */
-function pickByProfile(lan?: string, tailscale?: string, local?: string): string {
-  const prof = getActiveProfile(); // 'lan' | 'tailscale' | 'local'
-  return prof === 'lan'
-    ? (lan ?? local ?? '')
-    : prof === 'tailscale'
-    ? (tailscale ?? local ?? '')
-    : (local ?? lan ?? tailscale ?? '');
-}
-
-/** Convert .../video_feed[?...] → sibling /health (for direct upstream). */
-function toHealthUrl(videoUrl?: string) {
-  if (!videoUrl) return '';
-  const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
-  return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
+function getQueryParam(name: string): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const v = new URLSearchParams(window.location.search).get(name);
+  return v?.trim() || undefined;
 }
 
 /** Would fetching this URL be mixed-content when the UI is https? */
@@ -72,21 +53,27 @@ function willBeMixedContent(url: string): boolean {
   }
 }
 
-/** Get current page query param (for forwarding ?profile, ?video to the proxy). */
-function getQueryParam(name: string): string | undefined {
-  if (typeof window === 'undefined') return undefined;
-  const v = new URLSearchParams(window.location.search).get(name);
-  return v?.trim() || undefined;
+/** Convert .../video_feed[?...] → sibling /health. */
+function toHealthUrl(videoUrl?: string) {
+  if (!videoUrl) return '';
+  const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
+  return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
 }
 
-/* ----------------------- env/direct upstream URLs ------------------- */
+/** Build env-driven direct URLs by profile. */
+function envDirectByProfile(): Record<Profile, string | undefined> {
+  return {
+    lan: process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LAN,
+    tailscale: process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE,
+    local: process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL,
+  };
+}
 
-const DIRECT_VIDEO_STREAM = pickByProfile(
-  process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LAN,
-  process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE,
-  process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL
-);
-const DIRECT_VIDEO_HEALTH = toHealthUrl(DIRECT_VIDEO_STREAM);
+/** The rotation order: active first, then the other two (unique). */
+function getProfileRotation(active: Profile): Profile[] {
+  const all: Profile[] = ['tailscale', 'lan', 'local'];
+  return [active, ...all.filter((p) => p !== active)];
+}
 
 /* ------------------------------- UI -------------------------------- */
 
@@ -118,73 +105,80 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
   className = '',
   objectFit = 'cover',
 }) => {
+  const qpProfile = (getQueryParam('profile') as Profile | undefined)?.toLowerCase() as Profile | undefined;
+  const qpVideo = getQueryParam('video'); // explicit upstream override
+  const initialActive = (qpProfile || (getActiveProfile() as Profile)) as Profile;
+
+  // Rotation order (active first). If qpProfile is set, we pin and don't rotate.
+  const rotation = useMemo(() => getProfileRotation(initialActive), [initialActive]);
+  const rotationEnabled = !qpProfile && !qpVideo; // explicit page overrides disable rotation
+
   const [mapExpanded, setMapExpanded] = useState(false);
   const [imgError, setImgError] = useState(false);
-  const [useDirect, setUseDirect] = useState(false); // start with proxy; switch to direct if proxy fails and direct is safe
+  const [useDirect, setUseDirect] = useState(false);
   const [buster, setBuster] = useState<number>(() => Date.now());
   const [isOffline, setIsOffline] = useState<boolean>(typeof navigator !== 'undefined' ? !navigator.onLine : false);
+  const [profileIdx, setProfileIdx] = useState<number>(0); // index into rotation array
+  const attemptsRef = useRef<number>(0); // guard against infinite loops
 
-  // Forward page overrides to the proxy (if present)
-  const qpProfile = getQueryParam('profile'); // optional page override
-  const qpVideo = getQueryParam('video'); // optional page override
-  const activeProfile = (qpProfile as any) || getActiveProfile();
+  const currentProfile = rotation[profileIdx] || initialActive;
+  const directByProfile = useMemo(() => envDirectByProfile(), []);
 
-  // Same-origin proxy URL base; forward ?profile and ?video so the API can pick upstream.
+  // If ?video= is present, always use that upstream for direct (and pass to proxy)
+  const directForProfile = useMemo(() => {
+    if (qpVideo) return qpVideo;
+    return directByProfile[currentProfile] || '';
+  }, [qpVideo, directByProfile, currentProfile]);
+
+  const directHealthForProfile = useMemo(() => toHealthUrl(directForProfile), [directForProfile]);
+
+  // Same-origin proxy base, always forward current profile and optional ?video
   const PROXY_URL_BASE = '/api/video-proxy';
+  const PROXY_HEALTH_BASE = '/api/video-health';
   const proxyQuery = useMemo(() => {
     const qs = new URLSearchParams();
-    if (activeProfile) qs.set('profile', String(activeProfile));
+    qs.set('profile', String(currentProfile));
     if (qpVideo) qs.set('video', qpVideo);
     return qs.toString();
-  }, [activeProfile, qpVideo]);
+  }, [currentProfile, qpVideo]);
 
-  // Final image source picks proxy first, then (if proxy fails) tries the direct upstream if safe.
+  // Final image source: proxy first, then direct (safe only)
   const IMG_BASE = useDirect
-    ? DIRECT_VIDEO_STREAM
+    ? directForProfile
     : proxyQuery
     ? `${PROXY_URL_BASE}?${proxyQuery}`
     : PROXY_URL_BASE;
 
-  // Add a cache-buster whenever we retry or status toggles
   const IMG_SRC = useMemo(() => {
     if (!IMG_BASE) return '';
     const sep = IMG_BASE.includes('?') ? '&' : '?';
     return `${IMG_BASE}${sep}b=${buster}`;
   }, [IMG_BASE, buster]);
 
-  // Health probing – prefer same-origin proxy; falls back to direct if proxy not desired.
-  const PROXY_HEALTH = proxyQuery ? `/api/video-health?${proxyQuery}` : '/api/video-health';
-  const canProbeDirectHealth = DIRECT_VIDEO_HEALTH && !willBeMixedContent(DIRECT_VIDEO_HEALTH);
-
-  // Always try proxy health (same-origin, recommended). If you explicitly don’t want the proxy,
-  // swap to `canProbeDirectHealth ? DIRECT_VIDEO_HEALTH : undefined`.
-  const HEALTH_URL = PROXY_HEALTH || (canProbeDirectHealth ? DIRECT_VIDEO_HEALTH : undefined);
+  // Health: prefer proxy health. If for some reason that's disabled, allow safe direct.
+  const proxyHealth = `${PROXY_HEALTH_BASE}?${proxyQuery}`;
+  const canProbeDirectHealth = directHealthForProfile && !willBeMixedContent(directHealthForProfile);
+  const HEALTH_URL = proxyHealth || (canProbeDirectHealth ? directHealthForProfile : undefined);
 
   const { status: healthStatus, latency } = useHttpStatus(HEALTH_URL, {
     intervalMs: 5000,
     timeoutMs: 2500,
   });
 
-  // Track last time the MJPEG actually loaded successfully; helps override status
+  // Track last successful image load
   const lastImgOkAt = useRef<number | null>(null);
 
-  // Derive an effective status combining health + image reality + offline
+  // Effective status derives from connectivity + health + recent img load
   const effectiveStatus: ServerStatus = useMemo(() => {
     if (isOffline) return 'disconnected';
-
-    // If the image has loaded very recently, consider us connected regardless of transient health
     const now = Date.now();
-    const recentOk = lastImgOkAt.current && now - lastImgOkAt.current < 8000; // 8s grace
+    const recentOk = lastImgOkAt.current && now - lastImgOkAt.current < 8000;
     if (recentOk) return 'connected';
-
-    // Otherwise rely on health if available (proxy health is preferred)
     if (healthStatus) return healthStatus;
-
-    // No health available: infer from img error state
     return imgError ? 'disconnected' : 'connecting';
   }, [healthStatus, imgError, isOffline]);
 
-  // Notify parent when the effective online state flips
+  // Notify parent when online state flips
   const wasOnline = useRef<boolean | null>(null);
   useEffect(() => {
     const online = effectiveStatus === 'connected';
@@ -194,12 +188,12 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
     }
   }, [effectiveStatus, onVideoStatusChange]);
 
-  // Reset image error whenever we change the src
+  // Reset image error on src changes
   useEffect(() => {
     setImgError(false);
   }, [IMG_SRC]);
 
-  // Listen for browser offline/online to improve UX
+  // Listen for offline/online
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const on = () => setIsOffline(false);
@@ -212,25 +206,46 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
     };
   }, []);
 
+  const rotateProfile = () => {
+    if (!rotationEnabled) return false;
+    if (attemptsRef.current >= rotation.length) return false; // tried them all
+    const next = (profileIdx + 1) % rotation.length;
+    if (next === profileIdx) return false;
+    setProfileIdx(next);
+    attemptsRef.current += 1;
+    setUseDirect(false); // when switching profile, always try proxy again first
+    setBuster(Date.now()); // force reload
+    return true;
+  };
+
   const onImgLoad = () => {
     lastImgOkAt.current = Date.now();
-    // keep current source selection; status will go green
+    attemptsRef.current = 0; // success → reset fail counter
   };
 
   const onImgError = () => {
     setImgError(true);
-    // If proxy failed, try direct (but only if it won't be mixed content)
+
+    // Step 1: if we were on proxy, try direct (but only if safe)
     if (!useDirect) {
-      const safe = DIRECT_VIDEO_STREAM && !willBeMixedContent(DIRECT_VIDEO_STREAM);
+      const safe = directForProfile && !willBeMixedContent(directForProfile);
       if (safe) {
         setUseDirect(true);
-        setBuster(Date.now()); // force immediate retry with direct
+        setBuster(Date.now());
+        return;
       }
     }
+
+    // Step 2: rotate to next profile (proxy first), unless pinned
+    if (rotateProfile()) return;
+
+    // Step 3: if nothing else to try, just bump buster to retry current source
+    setBuster(Date.now());
   };
 
   const retry = () => {
-    // Prefer proxy again on retry
+    // Manual retry: prefer proxy of current profile again
+    attemptsRef.current = 0;
     setUseDirect(false);
     setImgError(false);
     lastImgOkAt.current = null;
@@ -240,7 +255,12 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
   const showImg = Boolean(IMG_SRC);
   const titleSuffix = latency != null ? ` • ${latency}ms` : '';
   const statusLabel =
-    effectiveStatus === 'no_camera' ? 'No camera' : effectiveStatus.charAt(0).toUpperCase() + effectiveStatus.slice(1);
+    effectiveStatus === 'no_camera'
+      ? 'No camera'
+      : effectiveStatus.charAt(0).toUpperCase() + effectiveStatus.slice(1);
+
+  // Pretty badge for current stream provenance
+  const sourceBadge = `${useDirect ? 'direct' : 'proxy'} · ${qpVideo ? 'custom' : currentProfile}`;
 
   return (
     <div
@@ -254,8 +274,11 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
         <span className="text-white/80">
           {effectiveStatus === 'no_camera' ? 'No camera' : latency != null ? `${latency}ms` : '—'}
         </span>
-        <span className="ml-1 px-1 rounded bg-white/10 border border-white/10" title="Stream source">
-          {useDirect ? 'direct' : 'proxy'}
+        <span
+          className="ml-1 px-1 rounded bg-white/10 border border-white/10"
+          title={`Stream source: ${sourceBadge}`}
+        >
+          {sourceBadge}
         </span>
         {isOffline && <span className="ml-1 px-1 rounded bg-rose-500/80 text-black">offline</span>}
       </div>
@@ -294,10 +317,10 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
               >
                 Retry
               </button>
-              {DIRECT_VIDEO_STREAM && (
+              {directForProfile && (
                 <a
                   className="px-2 py-1 rounded bg-black/40 hover:bg-black/55 border border-white/20 text-xs"
-                  href={DIRECT_VIDEO_STREAM}
+                  href={directForProfile}
                   target="_blank"
                   rel="noreferrer"
                 >
