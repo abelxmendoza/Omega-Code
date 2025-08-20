@@ -12,21 +12,27 @@ Unified camera facade for Raspberry Pi robots.
 
 Environment (optional)
 ----------------------
-CAMERA_BACKEND = auto | picamera2 | v4l2   (default: auto)
-CAMERA_DEVICE  = V4L2 path/index (for v4l2 backend; default: /dev/video0)
-CAMERA_WIDTH   = 640
-CAMERA_HEIGHT  = 480
-FRAME_STALE_MS = 2500   # used by is_alive() default
+CAMERA_BACKEND   = auto | picamera2 | v4l2   (default: auto)
+CAMERA_BACKENDS  = comma list (e.g. "picamera2,v4l2")  # respected if CAMERA_BACKEND=auto
+CAMERA_DEVICE    = V4L2 path/index (for v4l2 backend; default: /dev/video0)
+CAMERA_WIDTH     = 640
+CAMERA_HEIGHT    = 480
+CAMERA_FPS       = 30
+CAMERA_FOURCC    = MJPG  (for v4l2)
+CAMERA_WARMUP_MS = 5000  (warm-up timeout; default 3000 for picamera2, 1500 for v4l2)
+CAMERA_WARMUP_FRAMES = 2
+FRAME_STALE_MS   = 2500  # used by is_alive() default
 """
 
 from __future__ import annotations
 
+import atexit
 import os
 import time
 import threading
 import logging
 import warnings
-from typing import Optional
+from typing import Optional, Callable, Iterable, Tuple
 
 import numpy as np
 
@@ -50,6 +56,27 @@ except Exception:
 log = logging.getLogger(__name__)
 
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        v = os.getenv(name)
+        return int(v) if v is not None and str(v).strip() != "" else default
+    except Exception:
+        return default
+
+
+def _env_str(name: str, default: str) -> str:
+    v = os.getenv(name)
+    return v if v and v.strip() else default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        v = os.getenv(name)
+        return float(v) if v is not None and str(v).strip() != "" else default
+    except Exception:
+        return default
+
+
 # =========================
 # Backend: Picamera2 (CSI)
 # =========================
@@ -63,11 +90,18 @@ class _PiCam2Backend:
         width: int,
         height: int,
         target_fps: int = 30,
-        warmup_timeout_s: float = 1.2,
+        warmup_timeout_s: float = 3.0,  # more generous default on RPi
         warmup_min_frames: int = 2,
     ) -> None:
         if not _PICAM2_OK:
             raise RuntimeError("Picamera2 is not installed")
+
+        # Allow env overrides without changing call sites
+        warmup_timeout_s = max(
+            warmup_timeout_s,
+            _env_int("CAMERA_WARMUP_MS", int(warmup_timeout_s * 1000)) / 1000.0,
+        )
+        warmup_min_frames = max(1, _env_int("CAMERA_WARMUP_FRAMES", warmup_min_frames))
 
         self.width = int(width)
         self.height = int(height)
@@ -84,13 +118,18 @@ class _PiCam2Backend:
         self._frames_total = 0
         self._drops_total = 0
 
-        # Configure Picamera2 for RGB888 at requested size. Some control names differ
-        # across versions; wrap in a try so we always configure something workable.
+        # Configure Picamera2 for RGB888 at requested size.
         self.picam = Picamera2()
         try:
             cfg = self.picam.create_video_configuration(
                 main={"size": (self.width, self.height), "format": "RGB888"},
-                controls={"FrameDurationLimits": (int(1e9 / self.target_fps), int(1e9 / self.target_fps))},
+                controls={
+                    # Attempt to pin the FPS if supported
+                    "FrameDurationLimits": (
+                        int(1e9 / self.target_fps),
+                        int(1e9 / self.target_fps),
+                    )
+                },
             )
         except Exception:
             cfg = self.picam.create_video_configuration(
@@ -114,9 +153,12 @@ class _PiCam2Backend:
     def _wait_for_frames(self, timeout_s: float, need: int) -> bool:
         got = 0
         t0 = time.time()
+        last_seen = 0.0
         while time.time() - t0 < timeout_s and got < need:
-            if self._last_frame_ts > 0:
+            ts = self._last_frame_ts
+            if ts > 0 and ts != last_seen:
                 got += 1
+                last_seen = ts
             time.sleep(0.03)
         return got >= need
 
@@ -127,7 +169,8 @@ class _PiCam2Backend:
 
         while self._running:
             try:
-                rgb = self.picam.capture_array("main")  # RGB888
+                # returns RGB888
+                rgb = self.picam.capture_array("main")
                 if rgb is None:
                     self._drops_total += 1
                     time.sleep(0.01)
@@ -153,6 +196,7 @@ class _PiCam2Backend:
 
             except Exception as e:
                 self._drops_total += 1
+                # Picamera2 occasionally throws transient errors during AE/AGC
                 log.warning("Picamera2 capture error: %s", e)
                 time.sleep(0.03)
 
@@ -205,12 +249,20 @@ class _V4L2Backend:
         *,
         target_fps: int = 30,
         fourcc: str = "MJPG",
-        warmup_timeout_s: float = 1.0,
+        warmup_timeout_s: float = 1.5,
         warmup_min_frames: int = 2,
         warn_every_s: float = 2.0,
     ) -> None:
         if cv2 is None:
             raise RuntimeError("OpenCV not available for V4L2 backend")
+
+        # Env overrides
+        warmup_timeout_s = max(
+            warmup_timeout_s,
+            _env_int("CAMERA_WARMUP_MS", int(warmup_timeout_s * 1000)) / 1000.0,
+        )
+        warmup_min_frames = max(1, _env_int("CAMERA_WARMUP_FRAMES", warmup_min_frames))
+        fourcc = _env_str("CAMERA_FOURCC", fourcc)
 
         self.device = device
         self.width = int(width)
@@ -255,14 +307,20 @@ class _V4L2Backend:
             self.stop()
             raise RuntimeError(f"❌ Could not open camera at {self.device} (no frames)")
 
-        log.info("📷 Camera backend: v4l2 %s (%dx%d@~%dfps)", self.device, self.width, self.height, self._target_fps)
+        log.info(
+            "📷 Camera backend: v4l2 %s (%dx%d@~%dfps, FOURCC=%s)",
+            self.device, self.width, self.height, self._target_fps, fourcc or "default"
+        )
 
     def _wait_for_frames(self, timeout_s: float, need: int) -> bool:
         got = 0
         t0 = time.time()
+        last_seen = 0.0
         while time.time() - t0 < timeout_s and got < need:
-            if self._last_frame_ts > 0.0:
+            ts = self._last_frame_ts
+            if ts > 0.0 and ts != last_seen:
                 got += 1
+                last_seen = ts
             time.sleep(0.03)
         return got >= need
 
@@ -270,6 +328,9 @@ class _V4L2Backend:
         assert self._cap is not None
         last_tick = time.time()
         frames_in_win = 0
+
+        # Small adaptive sleep to avoid busy-looping while keeping latency low
+        base_sleep = max(0.0, 1.0 / (self._target_fps * 3.0))
 
         while self._running:
             ok, frame = self._cap.read()
@@ -279,7 +340,7 @@ class _V4L2Backend:
                 if now - self._last_warn_ts >= self._warn_every_s:
                     log.warning("⚠️ Warning: Failed to capture frame.")
                     self._last_warn_ts = now
-                time.sleep(0.02)
+                time.sleep(max(0.01, base_sleep))
                 continue
 
             # Normalize to 3-channel BGR
@@ -304,8 +365,7 @@ class _V4L2Backend:
                 frames_in_win = 0
                 last_tick = now
 
-            # Light pacing; many drivers already throttle appropriately
-            time.sleep(1.0 / (self._target_fps * 3.0))
+            time.sleep(base_sleep)
 
     def stop(self) -> None:
         self._running = False
@@ -347,7 +407,8 @@ class Camera:
       • CAMERA_BACKEND=picamera2 -> Picamera2
       • CAMERA_BACKEND=v4l2      -> OpenCV/V4L2
       • CAMERA_BACKEND=auto (default):
-            try Picamera2 (if installed), then V4L2 (/dev/video0)
+            - If CAMERA_BACKENDS list is set, try in that order
+            - Else try Picamera2 (if installed), then V4L2 (/dev/video0)
     """
 
     def __init__(
@@ -355,39 +416,56 @@ class Camera:
         device: str | int = "/dev/video0",
         width: int = int(os.getenv("CAMERA_WIDTH", "640")),
         height: int = int(os.getenv("CAMERA_HEIGHT", "480")),
-        target_fps: int = 30,
+        target_fps: int = _env_int("CAMERA_FPS", 30),
     ) -> None:
-        self.width = width
-        self.height = height
-        self.target_fps = target_fps
+        self.width = int(width)
+        self.height = int(height)
+        self.target_fps = int(target_fps)
         self.backend_name: Optional[str] = None
 
-        want = (os.getenv("CAMERA_BACKEND") or "auto").strip().lower()
-        dev = os.getenv("CAMERA_DEVICE", str(device))
+        want = (_env_str("CAMERA_BACKEND", "auto")).strip().lower()
+        dev = _env_str("CAMERA_DEVICE", str(device))
 
         self._backend: Optional[_PiCam2Backend | _V4L2Backend] = None
         last_err: Optional[Exception] = None
 
+        # Constructors
         def try_picam() -> _PiCam2Backend:
             return _PiCam2Backend(width=self.width, height=self.height, target_fps=self.target_fps)
 
         def try_v4l2() -> _V4L2Backend:
-            return _V4L2Backend(device=dev, width=self.width, height=self.height, target_fps=self.target_fps)
+            fourcc = _env_str("CAMERA_FOURCC", "MJPG")
+            return _V4L2Backend(
+                device=dev, width=self.width, height=self.height,
+                target_fps=self.target_fps, fourcc=fourcc
+            )
 
-        attempts: list[tuple[str, callable]] = []
+        # Build attempt order
+        attempts: list[tuple[str, Callable[[], object]]] = []
+
         if want in ("picamera2", "picam2"):
             attempts = [("picamera2", try_picam)]
         elif want == "v4l2":
             attempts = [("v4l2", try_v4l2)]
         else:  # auto
-            if _PICAM2_OK:
-                attempts.append(("picamera2", try_picam))
-            if cv2 is not None:
-                attempts.append(("v4l2", try_v4l2))
+            # If CAMERA_BACKENDS is provided, honor that order
+            order = _env_str("CAMERA_BACKENDS", "").strip()
+            if order:
+                for name in [x.strip().lower() for x in order.split(",") if x.strip()]:
+                    if name in ("picamera2", "picam2"):
+                        attempts.append(("picamera2", try_picam))
+                    elif name == "v4l2":
+                        attempts.append(("v4l2", try_v4l2))
+            else:
+                if _PICAM2_OK:
+                    attempts.append(("picamera2", try_picam))
+                if cv2 is not None:
+                    attempts.append(("v4l2", try_v4l2))
 
+        # Try backends
         for name, ctor in attempts:
             try:
-                self._backend = ctor()
+                self._backend = ctor()  # type: ignore[assignment]
                 self.backend_name = name
                 break
             except Exception as e:
@@ -396,6 +474,9 @@ class Camera:
 
         if self._backend is None:
             raise RuntimeError(f"No camera backend available (last error: {last_err})")
+
+        # Ensure we clean up if the process exits unexpectedly
+        atexit.register(self.stop)
 
     # ---- public API used by video_server.py ----
     def get_frame(self) -> Optional[np.ndarray]:
@@ -406,6 +487,7 @@ class Camera:
         if frame is None or cv2 is None:
             return None
         try:
+            # cv2.imwrite returns True on success
             if cv2.imwrite(filename, frame):
                 return filename
         except Exception:
@@ -416,22 +498,25 @@ class Camera:
         """True if last frame is newer than stale_ms (default from env FRAME_STALE_MS or 2500)."""
         if self._backend is None:
             return False
-        default_ms = int(os.getenv("FRAME_STALE_MS", "2500"))
-        limit = stale_ms if stale_ms is not None else default_ms
+        default_ms = _env_int("FRAME_STALE_MS", 2500)
+        limit = int(stale_ms if stale_ms is not None else default_ms)
         last_ts = getattr(self._backend, "last_frame_ts", 0.0)
-        return (time.time() - last_ts) * 1000.0 < float(limit)
+        try:
+            return (time.time() - float(last_ts)) * 1000.0 < float(limit)
+        except Exception:
+            return False
 
     @property
     def fps(self) -> float:
-        return 0.0 if self._backend is None else getattr(self._backend, "fps", 0.0)
+        return 0.0 if self._backend is None else float(getattr(self._backend, "fps", 0.0))
 
     @property
     def frames_total(self) -> int:
-        return 0 if self._backend is None else getattr(self._backend, "frames_total", 0)
+        return 0 if self._backend is None else int(getattr(self._backend, "frames_total", 0))
 
     @property
     def drops_total(self) -> int:
-        return 0 if self._backend is None else getattr(self._backend, "drops_total", 0)
+        return 0 if self._backend is None else int(getattr(self._backend, "drops_total", 0))
 
     @property
     def backend(self) -> str:
