@@ -4,6 +4,12 @@
 #   MJPEG camera frame with controls (play/pause, fit, rotate, flip, filters,
 #   snapshot/record, fullscreen) and a status dot that matches the status bar.
 #
+#   Improvements:
+#   - Always render <img> while playing → avoids "blank until connected" race.
+#   - Robust load/error handling with cache-busting and backoff retries.
+#   - Safer snapshot/record (CORS-aware). Cleanups for object URLs & intervals.
+#   - Clear comments & small UX niceties (Retry button, keyboard-friendly).
+#
 #   Status mapping (via GET to /health):
 #     • 200 → "connected" (green)
 #     • 503 + { placeholder: true } → "no_camera" (blue)
@@ -18,15 +24,19 @@ type FitMode = 'cover' | 'contain';
 type FilterMode = 'none' | 'mono' | 'contrast' | 'night';
 
 export interface CameraFrameProps {
-  /** MJPEG stream URL, e.g. http(s)://robot/video_feed */
+  /** MJPEG stream URL, e.g. http(s)://robot/video_feed or /api/video-proxy?... */
   src: string;
   title?: string;
   className?: string;
   /** latency poll interval */
   checkIntervalMs?: number;
+  /** initial object-fit for the video */
   initialFit?: FitMode;
+  /** show a faint crosshair grid overlay while recording/snapshotting */
   showGrid?: boolean;
 }
+
+const DEBUG = !!process.env.NEXT_PUBLIC_WS_DEBUG;
 
 const StatusDot: React.FC<{ status: ServerStatus; title?: string }> = ({ status, title }) => {
   const color =
@@ -60,6 +70,7 @@ const IconBtn: React.FC<
   </button>
 );
 
+/** Tailwind filter presets */
 const filterClass = (mode: FilterMode) => {
   switch (mode) {
     case 'mono': return 'filter grayscale';
@@ -69,11 +80,15 @@ const filterClass = (mode: FilterMode) => {
   }
 };
 
-/** helper: derive /health from /video_feed */
+/** Derive /health from a direct /video_feed URL (OK for proxy too) */
 const toHealthUrl = (videoUrl?: string) => {
   if (!videoUrl) return '';
-  const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
-  return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
+  try {
+    const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
+    return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
+  } catch {
+    return '';
+  }
 };
 
 const CameraFrame: React.FC<CameraFrameProps> = ({
@@ -100,13 +115,26 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
   const [filter, setFilter] = useState<FilterMode>('none');
 
   const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+  const lastBlobUrlRef = useRef<string | null>(null); // revoke snapshot object URLs
 
   const recStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const [recording, setRecording] = useState(false);
+
   const rafRef = useRef<number | null>(null);
   const fpsCounterRef = useRef<{ last: number; frames: number }>({ last: performance.now(), frames: 0 });
+
+  const retryTimerRef = useRef<number | null>(null);
+  const backoffRef = useRef<number>(800); // ms; grows up to ~6s
+
+  // ---- Stable cache-buster: only changes on play/retry/backoff ----
+  const [buster, setBuster] = useState<number>(() => Date.now());
+  const IMG_SRC = useMemo(() => {
+    if (!src) return '';
+    const sep = src.includes('?') ? '&' : '?';
+    return `${src}${sep}b=${buster}`;
+  }, [src, buster]);
 
   // ---------- Availability + latency via GET /health ----------
   useEffect(() => {
@@ -119,27 +147,24 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
         return;
       }
       try {
-        setStatus((s) => (s === 'connected' ? s : s === 'no_camera' ? s : 'connecting'));
+        setStatus(s => (s === 'connected' || s === 'no_camera') ? s : 'connecting');
         const start = performance.now();
-        const res = await fetch(healthUrl, { method: 'GET', cache: 'no-store', mode: 'cors' as RequestMode });
+        const res = await fetch(healthUrl, { method: 'GET', cache: 'no-store' });
         const end = performance.now();
         if (cancelled) return;
 
         let body: any = null;
         try { body = await res.clone().json(); } catch {}
 
+        const rtt = Math.max(0, Math.round(end - start));
         if (res.ok) {
-          setStatus('connected');
-          setPingMs(Math.max(0, Math.round(end - start)));
+          setStatus('connected'); setPingMs(rtt);
         } else if (res.status === 503 && body && body.placeholder === true) {
-          setStatus('no_camera');
-          setPingMs(Math.max(0, Math.round(end - start)));
+          setStatus('no_camera'); setPingMs(rtt);
         } else if (res.status === 503) {
-          setStatus('connecting');
-          setPingMs(Math.max(0, Math.round(end - start)));
+          setStatus('connecting'); setPingMs(rtt);
         } else {
-          setStatus('disconnected');
-          setPingMs(null);
+          setStatus('disconnected'); setPingMs(null);
         }
       } catch {
         if (!cancelled) { setStatus('disconnected'); setPingMs(null); }
@@ -147,8 +172,8 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
     };
 
     check();
-    const t = setInterval(check, Math.max(2000, checkIntervalMs));
-    return () => { cancelled = true; clearInterval(t); };
+    const t = window.setInterval(check, Math.max(2000, checkIntervalMs));
+    return () => { cancelled = true; window.clearInterval(t); };
   }, [src, checkIntervalMs]);
 
   // ---------- FPS estimate (only while recording or snapshotting to canvas) ----------
@@ -165,7 +190,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
           ctx.save();
           ctx.clearRect(0, 0, cvs.width, cvs.height);
           try { ctx.drawImage(img, 0, 0, cvs.width, cvs.height); } catch {}
-          ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(8, 8, 210, 22);
+          ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(8, 8, 230, 22);
           ctx.fillStyle = '#fff'; ctx.font = '14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas';
           ctx.fillText(new Date().toLocaleString(), 14, 24);
           if (showGrid) {
@@ -191,7 +216,27 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [recording, snapshotUrl, showGrid]);
 
-  // ---------- Play/Pause ----------
+  // ---------- helpers ----------
+  const clearRetryTimer = () => {
+    if (retryTimerRef.current) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  };
+
+  const resetBackoff = () => { backoffRef.current = 800; clearRetryTimer(); };
+
+  const scheduleRetry = () => {
+    clearRetryTimer();
+    const delay = Math.min(6000, backoffRef.current);
+    retryTimerRef.current = window.setTimeout(() => {
+      // Just bump buster → re-requests the stream once
+      setBuster(Date.now());
+      if (DEBUG) console.log('[CameraFrame] retrying MJPEG after', delay, 'ms');
+      backoffRef.current = Math.min(6000, backoffRef.current * 1.6);
+    }, delay);
+  };
+
   const ensureCanvasDraw = async () => {
     const img = imgRef.current, cvs = canvasRef.current;
     if (!img || !cvs) return;
@@ -201,33 +246,58 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       cvs.width = w; cvs.height = h;
       const ctx = cvs.getContext('2d'); if (!ctx) return;
       ctx.drawImage(img, 0, 0, w, h);
-      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(8, 8, 210, 22);
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(8, 8, 230, 22);
       ctx.fillStyle = '#fff'; ctx.font = '14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas';
       ctx.fillText(new Date().toLocaleString(), 14, 24);
-    } catch {}
+    } catch {
+      // CORS-blocked draws will throw; ignore.
+    }
   };
 
+  // ---------- Play/Pause ----------
   const handlePause = async () => {
     await ensureCanvasDraw();
-    setSnapshotUrl(canvasRef.current?.toDataURL('image/png') || null);
-    if (imgRef.current) imgRef.current.src = '';
-    setPlaying(false);
-  };
-  const handlePlay = () => {
-    if (imgRef.current && src) {
-      imgRef.current.src = src + (src.includes('?') ? '&' : '?') + 't=' + Date.now();
+
+    // Produce snapshot (prefer Blob URL; fallback to data URL)
+    try {
+      const cvs = canvasRef.current;
+      if (cvs) {
+        cvs.toBlob((blob) => {
+          if (lastBlobUrlRef.current) {
+            URL.revokeObjectURL(lastBlobUrlRef.current);
+            lastBlobUrlRef.current = null;
+          }
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            lastBlobUrlRef.current = url;
+            setSnapshotUrl(url);
+          } else {
+            setSnapshotUrl(cvs.toDataURL('image/png'));
+          }
+        }, 'image/png');
+      }
+    } catch {
+      setSnapshotUrl(canvasRef.current?.toDataURL('image/png') || null);
     }
+
+    try { if (imgRef.current) imgRef.current.src = ''; } catch {}
+    setPlaying(false);
+    clearRetryTimer();
+  };
+
+  const handlePlay = () => {
     setSnapshotUrl(null);
     setPlaying(true);
+    resetBackoff();
+    // force new request once
+    setBuster(Date.now());
   };
+
   const handleTogglePlay = () => (playing ? handlePause() : handlePlay());
 
-  const online = status === 'connected';
-  const canCapture = online && playing;
-
-  // ---------- Snapshot PNG ----------
+  // ---------- Snapshot PNG (download) ----------
   const handleSnapshotDownload = async () => {
-    if (!canCapture) return;
+    if (!(status === 'connected' && playing)) return;
     await ensureCanvasDraw();
     const cvs = canvasRef.current; if (!cvs) return;
     try {
@@ -237,18 +307,21 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       a.download = `snapshot-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
     } catch {
-      console.warn('Snapshot blocked (likely CORS).');
+      console.warn('Snapshot blocked (likely CORS). Make sure the source is same-origin or set proper CORS headers.');
     }
   };
 
   // ---------- Record WebM via canvas.captureStream ----------
   const startRecording = () => {
-    if (!canCapture) return;
+    if (!(status === 'connected' && playing)) return;
     const cvs = canvasRef.current; if (!cvs) return;
     try {
       const stream = cvs.captureStream(30);
       const mimeOptions = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
-      let mimeType = ''; for (const m of mimeOptions) if (MediaRecorder.isTypeSupported(m)) { mimeType = m; break; }
+      let mimeType = '';
+      for (const m of mimeOptions) {
+        if ((window as any).MediaRecorder?.isTypeSupported?.(m)) { mimeType = m; break; }
+      }
       const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       chunksRef.current = [];
       rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data); };
@@ -269,6 +342,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       setRecording(false);
     }
   };
+
   const stopRecording = () => {
     try { recorderRef.current?.stop(); } catch {}
     try { recStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
@@ -283,6 +357,34 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
     return `rotate(${r}deg) scale(${sx}, ${sy})`;
   }, [rotate, flipH, flipV]);
 
+  // ---------- Image load/error → status + retries ----------
+  const handleImgLoad = () => {
+    setStatus('connected');
+    resetBackoff();
+    if (DEBUG) console.log('[CameraFrame] <img> load OK');
+  };
+
+  const handleImgError = () => {
+    setStatus(prev => (prev === 'no_camera' ? prev : 'disconnected'));
+    if (DEBUG) console.warn('[CameraFrame] <img> error');
+    scheduleRetry();
+  };
+
+  // Cleanup timers, blob URLs, recorder on unmount
+  useEffect(() => {
+    return () => {
+      clearRetryTimer();
+      try { recorderRef.current?.stop(); } catch {}
+      try { recStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
+      recorderRef.current = null; recStreamRef.current = null;
+      if (lastBlobUrlRef.current) {
+        URL.revokeObjectURL(lastBlobUrlRef.current);
+        lastBlobUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  // ---------- UI bits ----------
   const headerRight = (
     <div className="flex items-center gap-1">
       <IconBtn onClick={handleTogglePlay} title={playing ? 'Pause' : 'Play'}>
@@ -297,12 +399,12 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       <IconBtn onClick={() => setFilter(f =>
         f === 'none' ? 'mono' : f === 'mono' ? 'contrast' : f === 'contrast' ? 'night' : 'none'
       )} title={`Filter: ${filter}`}>🎛️</IconBtn>
-      <IconBtn onClick={handleSnapshotDownload} title="Snapshot PNG" disabled={!canCapture}>📸</IconBtn>
+      <IconBtn onClick={handleSnapshotDownload} title="Snapshot PNG" disabled={!(status === 'connected' && playing)}>📸</IconBtn>
       <IconBtn
         onClick={recording ? stopRecording : startRecording}
         title={recording ? 'Stop recording' : 'Start recording'}
         active={recording}
-        disabled={!recording && !canCapture}
+        disabled={!recording && !(status === 'connected' && playing)}
       >
         {recording ? '⏺︎⏹' : '⏺'}
       </IconBtn>
@@ -323,7 +425,10 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
                               `Video: Disconnected`;
 
   return (
-    <div ref={containerRef} className={`relative bg-gray-900 rounded-lg shadow-md border border-white/10 overflow-hidden ${className}`}>
+    <div
+      ref={containerRef}
+      className={`relative bg-gray-900 rounded-lg shadow-md border border-white/10 overflow-hidden ${className}`}
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 bg-black/40 backdrop-blur border-b border-white/10">
         <div className="flex items-center gap-2 text-white/90">
@@ -338,31 +443,36 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
 
       {/* Media area (16:9 default) */}
       <div className={`relative bg-black ${filterClass(filter)}`} style={{ paddingTop: '56.25%' }}>
-        {/* Only render <img> when connected AND playing; avoids black box on failure */}
-        {status === 'connected' && playing && (
+        {/* Always render <img> while playing; use a stable URL that only
+           changes when `buster` changes (play/retry/backoff). */}
+        {playing ? (
           <img
             ref={imgRef}
-            src={src ? src + (src.includes('?') ? '&' : '?') + 'b=' + Date.now() : ''}
+            key={IMG_SRC}               /* new request only when buster changes */
+            src={IMG_SRC}
             alt="Live Camera"
             className={`absolute inset-0 w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
             style={{ transform: mediaTransform, transformOrigin: 'center center' }}
-            onError={() => setStatus('disconnected')}
-            onLoad={() => setStatus('connected')}
+            onError={handleImgError}
+            onLoad={handleImgLoad}
+            draggable={false}
           />
-        )}
-
-        {/* Show last snapshot faintly when offline */}
-        {status !== 'connected' && snapshotUrl && (
-          <img
-            src={snapshotUrl}
-            alt="Last frame"
-            className={`absolute inset-0 w-full h-full opacity-25 ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
-            style={{ transform: mediaTransform, transformOrigin: 'center center' }}
-          />
+        ) : (
+          snapshotUrl && (
+            <img
+              src={snapshotUrl}
+              alt="Last frame"
+              className={`absolute inset-0 w-full h-full opacity-25 ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
+              style={{ transform: mediaTransform, transformOrigin: 'center center' }}
+            />
+          )
         )}
 
         {/* Overlay messages */}
-        {status === 'disconnected' && (
+        {!playing && !snapshotUrl && (
+          <div className="absolute inset-0 flex items-center justify-center text-white/70 text-sm">Paused</div>
+        )}
+        {status === 'disconnected' && playing && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white/85">
             <div className="text-sm mb-3">Not connected</div>
             <IconBtn onClick={handlePlay} title="Retry">Retry</IconBtn>
@@ -373,9 +483,6 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
             <div className="text-sm mb-1">Camera missing</div>
             <div className="text-xs text-white/70">Check ribbon cable / device</div>
           </div>
-        )}
-        {status === 'connected' && !playing && !snapshotUrl && (
-          <div className="absolute inset-0 flex items-center justify-center text-white/70 text-sm">Paused</div>
         )}
       </div>
 

@@ -35,10 +35,16 @@ type ServerStatus = 'connected' | 'connecting' | 'disconnected' | 'no_camera';
 
 /* ----------------------------- helpers ------------------------------ */
 
+const DEBUG = !!process.env.NEXT_PUBLIC_WS_DEBUG;
+
 function getQueryParam(name: string): string | undefined {
   if (typeof window === 'undefined') return undefined;
-  const v = new URLSearchParams(window.location.search).get(name);
-  return v?.trim() || undefined;
+  try {
+    const v = new URLSearchParams(window.location.search).get(name);
+    return v?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Would fetching this URL be mixed-content when the UI is https? */
@@ -46,18 +52,22 @@ function willBeMixedContent(url: string): boolean {
   if (!url || typeof window === 'undefined') return false;
   if (window.location.protocol !== 'https:') return false;
   try {
-    const u = new URL(url);
+    const u = new URL(url, window.location.origin);
     return u.protocol === 'http:' && u.hostname !== window.location.hostname;
   } catch {
     return false;
   }
 }
 
-/** Convert .../video_feed[?...] → sibling /health. */
-function toHealthUrl(videoUrl?: string) {
+/** Convert direct .../video_feed[?...] → sibling /health. (Do NOT use for proxy.) */
+function toDirectHealthUrl(videoUrl?: string): string {
   if (!videoUrl) return '';
-  const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
-  return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
+  try {
+    const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
+    return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
+  } catch {
+    return '';
+  }
 }
 
 /** Build env-driven direct URLs by profile. */
@@ -69,7 +79,7 @@ function envDirectByProfile(): Record<Profile, string | undefined> {
   };
 }
 
-/** The rotation order: active first, then the other two (unique). */
+/** Rotation order is fixed: tailscale → lan → local (but start from the active one). */
 function getProfileRotation(active: Profile): Profile[] {
   const all: Profile[] = ['tailscale', 'lan', 'local'];
   return [active, ...all.filter((p) => p !== active)];
@@ -105,21 +115,26 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
   className = '',
   objectFit = 'cover',
 }) => {
+  // Page overrides
   const qpProfile = (getQueryParam('profile') as Profile | undefined)?.toLowerCase() as Profile | undefined;
   const qpVideo = getQueryParam('video'); // explicit upstream override
+
+  // Establish base profile (env utility) then pin if ?profile is present
   const initialActive = (qpProfile || (getActiveProfile() as Profile)) as Profile;
 
-  // Rotation order (active first). If qpProfile is set, we pin and don't rotate.
+  // Rotation is determined once from the initial active profile; if qpProfile is pinned we won't rotate
   const rotation = useMemo(() => getProfileRotation(initialActive), [initialActive]);
-  const rotationEnabled = !qpProfile && !qpVideo; // explicit page overrides disable rotation
+  const rotationEnabled = !qpProfile && !qpVideo;
 
+  // ---- state ----
   const [mapExpanded, setMapExpanded] = useState(false);
   const [imgError, setImgError] = useState(false);
-  const [useDirect, setUseDirect] = useState(false);
+  const [useDirect, setUseDirect] = useState(false);    // proxy first, direct only after proxy error (if safe)
   const [buster, setBuster] = useState<number>(() => Date.now());
   const [isOffline, setIsOffline] = useState<boolean>(typeof navigator !== 'undefined' ? !navigator.onLine : false);
-  const [profileIdx, setProfileIdx] = useState<number>(0); // index into rotation array
-  const attemptsRef = useRef<number>(0); // guard against infinite loops
+  const [profileIdx, setProfileIdx] = useState<number>(0);  // index into rotation array
+  const attemptsRef = useRef<number>(0);                    // guard; max = rotation.length
+  const lastImgOkAt = useRef<number | null>(null);          // to keep status green for a short grace period
 
   const currentProfile = rotation[profileIdx] || initialActive;
   const directByProfile = useMemo(() => envDirectByProfile(), []);
@@ -130,11 +145,11 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
     return directByProfile[currentProfile] || '';
   }, [qpVideo, directByProfile, currentProfile]);
 
-  const directHealthForProfile = useMemo(() => toHealthUrl(directForProfile), [directForProfile]);
-
-  // Same-origin proxy base, always forward current profile and optional ?video
+  // Same-origin proxy endpoints for the CURRENT profile (safe over https, avoids mixed-content)
   const PROXY_URL_BASE = '/api/video-proxy';
   const PROXY_HEALTH_BASE = '/api/video-health';
+
+  // Build query forwarded to the proxy (profile + optional video override)
   const proxyQuery = useMemo(() => {
     const qs = new URLSearchParams();
     qs.set('profile', String(currentProfile));
@@ -142,43 +157,43 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
     return qs.toString();
   }, [currentProfile, qpVideo]);
 
-  // Final image source: proxy first, then direct (safe only)
-  const IMG_BASE = useDirect
-    ? directForProfile
-    : proxyQuery
-    ? `${PROXY_URL_BASE}?${proxyQuery}`
-    : PROXY_URL_BASE;
+  // Final image src: proxy first, then direct (ONLY if not mixed-content)
+  const proxyStream = `${PROXY_URL_BASE}?${proxyQuery}`;
+  const IMG_BASE = useDirect ? directForProfile : proxyStream;
 
+  // Add a cache-buster whenever we retry or status toggles to force a fresh MJPEG request
   const IMG_SRC = useMemo(() => {
     if (!IMG_BASE) return '';
     const sep = IMG_BASE.includes('?') ? '&' : '?';
     return `${IMG_BASE}${sep}b=${buster}`;
   }, [IMG_BASE, buster]);
 
-  // Health: prefer proxy health. If for some reason that's disabled, allow safe direct.
+  // Health for the status pill: we always prefer the proxy health (same-origin).
+  // If someone removes the proxy route in the future, we *could* fall back to direct health
+  // but only when it won’t be mixed content.
   const proxyHealth = `${PROXY_HEALTH_BASE}?${proxyQuery}`;
-  const canProbeDirectHealth = directHealthForProfile && !willBeMixedContent(directHealthForProfile);
-  const HEALTH_URL = proxyHealth || (canProbeDirectHealth ? directHealthForProfile : undefined);
+  const directHealth = directForProfile && !willBeMixedContent(directForProfile)
+    ? toDirectHealthUrl(directForProfile)
+    : '';
+  const HEALTH_URL = proxyHealth || directHealth || undefined;
 
+  // Poll health (reliable over https). This only affects the status pill + callback.
   const { status: healthStatus, latency } = useHttpStatus(HEALTH_URL, {
     intervalMs: 5000,
     timeoutMs: 2500,
   });
 
-  // Track last successful image load
-  const lastImgOkAt = useRef<number | null>(null);
-
-  // Effective status derives from connectivity + health + recent img load
+  // Effective status combines browser offline state + recent successful image load + health
   const effectiveStatus: ServerStatus = useMemo(() => {
     if (isOffline) return 'disconnected';
     const now = Date.now();
-    const recentOk = lastImgOkAt.current && now - lastImgOkAt.current < 8000;
+    const recentOk = lastImgOkAt.current && now - lastImgOkAt.current < 8000; // ~8s grace after last good frame
     if (recentOk) return 'connected';
     if (healthStatus) return healthStatus;
     return imgError ? 'disconnected' : 'connecting';
   }, [healthStatus, imgError, isOffline]);
 
-  // Notify parent when online state flips
+  // Notify parent on online state transitions
   const wasOnline = useRef<boolean | null>(null);
   useEffect(() => {
     const online = effectiveStatus === 'connected';
@@ -188,12 +203,12 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
     }
   }, [effectiveStatus, onVideoStatusChange]);
 
-  // Reset image error on src changes
+  // Reset error whenever we switch IMG_SRC
   useEffect(() => {
     setImgError(false);
   }, [IMG_SRC]);
 
-  // Listen for offline/online
+  // Listen for offline/online to improve UX
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const on = () => setIsOffline(false);
@@ -206,6 +221,9 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
     };
   }, []);
 
+  // ---- failover mechanics ----
+
+  /** Try next profile in rotation (proxy first); returns true if switched. */
   const rotateProfile = () => {
     if (!rotationEnabled) return false;
     if (attemptsRef.current >= rotation.length) return false; // tried them all
@@ -213,46 +231,52 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
     if (next === profileIdx) return false;
     setProfileIdx(next);
     attemptsRef.current += 1;
-    setUseDirect(false); // when switching profile, always try proxy again first
-    setBuster(Date.now()); // force reload
+    setUseDirect(false); // when switching profile, always try proxy first
+    setBuster(Date.now());
+    if (DEBUG) console.log('[VideoFeed] rotating profile →', rotation[next]);
     return true;
   };
 
   const onImgLoad = () => {
     lastImgOkAt.current = Date.now();
     attemptsRef.current = 0; // success → reset fail counter
+    setImgError(false);
+    if (DEBUG) console.log('[VideoFeed] image load OK (profile=%s, direct=%s)', currentProfile, useDirect);
   };
 
   const onImgError = () => {
     setImgError(true);
+    if (DEBUG) console.warn('[VideoFeed] image error (profile=%s, direct=%s)', currentProfile, useDirect);
 
-    // Step 1: if we were on proxy, try direct (but only if safe)
+    // Step 1: if we were on proxy, try direct — but only if the browser won’t block it as mixed content.
     if (!useDirect) {
-      const safe = directForProfile && !willBeMixedContent(directForProfile);
+      const safe = !!directForProfile && !willBeMixedContent(directForProfile);
       if (safe) {
         setUseDirect(true);
         setBuster(Date.now());
+        if (DEBUG) console.log('[VideoFeed] switching to direct upstream for current profile');
         return;
       }
+      if (DEBUG && directForProfile) console.log('[VideoFeed] direct upstream would be mixed content → skip');
     }
 
-    // Step 2: rotate to next profile (proxy first), unless pinned
+    // Step 2: rotate to next profile (proxy first), unless pinned by ?profile or ?video
     if (rotateProfile()) return;
 
-    // Step 3: if nothing else to try, just bump buster to retry current source
+    // Step 3: if nothing else to try, bump cache-buster to retry current source
     setBuster(Date.now());
   };
 
   const retry = () => {
-    // Manual retry: prefer proxy of current profile again
     attemptsRef.current = 0;
-    setUseDirect(false);
+    setUseDirect(false);            // always go back to proxy on manual retry
     setImgError(false);
     lastImgOkAt.current = null;
     setBuster(Date.now());
+    if (DEBUG) console.log('[VideoFeed] manual retry');
   };
 
-  const showImg = Boolean(IMG_SRC);
+  // ---- labeling for UI ----
   const titleSuffix = latency != null ? ` • ${latency}ms` : '';
   const statusLabel =
     effectiveStatus === 'no_camera'
@@ -262,10 +286,15 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
   // Pretty badge for current stream provenance
   const sourceBadge = `${useDirect ? 'direct' : 'proxy'} · ${qpVideo ? 'custom' : currentProfile}`;
 
+  // Render if we have a URL
+  const showImg = Boolean(IMG_SRC);
+
   return (
     <div
-      className={`relative bg-gray-900 rounded-lg shadow-md border border-white/10 overflow-hidden ${className}`}
-      style={{ aspectRatio: '16 / 9' }}
+      className={`relative bg-gray-900 rounded-lg shadow-md border border-white/10 overflow-hidden ${className} w-full`}
+      style={{ aspectRatio: '16 / 9', minHeight: 200 }}
+      aria-busy={effectiveStatus === 'connecting'}
+      aria-live="polite"
     >
       {/* Status pill (top-left) */}
       <div className="absolute top-2 left-2 z-20 flex items-center gap-2 px-2 py-1 bg-black/45 backdrop-blur rounded border border-white/15 text-white text-xs">
@@ -281,10 +310,18 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
           {sourceBadge}
         </span>
         {isOffline && <span className="ml-1 px-1 rounded bg-rose-500/80 text-black">offline</span>}
+        <button
+          type="button"
+          className="ml-2 px-2 py-0.5 rounded bg-black/40 hover:bg-black/55 border border-white/20"
+          onClick={retry}
+          title="Retry"
+        >
+          Retry
+        </button>
       </div>
 
       {/* Live region for screen readers */}
-      <div className="sr-only" aria-live="polite">
+      <div className="sr-only">
         Video status: {statusLabel}. {latency != null ? `Latency ${latency} milliseconds.` : ''}
       </div>
 
@@ -317,6 +354,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
               >
                 Retry
               </button>
+              {/* Debug helpers: open direct or proxy upstreams in a new tab */}
               {directForProfile && (
                 <a
                   className="px-2 py-1 rounded bg-black/40 hover:bg-black/55 border border-white/20 text-xs"
@@ -327,6 +365,14 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
                   Open direct
                 </a>
               )}
+              <a
+                className="px-2 py-1 rounded bg-black/40 hover:bg-black/55 border border-white/20 text-xs"
+                href={proxyStream}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open proxy
+              </a>
             </div>
           </div>
         )}
