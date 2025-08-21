@@ -20,6 +20,7 @@
 #   Notes:
 #     - If you serve the UI over HTTPS, make sure the UI keeps ws:// (NEXT_PUBLIC_WS_FORCE_INSECURE=1)
 #       or terminate TLS in a reverse proxy.
+#     - Compatible with websockets >= 12 (no path parameter) and older versions (with path parameter).
 
 import os
 import sys
@@ -29,7 +30,8 @@ import asyncio
 from typing import Optional, Set, Tuple
 
 import websockets
-from websockets.server import WebSocketServerProtocol
+# Use legacy namespace for stable type hints across versions (avoids deprecation warning).
+from websockets.legacy.server import WebSocketServerProtocol
 
 # ---------- util helpers ----------
 
@@ -216,11 +218,34 @@ def norm_cmd_name(raw: str) -> str:
     if s in {"stop", "move-stop", "halt", ""}:           return "stop"
     return raw
 
+def _extract_request_path(ws: WebSocketServerProtocol, request_path: Optional[str]) -> str:
+    """
+    Support websockets >=12 (no path parameter) and older (with path).
+    Try, in order:
+      - explicit request_path argument (old signature)
+      - ws.path (newer versions)
+      - ws.request.path (some internals)
+      - fallback "/"
+    """
+    if isinstance(request_path, str) and request_path:
+        return request_path
+    rp = getattr(ws, "path", None)
+    if isinstance(rp, str) and rp:
+        return rp
+    try:
+        rp = ws.request.path  # type: ignore[attr-defined]
+        if isinstance(rp, str) and rp:
+            return rp
+    except Exception:
+        pass
+    return "/"
+
 # ---------- websocket handler ----------
 
-async def handler(ws: WebSocketServerProtocol, request_path: str):
+async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = None):
     global current_speed, current_horizontal_angle, current_vertical_angle, _last_move_op_id
 
+    request_path = _extract_request_path(ws, request_path)
     peer = getattr(ws, "remote_address", None)
     log("CONNECTED", peer, f"path={request_path!r}")
 
