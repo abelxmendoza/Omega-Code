@@ -13,24 +13,51 @@
 #     MOVEMENT_PATH="/"                # set to "/movement" if you want a path (UI then must use it)
 #     ORIGIN_ALLOW="http://localhost:3000,https://your-ui"
 #     ROBOT_SIM=0|1                    # 1 = no-op motor/buzzer/servo for dev
+#     # (dev convenience) ORIGIN_ALLOW_NO_HEADER=1  # allow CLI clients without Origin header
 #
 #   Start:
-#     python3 movement_ws_server.py
+#     python3 movement_ws_server.py    # self-bootstraps into ../venv/bin/python
 #
 #   Notes:
 #     - If you serve the UI over HTTPS, make sure the UI keeps ws:// (NEXT_PUBLIC_WS_FORCE_INSECURE=1)
 #       or terminate TLS in a reverse proxy.
 #     - Compatible with websockets >= 12 (no path parameter) and older versions (with path parameter).
 
-import os
-import sys
+# ---------- venv self-bootstrap (so "python3 ..." always uses ../venv) ----------
+import os, sys
+
+def _reexec_in_project_venv():
+    here = os.path.abspath(os.path.dirname(__file__))           # .../movement
+    root = os.path.abspath(os.path.join(here, ".."))            # .../robot-controller-backend
+    if os.name == "nt":
+        vpy = os.path.join(root, "venv", "Scripts", "python.exe")
+    else:
+        vpy = os.path.join(root, "venv", "bin", "python")
+    try:
+        if os.path.exists(vpy) and os.path.realpath(sys.executable) != os.path.realpath(vpy):
+            os.execv(vpy, [vpy] + sys.argv)                     # re-exec under venv python
+    except Exception as e:
+        print("[MOVE][WARN] venv bootstrap failed:", repr(e), file=sys.stderr, flush=True)
+
+_reexec_in_project_venv()
+# ---------- end venv self-bootstrap -------------------------------------------
+
+# ---------- optional .env loader (backend root) ----------
+try:
+    from dotenv import load_dotenv
+    _root_env = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
+    if os.path.exists(_root_env):
+        load_dotenv(_root_env)
+except Exception:
+    pass
+
 import json
 import time
 import asyncio
 from typing import Optional, Set, Tuple
 
 import websockets
-# Use legacy namespace for stable type hints across versions (avoids deprecation warning).
+# Use legacy namespace for stable type hints across versions (avoids deprecation warnings).
 from websockets.legacy.server import WebSocketServerProtocol
 
 # ---------- util helpers ----------
@@ -75,6 +102,7 @@ PATH  = (_env("MOVEMENT_PATH", "/") or "/").rstrip("/") or "/"
 _ALLOWED_ORIGINS: Set[str] = set(
     o.strip() for o in (_env("ORIGIN_ALLOW", "") or "").split(",") if o.strip()
 )
+ALLOW_NO_ORIGIN = (_env("ORIGIN_ALLOW_NO_HEADER", "0") == "1")
 SIM_MODE = _env("ROBOT_SIM", "0") == "1"
 
 # ---------- hardware (with simulation fallback) ----------
@@ -157,6 +185,9 @@ def origin_ok(ws: WebSocketServerProtocol) -> bool:
     if not _ALLOWED_ORIGINS:
         return True
     origin = ws.request_headers.get("Origin")
+    if origin is None and ALLOW_NO_ORIGIN:
+        # allow non-browser tools (python clients) when enabled
+        return True
     return bool(origin) and origin in _ALLOWED_ORIGINS
 
 def path_ok(request_path: str) -> bool:
@@ -435,6 +466,8 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
 
 async def main():
     log(f"listening on ws://0.0.0.0:{PORT}{'' if PATH=='/' else PATH}")
+    # Optional: print config snapshot
+    log(f"ORIGIN_ALLOW={','.join(sorted(_ALLOWED_ORIGINS)) or '(none)'} ALLOW_NO_ORIGIN={ALLOW_NO_ORIGIN} PATH={PATH} SIM_MODE={SIM_MODE}")
     # We disable TCP-level ping so JSON ping/pong from the UI is the single heartbeat.
     async with websockets.serve(
         handler,
