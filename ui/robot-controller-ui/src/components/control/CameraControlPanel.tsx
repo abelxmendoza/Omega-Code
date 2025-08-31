@@ -1,147 +1,215 @@
 /*
 # File: /Omega-Code/ui/robot-controller-ui/src/components/control/CameraControlPanel.tsx
 # Summary:
-This component provides UI and keyboard control for the robot's camera (pan/tilt) servos.
-It sends explicit directional commands (up, down, left, right) to the backend,
-allowing precise nudge control via WebSocket for both button and arrow key events.
+Pan/Tilt (camera) control with buttons + Arrow keys.
+- Auto-repeat while key or pointer is held (smooth nudging)
+- Shift+Arrow = larger step via {command:"servo-vertical|horizontal", angle:±N}
+- Center button (C or Home)
+- Safety: stops auto-repeat on blur / visibility change / pointer-cancel
 */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React from 'react';
 import { COMMAND } from '@/control_definitions';
 import { useCommand } from '@/context/CommandContext';
 
-type ButtonDirection = 'up' | 'down' | 'left' | 'right';
+type Dir = 'up' | 'down' | 'left' | 'right';
 
-const CameraControlPanel: React.FC = () => {
-  const [buttonState, setButtonState] = useState<Record<ButtonDirection, boolean>>({
-    up: false,
-    down: false,
-    left: false,
-    right: false,
-  });
+const nudgeCmd: Record<Dir, string> = {
+  up:    COMMAND.CAMERA_SERVO_UP    || 'camera-servo-up',
+  down:  COMMAND.CAMERA_SERVO_DOWN  || 'camera-servo-down',
+  left:  COMMAND.CAMERA_SERVO_LEFT  || 'camera-servo-left',
+  right: COMMAND.CAMERA_SERVO_RIGHT || 'camera-servo-right',
+};
 
+const SERVO_H = (COMMAND as any).CMD_SERVO_HORIZONTAL || (COMMAND as any).SERVO_HORIZONTAL || 'servo-horizontal';
+const SERVO_V = (COMMAND as any).CMD_SERVO_VERTICAL   || (COMMAND as any).SERVO_VERTICAL   || 'servo-vertical';
+const RESET   = COMMAND.RESET_SERVO || 'reset-servo';
+const FAST_STEP = 10;
+
+const keyToDir: Record<string, Dir | undefined> = {
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+};
+
+export default function CameraControlPanel() {
   const { sendCommand, addCommand } = useCommand();
 
-  // Handle key press events for controlling the camera
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent) => {
-      switch (event.key) {
-        case 'ArrowUp':
-          sendCommand(COMMAND.CAMERA_SERVO_UP);
-          setButtonPressed('up', true);
-          addCommand('camera-up');
-          break;
-        case 'ArrowDown':
-          sendCommand(COMMAND.CAMERA_SERVO_DOWN);
-          setButtonPressed('down', true);
-          addCommand('camera-down');
-          break;
-        case 'ArrowLeft':
-          sendCommand(COMMAND.CAMERA_SERVO_LEFT);
-          setButtonPressed('left', true);
-          addCommand('camera-left');
-          break;
-        case 'ArrowRight':
-          sendCommand(COMMAND.CAMERA_SERVO_RIGHT);
-          setButtonPressed('right', true);
-          addCommand('camera-right');
-          break;
-        default:
-          break;
-      }
-    },
-    [sendCommand, addCommand]
-  );
+  const [pressed, setPressed] = React.useState<Record<Dir, boolean>>({
+    up: false, down: false, left: false, right: false,
+  });
 
-  const handleKeyUp = useCallback((event: KeyboardEvent) => {
-    switch (event.key) {
-      case 'ArrowUp':
-        setButtonPressed('up', false);
-        break;
-      case 'ArrowDown':
-        setButtonPressed('down', false);
-        break;
-      case 'ArrowLeft':
-        setButtonPressed('left', false);
-        break;
-      case 'ArrowRight':
-        setButtonPressed('right', false);
-        break;
-      default:
-        break;
+  const repeatRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeDirRef = React.useRef<Dir | null>(null);
+  const shiftRef = React.useRef(false);
+
+  const sendJson = React.useCallback((cmd: string, payload?: Record<string, unknown>) => {
+    try {
+      sendCommand(cmd, payload);
+      addCommand(`Sent: ${cmd}${payload ? ' ' + JSON.stringify(payload) : ''}`);
+    } catch (e) {
+      addCommand(`Send failed: ${String(e)}`);
     }
+  }, [sendCommand, addCommand]);
+
+  const nudge = React.useCallback((dir: Dir) => {
+    if (shiftRef.current) {
+      if (dir === 'left')  return sendJson(SERVO_H, { angle: -FAST_STEP });
+      if (dir === 'right') return sendJson(SERVO_H, { angle: +FAST_STEP });
+      if (dir === 'up')    return sendJson(SERVO_V, { angle: +FAST_STEP });
+      if (dir === 'down')  return sendJson(SERVO_V, { angle: -FAST_STEP });
+    }
+    sendJson(nudgeCmd[dir]);
+  }, [sendJson]);
+
+  const clearPrevPressed = React.useCallback((prev: Dir | null) => {
+    if (!prev) return;
+    setPressed(p => ({ ...p, [prev]: false }));
   }, []);
 
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+  const startRepeat = React.useCallback((dir: Dir) => {
+    if (activeDirRef.current === dir) return;          // already repeating this dir
+    if (repeatRef.current) clearInterval(repeatRef.current);
+
+    // unpress previously active button so only one is lit
+    clearPrevPressed(activeDirRef.current);
+
+    activeDirRef.current = dir;
+    setPressed(p => ({ ...p, [dir]: true }));
+
+    // immediate nudge + periodic nudging
+    nudge(dir);
+    repeatRef.current = setInterval(() => nudge(dir), 120);
+  }, [nudge, clearPrevPressed]);
+
+  const stopRepeat = React.useCallback(() => {
+    if (repeatRef.current) clearInterval(repeatRef.current);
+    repeatRef.current = null;
+    activeDirRef.current = null;
+    setPressed({ up: false, down: false, left: false, right: false });
+  }, []);
+
+  // --- Keyboard support ---
+  React.useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
+
+      shiftRef.current = e.shiftKey;
+      const dir = keyToDir[e.key];
+      if (dir) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.repeat) return; // ignore OS auto-repeat; we do our own
+        startRepeat(dir);
+        return;
+      }
+      if (e.key.toLowerCase() === 'c' || e.key === 'Home') {
+        e.preventDefault();
+        e.stopPropagation();
+        sendJson(RESET);
+      }
     };
-  }, [handleKeyDown, handleKeyUp]);
 
-  const setButtonPressed = (direction: ButtonDirection, state: boolean) => {
-    setButtonState((prev) => ({ ...prev, [direction]: state }));
-  };
+    const onKeyUp = (e: KeyboardEvent) => {
+      shiftRef.current = e.shiftKey;
+      const dir = keyToDir[e.key];
+      // only stop if the released key is the currently active direction
+      if (dir && activeDirRef.current === dir) {
+        e.preventDefault();
+        e.stopPropagation();
+        stopRepeat();
+      }
+    };
 
-  // Change color to red when pressed
-  const buttonClass = (direction: ButtonDirection) =>
-    `p-4 m-1 rounded-lg text-white transition-colors duration-100 ${
-      buttonState[direction] ? 'bg-red-600' : 'bg-gray-800'
-    }`;
+    window.addEventListener('keydown', onKeyDown, { passive: false });
+    window.addEventListener('keyup', onKeyUp,   { passive: false });
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      stopRepeat();
+    };
+  }, [startRepeat, stopRepeat, sendJson]);
+
+  // safety: stop on blur / visibility change
+  React.useEffect(() => {
+    const bail = () => stopRepeat();
+    const onVis = () => { if (document.visibilityState !== 'visible') bail(); };
+    window.addEventListener('blur', bail);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('blur', bail);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [stopRepeat]);
+
+  // Unified pointer bindings (mouse + touch + pen)
+  const bindHold = (dir: Dir) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      e.preventDefault();
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      startRepeat(dir);
+    },
+    onPointerUp: (e: React.PointerEvent) => { e.preventDefault(); stopRepeat(); },
+    onPointerCancel: (e: React.PointerEvent) => { e.preventDefault(); stopRepeat(); },
+    onPointerLeave: (e: React.PointerEvent) => { e.preventDefault(); stopRepeat(); },
+  });
+
+  const btnClass = (dir: Dir) =>
+    `p-4 m-1 rounded-lg text-white font-semibold select-none
+     w-14 h-14 flex items-center justify-center outline-none
+     transition-colors duration-100
+     ${pressed[dir] ? 'bg-emerald-600 ring-2 ring-emerald-300' : 'bg-zinc-800 hover:bg-zinc-700'}`;
 
   return (
     <div className="flex flex-col items-center">
-      <div className="text-lg font-bold mb-2">Camera Control</div>
+      <div className="text-lg font-bold mb-2">Camera</div>
+
       <button
-        className={buttonClass('up')}
-        onMouseDown={() => {
-          sendCommand(COMMAND.CAMERA_SERVO_UP);
-          setButtonPressed('up', true);
-        }}
-        onMouseUp={() => setButtonPressed('up', false)}
-        onMouseLeave={() => setButtonPressed('up', false)}
-      >
-        ↑
-      </button>
-      <div className="flex space-x-1">
+        className={btnClass('up')}
+        aria-label="Camera Up (↑ / Shift=larger)"
+        aria-pressed={pressed.up}
+        title="ArrowUp (Shift=larger)"
+        {...bindHold('up')}
+      >↑</button>
+
+      <div className="flex space-x-2">
         <button
-          className={buttonClass('left')}
-          onMouseDown={() => {
-            sendCommand(COMMAND.CAMERA_SERVO_LEFT);
-            setButtonPressed('left', true);
-          }}
-          onMouseUp={() => setButtonPressed('left', false)}
-          onMouseLeave={() => setButtonPressed('left', false)}
-        >
-          ←
-        </button>
+          className={btnClass('left')}
+          aria-label="Camera Left (← / Shift=larger)"
+          aria-pressed={pressed.left}
+          title="ArrowLeft (Shift=larger)"
+          {...bindHold('left')}
+        >←</button>
+
         <button
-          className={buttonClass('right')}
-          onMouseDown={() => {
-            sendCommand(COMMAND.CAMERA_SERVO_RIGHT);
-            setButtonPressed('right', true);
-          }}
-          onMouseUp={() => setButtonPressed('right', false)}
-          onMouseLeave={() => setButtonPressed('right', false)}
+          className={btnClass('right')}
+          aria-label="Camera Right (→ / Shift=larger)"
+          aria-pressed={pressed.right}
+          title="ArrowRight (Shift=larger)"
+          {...bindHold('right')}
+        >→</button>
+      </div>
+
+      <button
+        className={btnClass('down')}
+        aria-label="Camera Down (↓ / Shift=larger)"
+        aria-pressed={pressed.down}
+        title="ArrowDown (Shift=larger)"
+        {...bindHold('down')}
+      >↓</button>
+
+      <div className="mt-3">
+        <button
+          onClick={() => sendJson(RESET)}
+          className="px-3 py-2 rounded-md bg-sky-600 hover:bg-sky-500 text-white font-semibold"
+          title="Center (C / Home)"
+          aria-label="Center camera (C / Home)"
         >
-          →
+          Center
         </button>
       </div>
-      <button
-        className={buttonClass('down')}
-        onMouseDown={() => {
-          sendCommand(COMMAND.CAMERA_SERVO_DOWN);
-          setButtonPressed('down', true);
-        }}
-        onMouseUp={() => setButtonPressed('down', false)}
-        onMouseLeave={() => setButtonPressed('down', false)}
-      >
-        ↓
-      </button>
     </div>
   );
-};
-
-export default CameraControlPanel;
+}

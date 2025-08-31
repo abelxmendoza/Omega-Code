@@ -1,77 +1,100 @@
 /*
 # File: /Omega-Code/ui/robot-controller-ui/src/control_definitions.ts
 # Summary:
-This file defines a centralized set of constant command strings and configurations for the robot controller application.
-These commands are categorized by functionality, including motors, speed, servos, LEDs, sensors, and others.
-It also includes constants for lighting modes and patterns for better control over LED behaviors.
+Centralized command strings + lighting constants used across the UI.
+- Matches movement_ws_server.py (set-speed, stop, move-*, servo-*, buzz, buzz-stop, camera-servo-*)
+- Provides stable names for UI code
+- Includes compatibility aliases (CMD_SERVO_*), so legacy imports won’t break
+- Adds a few RESERVED commands for future automation / video servoing (backend TODO)
+
+Tips:
+- Use COMMAND.SET_SPEED with payload { value: 0..4095 }.
+- Movement commands accept optional { speed?: 0..4095, durationMs?: number }.
 */
 
 export const COMMAND = {
-    // Motor Commands
-    CMD_MOTOR: 'CMD_MOTOR',                   // General command for motor control
-    MOVE_UP: 'move-up',                       // Move the robot forward
-    MOVE_DOWN: 'move-down',                   // Move the robot backward
-    MOVE_LEFT: 'move-left',                   // Move the robot to the left
-    MOVE_RIGHT: 'move-right',                 // Move the robot to the right
-    MOVE_STOP: 'move-stop',                   // Stop all specific directional movements
+  // --- Motors ---------------------------------------------------------------
+  CMD_MOTOR: 'CMD_MOTOR',                 // (legacy placeholder; not used by server)
+  MOVE_UP: 'move-up',                     // { speed?, durationMs? }
+  MOVE_DOWN: 'move-down',                 // { speed?, durationMs? }
+  MOVE_LEFT: 'move-left',                 // { speed?, durationMs? }
+  MOVE_RIGHT: 'move-right',               // { speed?, durationMs? }
+  MOVE_STOP: 'move-stop',                 // alias the server normalizes to "stop"
+  STOP: 'stop',                           // immediate halt
 
-    // Speed Commands
-    INCREASE_SPEED: 'increase-speed',         // Increase the robot's speed
-    DECREASE_SPEED: 'decrease-speed',         // Decrease the robot's speed
-    STOP: 'stop',                             // Emergency stop for all robot movement
+  // Speed (server expects PWM 0..4095 in "value")
+  SET_SPEED: 'set-speed',                 // { value: 0..4095 }
+  INCREASE_SPEED: 'increase-speed',       // increments on server (DEFAULT_SPEED_STEP)
+  DECREASE_SPEED: 'decrease-speed',       // decrements on server
 
-    // Servo Commands
-    CMD_SERVO_HORIZONTAL: 'servo-horizontal', // Adjust the horizontal servo position
-    CMD_SERVO_VERTICAL: 'servo-vertical',     // Adjust the vertical servo position
-    SET_SERVO_POSITION: 'set-servo-position', // Set specific angles for servos
-    RESET_SERVO: 'reset-servo',               // Reset servos to their default positions
+  // --- Servos ---------------------------------------------------------------
+  // Preferred names (match server):
+  SERVO_HORIZONTAL: 'servo-horizontal',   // { angle: ±N } relative
+  SERVO_VERTICAL: 'servo-vertical',       // { angle: ±N } relative
+  SET_SERVO_POSITION: 'set-servo-position', // { horizontal?: 0..180, vertical?: 0..180 }
+  RESET_SERVO: 'reset-servo',
 
-    // Camera Servo Directional Commands
-    CAMERA_SERVO_LEFT: 'camera-servo-left',   // Nudge camera left
-    CAMERA_SERVO_RIGHT: 'camera-servo-right', // Nudge camera right
-    CAMERA_SERVO_UP: 'camera-servo-up',       // Tilt camera up
-    CAMERA_SERVO_DOWN: 'camera-servo-down',   // Tilt camera down
+  // Compatibility aliases (old UI code may reference these):
+  CMD_SERVO_HORIZONTAL: 'servo-horizontal',
+  CMD_SERVO_VERTICAL: 'servo-vertical',
 
-    // LED Commands
-    CMD_LED: 'CMD_LED',                       // General command for controlling LEDs
-    CMD_LED_MOD: 'CMD_LED_MOD',               // Modify LED mode settings
-    SET_LED: 'set-led',                       // Set LED color and pattern
-    LED_PATTERN: 'led-pattern',               // Define a specific LED pattern
-    LED_TIMING: 'led-timing',                 // Adjust the timing for LED blinking
-    LED_BRIGHTNESS: 'led-brightness',         // Control LED brightness levels
+  // Camera nudge aliases (use DEFAULT_SERVO_STEP on server)
+  CAMERA_SERVO_LEFT: 'camera-servo-left',
+  CAMERA_SERVO_RIGHT: 'camera-servo-right',
+  CAMERA_SERVO_UP: 'camera-servo-up',
+  CAMERA_SERVO_DOWN: 'camera-servo-down',
 
-    // Lighting Control Commands
-    LIGHTING_SET_COLOR: 'lighting-set-color',         // Define a specific LED color
-    LIGHTING_SET_MODE: 'lighting-set-mode',           // Set the lighting mode (e.g., single, multi)
-    LIGHTING_SET_PATTERN: 'lighting-set-pattern',     // Specify a lighting pattern (e.g., static, fade)
-    LIGHTING_SET_INTERVAL: 'lighting-set-interval',   // Configure interval timing for dynamic patterns
-    LIGHTING_TOGGLE: 'lighting-toggle',               // Turn lighting on or off
+  // --- LEDs / Lighting (UI-side; wire to your lighting backend if present) ---
+  CMD_LED: 'CMD_LED',
+  CMD_LED_MOD: 'CMD_LED_MOD',
+  SET_LED: 'set-led',
+  LED_PATTERN: 'led-pattern',
+  LED_TIMING: 'led-timing',
+  LED_BRIGHTNESS: 'led-brightness',
+  LIGHTING_SET_COLOR: 'lighting-set-color',
+  LIGHTING_SET_MODE: 'lighting-set-mode',
+  LIGHTING_SET_PATTERN: 'lighting-set-pattern',
+  LIGHTING_SET_INTERVAL: 'lighting-set-interval',
+  LIGHTING_TOGGLE: 'lighting-toggle',
 
-    // Buzzer Commands
-    CMD_BUZZER: 'buzz',                       // Activate the robot's buzzer
-    CMD_BUZZER_STOP: 'buzz-stop',             // Deactivate the buzzer
+  // --- Buzzer ---------------------------------------------------------------
+  CMD_BUZZER: 'buzz',                     // ON until "buzz-stop" (great for hold-to-horn)
+  CMD_BUZZER_STOP: 'buzz-stop',           // OFF
+  // RESERVED (backend TODO): 'buzz-duration' to support timed beeps from a single message.
+  // BUZZ_DURATION: 'buzz-duration',      // e.g. { ms: 250 }
 
-    // Sensor Commands
-    CMD_SONIC: 'CMD_SONIC',                   // Manage ultrasonic sensor operations
-    CMD_LIGHT: 'CMD_LIGHT',                   // Manage light sensor operations
+  // --- Sensors / Power / Status --------------------------------------------
+  CMD_SONIC: 'CMD_SONIC',
+  CMD_LIGHT: 'CMD_LIGHT',
+  CMD_POWER: 'CMD_POWER',
+  CMD_MODE: 'CMD_MODE',
+  STATUS: 'status',                       // ask server for current speed/servo state
 
-    // Power and Mode Commands
-    CMD_POWER: 'CMD_POWER',                   // Control robot power settings
-    CMD_MODE: 'CMD_MODE',                     // Set operational mode for the robot
-};
+  // --- Automation / Video servoing (RESERVED: add handlers in backend) ------
+  // Useful names to standardize now; implement later server-side:
+  // AUTO_TRACK_ON: 'camera-track-start',  // start vision-based tracking loop
+  // AUTO_TRACK_OFF: 'camera-track-stop',  // stop tracking
+  // RUN_MACRO: 'run-macro',               // { name: string, args?: any }
+  // STOP_MACRO: 'stop-macro',
+} as const;
 
 // Lighting Pattern Constants
 export const LIGHTING_PATTERNS = [
-    'static',   // LEDs maintain a constant color
-    'blink',    // LEDs turn on and off at defined intervals
-    'fade',     // LEDs transition smoothly between colors
-    'chase',    // LEDs create a chasing light effect
-    'rainbow'   // LEDs display a rainbow spectrum of colors
-];
+  'static',   // steady color
+  'blink',    // on/off at defined interval
+  'fade',     // smooth transitions
+  'chase',    // chasing effect
+  'rainbow',  // spectrum sweep
+] as const;
 
 // Lighting Mode Constants
 export const LIGHTING_MODES = [
-    'single',   // All LEDs display the same color
-    'multi',    // LEDs show multiple colors simultaneously
-    'two'       // LEDs alternate between two colors
-];
+  'single',   // one color for all LEDs
+  'multi',    // multiple colors simultaneously
+  'two',      // alternate between two colors
+] as const;
+
+// Optional helper types if you want them elsewhere in the UI:
+export type CommandKey = keyof typeof COMMAND;
+export type LightingPattern = typeof LIGHTING_PATTERNS[number];
+export type LightingMode = typeof LIGHTING_MODES[number];
