@@ -12,6 +12,7 @@
 #     PORT_MOVEMENT=8081
 #     MOVEMENT_PATH="/"                # set to "/movement" if you want a path (UI then must use it)
 #     ORIGIN_ALLOW="http://localhost:3000,https://your-ui"
+#     ORIGIN_ALLOW_NO_HEADER=0|1       # allow CLI tools that don't send Origin
 #     ROBOT_SIM=0|1                    # 1 = no-op motor/buzzer/servo for dev
 #
 #   Start:
@@ -27,7 +28,17 @@ import sys
 import json
 import time
 import asyncio
+import inspect
 from typing import Optional, Set, Tuple
+
+# Optional .env loader (backend root)
+try:
+    from dotenv import load_dotenv
+    _root_env = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
+    if os.path.exists(_root_env):
+        load_dotenv(_root_env)
+except Exception:
+    pass
 
 import websockets
 # Use legacy namespace for stable type hints across versions (avoids deprecation warnings).
@@ -75,6 +86,7 @@ PATH  = (_env("MOVEMENT_PATH", "/") or "/").rstrip("/") or "/"
 _ALLOWED_ORIGINS: Set[str] = set(
     o.strip() for o in (_env("ORIGIN_ALLOW", "") or "").split(",") if o.strip()
 )
+ALLOW_NO_ORIGIN = _env("ORIGIN_ALLOW_NO_HEADER", "0") == "1"
 SIM_MODE = _env("ROBOT_SIM", "0") == "1"
 
 # ---------- hardware (with simulation fallback) ----------
@@ -158,6 +170,8 @@ def origin_ok(ws: WebSocketServerProtocol) -> bool:
     if not _ALLOWED_ORIGINS:
         return True
     origin = ws.request_headers.get("Origin")
+    if origin is None and ALLOW_NO_ORIGIN:
+        return True  # allow Python/CLI clients without Origin header
     return bool(origin) and origin in _ALLOWED_ORIGINS
 
 def path_ok(request_path: str) -> bool:
@@ -167,18 +181,58 @@ def path_ok(request_path: str) -> bool:
     cleaned = (request_path or "/").split("?", 1)[0].rstrip("/") or "/"
     return cleaned == PATH
 
-def parse_json(msg: str) -> Tuple[Optional[str], dict]:
+def _parse_commandish_string(s: str) -> Tuple[Optional[str], dict]:
     """
-    Accept JSON commands (preferred). Returns (command, payload).
-    Ignores non-JSON messages but keeps the server alive.
+    Accept tolerant plain-text commands:
+      "forward", "move-up", "stop"
+      or "set-speed 1200", "servo-horizontal -5", "durationMs=500"
     """
+    t = (s or "").strip()
+    if not t:
+        return (None, {})
+    # crude tokenization
+    parts = t.replace(":", " ").replace(",", " ").split()
+    if not parts:
+        return (None, {})
+    cmd = parts[0]
+    data: dict = {}
+    # very simple key=value support and single numeric arg for common cases
+    for p in parts[1:]:
+        if "=" in p:
+            k, v = p.split("=", 1)
+            data[k] = v
+        else:
+            # guess numeric
+            try:
+                data.setdefault("value", int(p))
+            except Exception:
+                pass
+    return (cmd, data)
+
+def parse_json_or_string(msg: str) -> Tuple[Optional[str], dict]:
+    """
+    Accept JSON commands (preferred) or tolerant plain string commands.
+    Returns (command, payload).
+    """
+    # JSON first
     try:
         data = json.loads(msg)
         if isinstance(data, dict):
+            # Common envelopes:
+            # { "command": "forward", ... }
+            # { "type":"ping", ... } handled separately
             cmd = data.get("command")
-            return (cmd if isinstance(cmd, str) else None, data)
+            if isinstance(cmd, str) and cmd:
+                return (cmd, data)
+            # tolerate {cmd:"forward"} or {action:"forward"}
+            cmd2 = data.get("cmd") or data.get("action")
+            if isinstance(cmd2, str) and cmd2:
+                return (cmd2, data)
     except Exception:
         pass
+    # Plain string fallback
+    if isinstance(msg, str):
+        return _parse_commandish_string(msg)
     return (None, {})
 
 async def do_stop():
@@ -188,6 +242,23 @@ async def do_stop():
             buzz_off()
         except Exception as e:
             elog("stop failed:", repr(e))
+
+def _call_motor(fn, speed: int):
+    """
+    Call motor function whether it accepts (speed) or no args.
+    """
+    try:
+        sig = inspect.signature(fn)
+        if len(sig.parameters) == 0:
+            fn()
+        else:
+            fn(speed)
+    except (TypeError, ValueError):
+        # Fallback try both ways
+        try:
+            fn(speed)
+        except Exception:
+            fn()
 
 async def do_move(fn_name: str, speed: int):
     async with motor_lock:
@@ -200,7 +271,7 @@ async def do_move(fn_name: str, speed: int):
                 fn = getattr(motor, "turn_right", None)
         if not callable(fn):
             raise RuntimeError(f"motor missing method: {fn_name}")
-        fn(speed)
+        _call_motor(fn, speed)
 
 def norm_cmd_name(raw: str) -> str:
     """
@@ -274,7 +345,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
 
     try:
         async for message in ws:
-            # Heartbeat first (allow non-JSON ping envelope from UI)
+            # Heartbeat first (allow non-JSON ping envelope from the UI)
             if isinstance(message, str) and message.startswith('{"type":"ping"'):
                 try:
                     obj = json.loads(message)
@@ -283,16 +354,22 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     await send_json(ws, {"type": "pong", "ts": _now_ms()})
                 continue
 
-            cmd, data = parse_json(message)
+            cmd, data = parse_json_or_string(message)
             if not cmd:
-                warn("non-JSON or missing command; ignored")
+                warn("non-JSON/unrecognized command; ignored")
                 continue
 
             cmd = norm_cmd_name(cmd)
 
-            # quick reads
-            speed = clamp(int(data.get("speed", current_speed)), SPEED_MIN, SPEED_MAX)
-            duration_ms = int(data.get("durationMs", 0)) if str(data.get("durationMs", "")).isdigit() else 0
+            # reads
+            try:
+                speed = int(data.get("speed", current_speed))
+            except Exception:
+                speed = current_speed
+            speed = clamp(speed, SPEED_MIN, SPEED_MAX)
+
+            duration_raw = str(data.get("durationMs", "")).strip()
+            duration_ms = int(duration_raw) if duration_raw.isdigit() else 0
 
             try:
                 # -------- MOVEMENT --------
@@ -329,7 +406,12 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     await send_json(ws, ok("decrease-speed", speed=current_speed))
 
                 elif cmd == "set-speed":
-                    current_speed = clamp(int(data.get("value", current_speed)), SPEED_MIN, SPEED_MAX)
+                    # accept value in "value" or "speed"
+                    try:
+                        val = int(data.get("value", data.get("speed", current_speed)))
+                    except Exception:
+                        val = current_speed
+                    current_speed = clamp(val, SPEED_MIN, SPEED_MAX)
                     await send_json(ws, ok("set-speed", speed=current_speed))
 
                 # -------- BUZZER --------
@@ -347,15 +429,24 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
 
                 # -------- SERVOS --------
                 elif cmd == "servo-horizontal":
+                    # relative delta in "angle"
                     delta = int(data.get("angle", 0))
                     current_horizontal_angle = clamp(current_horizontal_angle + delta, SERVO_MIN, SERVO_MAX)
-                    servo.setServoPwm("horizontal", current_horizontal_angle)
+                    try:
+                        servo.setServoPwm("horizontal", current_horizontal_angle)
+                    except Exception as e:
+                        elog("servo H failed:", repr(e))
+                        raise
                     await send_json(ws, ok("servo-horizontal", angle=current_horizontal_angle))
 
                 elif cmd == "servo-vertical":
                     delta = int(data.get("angle", 0))
                     current_vertical_angle = clamp(current_vertical_angle + delta, SERVO_MIN, SERVO_MAX)
-                    servo.setServoPwm("vertical", current_vertical_angle)
+                    try:
+                        servo.setServoPwm("vertical", current_vertical_angle)
+                    except Exception as e:
+                        elog("servo V failed:", repr(e))
+                        raise
                     await send_json(ws, ok("servo-vertical", angle=current_vertical_angle))
 
                 elif cmd == "set-servo-position":
@@ -436,6 +527,8 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
 
 async def main():
     log(f"listening on ws://0.0.0.0:{PORT}{'' if PATH=='/' else PATH}")
+    log(f"ORIGIN_ALLOW={','.join(sorted(_ALLOWED_ORIGINS)) or '(none)'} "
+        f"ALLOW_NO_ORIGIN={ALLOW_NO_ORIGIN} SIM_MODE={SIM_MODE}")
     # We disable TCP-level ping so JSON ping/pong from the UI is the single heartbeat.
     async with websockets.serve(
         handler,
@@ -444,7 +537,6 @@ async def main():
         ping_interval=None,
         max_size=64 * 1024,
         max_queue=64,
-        # process_request could enforce PATH for HTTP GETs if you expose health here later
     ):
         await asyncio.Future()  # run forever
 
@@ -453,3 +545,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
+
