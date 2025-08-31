@@ -7,15 +7,20 @@
 #   - Ultrasonic: marks alive on any message (no pong)
 #   - Video: probes sibling `/health` (cheap 200/503) instead of touching MJPEG
 #   - Colors match ServiceStatusBar (green=connected, amber=connecting, red=disconnected, sky=no_camera)
+#   - NEW: Network Wizard toggle pill + embedded <NetworkWizard /> panel
 */
 
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { net } from '@/utils/netProfile';
+
+// Lazy (client-only) load for the wizard — matches actual file location
+const NetworkWizard = dynamic(() => import('@/components/NetworkWizard'), { ssr: false });
 
 interface HeaderProps {
   batteryLevel: number;
@@ -39,11 +44,15 @@ const Dot: React.FC<{ state: HeaderState }> = ({ state }) => {
   return <span className={`inline-block w-2 h-2 rounded-full ${color}`} aria-hidden />;
 };
 
-const Pill: React.FC<{ label: string; state: HeaderState; latency?: number | null }> = ({
-  label,
-  state,
-  latency
-}) => {
+type PillProps = {
+  label: string;
+  state: HeaderState;
+  latency?: number | null;
+  onClick?: () => void;
+  isInteractive?: boolean;
+};
+
+const Pill: React.FC<PillProps> = ({ label, state, latency, onClick, isInteractive }) => {
   const glyph =
     state === 'connected'  ? '✓' :
     state === 'connecting' ? '…' :
@@ -53,15 +62,28 @@ const Pill: React.FC<{ label: string; state: HeaderState; latency?: number | nul
     state === 'connecting' ? 'text-amber-300'  :
     state === 'no_camera'  ? 'text-sky-300'    : 'text-rose-400';
 
-  return (
-    <div
-      className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md bg-black/30 border border-white/10"
-      title={`${label}: ${state}${latency != null ? ` • ${latency} ms` : ''}`}
-    >
+  const base =
+    'flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md bg-black/30 border border-white/10';
+  const interactive = isInteractive
+    ? ' cursor-pointer hover:bg-black/40 focus:outline-none focus:ring-2 focus:ring-white/20'
+    : '';
+
+  const content = (
+    <>
       <Dot state={state} />
       <span className="text-white/90">{label}</span>
       <span className={`ml-0.5 ${glyphClass}`} aria-hidden>{glyph}</span>
       {latency != null && <span className="text-white/50 ml-0.5">{latency} ms</span>}
+    </>
+  );
+
+  return isInteractive ? (
+    <button type="button" className={base + interactive} onClick={onClick} title={label}>
+      {content}
+    </button>
+  ) : (
+    <div className={base} title={`${label}: ${state}${latency != null ? ` • ${latency} ms` : ''}`}>
+      {content}
     </div>
   );
 };
@@ -74,6 +96,8 @@ const useMaybeHttp = (url: string, opts: Parameters<typeof useHttpStatus>[1]) =>
   url ? useHttpStatus(url, opts) : { status: 'disconnected' as HttpStatus, latency: null };
 
 const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
+  const [showNetwork, setShowNetwork] = useState(false);
+
   // Resolve all endpoints via the profile-aware helper (honors ?profile).
   const MOVE_URL  = net.ws.movement();
   const ULTRA_URL = net.ws.ultrasonic();
@@ -137,13 +161,28 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
       </div>
 
       {/* Per-service pills */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 items-center">
         <Pill label="Movement"   state={move.status}   latency={move.latency} />
         <Pill label="Ultrasonic" state={ultra.status} />
         <Pill label="Line"       state={line.status}   latency={line.latency} />
         <Pill label="Lighting"   state={light.status}  latency={light.latency} />
         <Pill label="Video"      state={video.status}  latency={video.latency} />
+
+        {/* Network Wizard toggle */}
+        <Pill
+          label={showNetwork ? 'Network ▲' : 'Network ▼'}
+          state="connected"
+          isInteractive
+          onClick={() => setShowNetwork((v) => !v)}
+        />
       </div>
+
+      {/* Embedded Network Wizard */}
+      {showNetwork && (
+        <div className="mt-2">
+          <NetworkWizard />
+        </div>
+      )}
     </div>
   );
 };
