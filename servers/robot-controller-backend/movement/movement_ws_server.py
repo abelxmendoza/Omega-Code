@@ -3,9 +3,10 @@
 #   WebSocket server for robot movement, speed, buzzer, and servo control.
 #   - JSON welcome on connect; replies { "type":"pong" } to { "type":"ping" }
 #   - Commands aligned with ui/src/control_definitions.ts (+ tolerant synonyms)
-#   - Clamped speed/angles, structured ACKs, safe stop on disconnect
+#   - Clamped speed/angles, structured ACKs
+#   - Safe stop on disconnect (only when last client leaves)
 #   - Optional timed moves (durationMs) with guard so newer moves aren't stopped by older timers
-#   - Single-writer motor lock to avoid concurrent GPIO writes
+#   - Single-writer motor lock + buzzer lock to avoid concurrent device writes
 #   - Optional origin allowlist + optional simulation (no hardware)
 #
 #   Env:
@@ -161,8 +162,17 @@ current_vertical_angle    = 90
 # Serialize motor operations
 motor_lock = asyncio.Lock()
 
-# When a timed move is issued, we record an op id; only that op may auto-stop itself.
+# Buzzer control
+buzzer_lock = asyncio.Lock()
+_buzz_task: Optional[asyncio.Task] = None
+_last_buzz_op_id = 0
+buzzer_on_state = False
+
+# Timed move guard
 _last_move_op_id = 0
+
+# Track connected clients to avoid stopping on non-last disconnects
+CLIENTS: Set[WebSocketServerProtocol] = set()
 
 # ---------- helpers ----------
 
@@ -177,32 +187,23 @@ def origin_ok(ws: WebSocketServerProtocol) -> bool:
 def path_ok(request_path: str) -> bool:
     if PATH == "/":
         return True  # root
-    # tolerate trailing slash and ignore queries
     cleaned = (request_path or "/").split("?", 1)[0].rstrip("/") or "/"
     return cleaned == PATH
 
 def _parse_commandish_string(s: str) -> Tuple[Optional[str], dict]:
-    """
-    Accept tolerant plain-text commands:
-      "forward", "move-up", "stop"
-      or "set-speed 1200", "servo-horizontal -5", "durationMs=500"
-    """
     t = (s or "").strip()
     if not t:
         return (None, {})
-    # crude tokenization
     parts = t.replace(":", " ").replace(",", " ").split()
     if not parts:
         return (None, {})
     cmd = parts[0]
     data: dict = {}
-    # very simple key=value support and single numeric arg for common cases
     for p in parts[1:]:
         if "=" in p:
             k, v = p.split("=", 1)
             data[k] = v
         else:
-            # guess numeric
             try:
                 data.setdefault("value", int(p))
             except Exception:
@@ -210,43 +211,55 @@ def _parse_commandish_string(s: str) -> Tuple[Optional[str], dict]:
     return (cmd, data)
 
 def parse_json_or_string(msg: str) -> Tuple[Optional[str], dict]:
-    """
-    Accept JSON commands (preferred) or tolerant plain string commands.
-    Returns (command, payload).
-    """
-    # JSON first
     try:
         data = json.loads(msg)
         if isinstance(data, dict):
-            # Common envelopes:
-            # { "command": "forward", ... }
-            # { "type":"ping", ... } handled separately
             cmd = data.get("command")
             if isinstance(cmd, str) and cmd:
                 return (cmd, data)
-            # tolerate {cmd:"forward"} or {action:"forward"}
             cmd2 = data.get("cmd") or data.get("action")
             if isinstance(cmd2, str) and cmd2:
                 return (cmd2, data)
     except Exception:
         pass
-    # Plain string fallback
     if isinstance(msg, str):
         return _parse_commandish_string(msg)
     return (None, {})
 
+async def buzz_on_safe():
+    global buzzer_on_state
+    async with buzzer_lock:
+        try:
+            buzz_on()
+            buzzer_on_state = True
+        except Exception as e:
+            elog("buzzer on failed:", repr(e))
+
+async def buzz_off_safe():
+    global buzzer_on_state
+    async with buzzer_lock:
+        try:
+            buzz_off()
+            buzzer_on_state = False
+        except Exception as e:
+            elog("buzzer off failed:", repr(e))
+
+def cancel_buzz_task():
+    global _buzz_task
+    if _buzz_task and not _buzz_task.done():
+        _buzz_task.cancel()
+    _buzz_task = None
+
 async def do_stop():
+    # Stop motors + buzzer
     async with motor_lock:
         try:
             motor.stop()
-            buzz_off()
         except Exception as e:
-            elog("stop failed:", repr(e))
+            elog("motor stop failed:", repr(e))
+    await buzz_off_safe()
 
 def _call_motor(fn, speed: int):
-    """
-    Call motor function whether it accepts (speed) or no args.
-    """
     try:
         sig = inspect.signature(fn)
         if len(sig.parameters) == 0:
@@ -254,7 +267,6 @@ def _call_motor(fn, speed: int):
         else:
             fn(speed)
     except (TypeError, ValueError):
-        # Fallback try both ways
         try:
             fn(speed)
         except Exception:
@@ -264,7 +276,6 @@ async def do_move(fn_name: str, speed: int):
     async with motor_lock:
         fn = getattr(motor, fn_name, None)
         if not callable(fn):
-            # try turn_left/turn_right fallbacks
             if fn_name == "left":
                 fn = getattr(motor, "turn_left", None)
             elif fn_name == "right":
@@ -274,14 +285,6 @@ async def do_move(fn_name: str, speed: int):
         _call_motor(fn, speed)
 
 def norm_cmd_name(raw: str) -> str:
-    """
-    Map tolerant synonyms from the UI into canonical actions.
-      forward:  forward | move-up | move-forward | 'w'
-      backward: backward | move-down | move-back  | 's'
-      left:     left | move-left | turn-left      | 'a'
-      right:    right| move-right| turn-right     | 'd'
-      stop:     stop | move-stop | halt           | ' '
-    """
     s = (raw or "").strip().lower()
     if s in {"forward", "move-up", "move-forward", "w"}: return "forward"
     if s in {"backward", "move-down", "move-back", "s"}: return "backward"
@@ -291,14 +294,6 @@ def norm_cmd_name(raw: str) -> str:
     return raw
 
 def _extract_request_path(ws: WebSocketServerProtocol, request_path: Optional[str]) -> str:
-    """
-    Support websockets >=12 (no path parameter) and older (with path).
-    Try, in order:
-      - explicit request_path argument (old signature)
-      - ws.path (newer versions)
-      - ws.request.path (some internals)
-      - fallback "/"
-    """
     if isinstance(request_path, str) and request_path:
         return request_path
     rp = getattr(ws, "path", None)
@@ -312,40 +307,42 @@ def _extract_request_path(ws: WebSocketServerProtocol, request_path: Optional[st
         pass
     return "/"
 
-# ---------- websocket handler ----------
+# ---------- websocket handler (stop only on last disconnect) ----------
 
 async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = None):
     global current_speed, current_horizontal_angle, current_vertical_angle, _last_move_op_id
+    global _last_buzz_op_id, _buzz_task
 
     request_path = _extract_request_path(ws, request_path)
     peer = getattr(ws, "remote_address", None)
-    log("CONNECTED", peer, f"path={request_path!r}")
 
-    if not path_ok(request_path):
-        warn("reject path", request_path, "expected", PATH)
-        await send_json(ws, err("invalid-path", expected=PATH))
-        await ws.close(code=1008, reason="invalid path")
-        return
-
-    if not origin_ok(ws):
-        warn("reject origin", ws.request_headers.get("Origin"))
-        await send_json(ws, err("origin-not-allowed"))
-        await ws.close(code=4403, reason="forbidden origin")
-        return
-
-    # Welcome
-    await send_json(ws, {
-        "type": "welcome",
-        "status": "connected",
-        "service": "movement",
-        "ts": _now_ms(),
-        "path": request_path or "/",
-        "sim": SIM_MODE,
-    })
+    CLIENTS.add(ws)
+    log(f"CONNECTED {peer} path={request_path!r} clients={len(CLIENTS)}")
 
     try:
+        if not path_ok(request_path):
+            warn("reject path", request_path, "expected", PATH)
+            await send_json(ws, err("invalid-path", expected=PATH))
+            await ws.close(code=1008, reason="invalid path")
+            return
+
+        if not origin_ok(ws):
+            warn("reject origin", ws.request_headers.get("Origin"))
+            await send_json(ws, err("origin-not-allowed"))
+            await ws.close(code=4403, reason="forbidden origin")
+            return
+
+        await send_json(ws, {
+            "type": "welcome",
+            "status": "connected",
+            "service": "movement",
+            "ts": _now_ms(),
+            "path": request_path or "/",
+            "sim": SIM_MODE,
+        })
+
         async for message in ws:
-            # Heartbeat first (allow non-JSON ping envelope from the UI)
+            # JSON heartbeat
             if isinstance(message, str) and message.startswith('{"type":"ping"'):
                 try:
                     obj = json.loads(message)
@@ -378,7 +375,6 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     await do_move(cmd, current_speed)
                     await send_json(ws, ok(cmd, speed=current_speed))
 
-                    # Optional timed move
                     if duration_ms > 0:
                         _last_move_op_id += 1
                         my_id = _last_move_op_id
@@ -406,7 +402,6 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     await send_json(ws, ok("decrease-speed", speed=current_speed))
 
                 elif cmd == "set-speed":
-                    # accept value in "value" or "speed"
                     try:
                         val = int(data.get("value", data.get("speed", current_speed)))
                     except Exception:
@@ -416,20 +411,80 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
 
                 # -------- BUZZER --------
                 elif cmd == "buzz":
-                    try:
-                        buzz_on()
-                    finally:
-                        await send_json(ws, ok("buzz"))
+                    cancel_buzz_task()
+                    await buzz_on_safe()
+                    await send_json(ws, ok("buzz"))
 
                 elif cmd == "buzz-stop":
+                    cancel_buzz_task()
+                    await buzz_off_safe()
+                    await send_json(ws, ok("buzz-stop"))
+
+                elif cmd == "buzz-for":
+                    # one-shot beep for durationMs (10..10000 ms)
                     try:
-                        buzz_off()
-                    finally:
-                        await send_json(ws, ok("buzz-stop"))
+                        dur = int(data.get("durationMs", 0))
+                    except Exception:
+                        dur = 0
+                    dur = clamp(dur, 10, 10000)
+                    if dur <= 0:
+                        await send_json(ws, err("bad-duration"))
+                    else:
+                        cancel_buzz_task()
+                        _last_buzz_op_id += 1
+                        my_id = _last_buzz_op_id
+
+                        async def _beep_once(ms: int, op_id: int):
+                            try:
+                                await buzz_on_safe()
+                                await asyncio.sleep(ms / 1000.0)
+                            except asyncio.CancelledError:
+                                pass
+                            finally:
+                                # Only the latest op is allowed to turn off
+                                if op_id == _last_buzz_op_id:
+                                    await buzz_off_safe()
+
+                        _buzz_task = asyncio.create_task(_beep_once(dur, my_id))
+                        await send_json(ws, ok("buzz-for", durationMs=dur))
+
+                elif cmd == "buzz-pulse":
+                    # pulse pattern: onMs, offMs, repeat (defaults: 150,120,3)
+                    def _ival(x, d): 
+                        try:
+                            return int(x)
+                        except Exception:
+                            return d
+                    on_ms  = clamp(_ival(data.get("onMs"), 150), 5, 2000)
+                    off_ms = clamp(_ival(data.get("offMs"), 120), 5, 3000)
+                    repeat = clamp(_ival(data.get("repeat"), 3), 1, 50)
+
+                    cancel_buzz_task()
+                    _last_buzz_op_id += 1
+                    my_id = _last_buzz_op_id
+
+                    async def _pulse(on_ms: int, off_ms: int, n: int, op_id: int):
+                        try:
+                            for _ in range(n):
+                                if op_id != _last_buzz_op_id:
+                                    break
+                                await buzz_on_safe()
+                                await asyncio.sleep(on_ms / 1000.0)
+                                if op_id != _last_buzz_op_id:
+                                    break
+                                await buzz_off_safe()
+                                await asyncio.sleep(off_ms / 1000.0)
+                        except asyncio.CancelledError:
+                            pass
+                        finally:
+                            if op_id == _last_buzz_op_id:
+                                await buzz_off_safe()
+
+                    _buzz_task = asyncio.create_task(_pulse(on_ms, off_ms, repeat, my_id))
+                    await send_json(ws, ok("buzz-pulse", onMs=on_ms, offMs=off_ms, repeat=repeat))
 
                 # -------- SERVOS --------
                 elif cmd == "servo-horizontal":
-                    # relative delta in "angle"
                     delta = int(data.get("angle", 0))
                     current_horizontal_angle = clamp(current_horizontal_angle + delta, SERVO_MIN, SERVO_MAX)
                     try:
@@ -504,6 +559,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                             "horizontal": current_horizontal_angle,
                             "vertical": current_vertical_angle,
                         },
+                        "buzzer": buzzer_on_state,
                         "ts": _now_ms(),
                         "sim": SIM_MODE,
                     })
@@ -516,12 +572,19 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                 await send_json(ws, err("exception", detail=str(ex)))
 
     except websockets.exceptions.ConnectionClosed as e:
-        log("DISCONNECTED", peer, e.code, e.reason or "")
+        log(f"DISCONNECTED {peer} code={e.code} reason={e.reason or ''}")
     except Exception as e:
         elog("handler error:", repr(e))
     finally:
-        # Safety: stop motors & buzzer when client drops
-        await do_stop()
+        CLIENTS.discard(ws)
+        remaining = len(CLIENTS)
+        if remaining == 0:
+            # Cancel any buzzer pattern and stop for safety
+            cancel_buzz_task()
+            await do_stop()
+            log("All clients disconnected -> STOP for safety")
+        else:
+            log(f"Client left; {remaining} client(s) still connected (motors unchanged)")
 
 # ---------- serve ----------
 
@@ -529,7 +592,6 @@ async def main():
     log(f"listening on ws://0.0.0.0:{PORT}{'' if PATH=='/' else PATH}")
     log(f"ORIGIN_ALLOW={','.join(sorted(_ALLOWED_ORIGINS)) or '(none)'} "
         f"ALLOW_NO_ORIGIN={ALLOW_NO_ORIGIN} SIM_MODE={SIM_MODE}")
-    # We disable TCP-level ping so JSON ping/pong from the UI is the single heartbeat.
     async with websockets.serve(
         handler,
         "0.0.0.0",
@@ -545,4 +607,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
-
