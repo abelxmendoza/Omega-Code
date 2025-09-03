@@ -23,6 +23,7 @@ import CommandLog from '../components/CommandLog';
 import SensorDashboard from '../components/sensors/SensorDashboard';
 import CarControlPanel from '../components/control/CarControlPanel';
 import CameraControlPanel from '../components/control/CameraControlPanel';
+import AutonomyPanel from '../components/control/AutonomyModal'; // ← NEW
 import { useCommand } from '../context/CommandContext';
 import { COMMAND } from '../control_definitions';
 import Header from '../components/Header';
@@ -260,6 +261,43 @@ export default function Home() {
         <div className="flex justify-center items-center space-x-8">
           <div className="flex-shrink-0">
             <CarControlPanel sendCommand={sendCommandWithLog} />
+            {/* ↓ Autonomy panel sits right under the car controller */}
+            <AutonomyPanel
+              connected={ws.current?.readyState === WebSocket.OPEN}
+              batteryPct={75}
+              onStart={(mode, params) => {
+                if (ws.current?.readyState === WebSocket.OPEN) {
+                  ws.current.send(JSON.stringify({ command: 'autonomy-start', mode, params }));
+                  addCommand(`Sent: autonomy-start (${mode})`);
+                } else {
+                  addCommand('autonomy-start failed: WS not open');
+                }
+              }}
+              onStop={() => {
+                if (ws.current?.readyState === WebSocket.OPEN) {
+                  ws.current.send(JSON.stringify({ command: 'autonomy-stop' }));
+                  addCommand('Sent: autonomy-stop');
+                } else {
+                  addCommand('autonomy-stop failed: WS not open');
+                }
+              }}
+              onDock={() => {
+                if (ws.current?.readyState === WebSocket.OPEN) {
+                  ws.current.send(JSON.stringify({ command: 'autonomy-dock' }));
+                  addCommand('Sent: autonomy-dock');
+                } else {
+                  addCommand('autonomy-dock failed: WS not open');
+                }
+              }}
+              onSetWaypoint={(label, lat, lon) => {
+                if (ws.current?.readyState === WebSocket.OPEN) {
+                  ws.current.send(JSON.stringify({ command: 'set-waypoint', label, lat, lon }));
+                  addCommand(`Sent: set-waypoint "${label}" (${lat}, ${lon})`);
+                } else {
+                  addCommand('set-waypoint failed: WS not open');
+                }
+              }}
+            />
           </div>
 
           {/* Framed camera (via proxy to avoid mixed content/CORS) */}

@@ -1,22 +1,25 @@
 /*
 # File: /Omega-Code/ui/robot-controller-ui/src/components/network/NetworkWizard.tsx
 # Summary:
-Network Wizard (standalone panel) for quickly inspecting & managing connectivity.
-- Opens its own lightweight WS to the Movement server (non-blocking).
-- Actions: Refresh info, Scan Wi-Fi, Join SSID, Forget SSID.
-- Shows current SSID/IP/iface and quick links (Movement/Video endpoints).
-- Profile switcher (LAN / Tailscale / Hotspot) updates the UI profile param.
-# Backend expectations (movement_ws_server.py):
-- { "command":"net-info" }           -> { "type":"net-info", ssid, ip, iface, tailscaleIp?, ts }
-- { "command":"net-scan" }           -> { "type":"net-scan", networks:[{ ssid, rssi, secure }] }
-- { "command":"net-join", ssid, pass }  -> ack(ok/error)
-- { "command":"net-forget", ssid }      -> ack(ok/error)
-(If not implemented yet, the UI will still render and show a hint.)
+#   Network Wizard (standalone panel) to inspect & manage connectivity from the browser.
+#   - Opens its own lightweight WebSocket to the Movement server (non-blocking for the rest of the app)
+#   - Actions: Refresh info, Quick Actions (Connect PAN, fast Wi-Fi), Scan Wi-Fi, Join SSID, Forget SSID
+#   - Shows current SSID/IP/iface and quick links (Movement endpoint, Video /health)
+#   - Profile switcher (LAN / Tailscale / Hotspot) updates the UI ?profile param
+#
+# Backend (movement_ws_server.py) expected handlers:
+#   { "command":"net-info" }                 -> { "type":"net-info", ssid, ip, iface, tailscaleIp?, ts }
+#   { "command":"net-scan" }                 -> { "type":"net-scan", networks:[{ ssid, rssi, secure }] }
+#   { "command":"net-join", ssid, pass }     -> { "type":"ack", status:"ok"|"error", action:"net-join", ... }
+#   { "command":"net-forget", ssid }         -> { "type":"ack", status:"ok"|"error", action:"net-forget", ... }
+#
+# Notes:
+#   • Header should import this as: dynamic(() => import('@/components/network/NetworkWizard'), { ssr:false })
 */
 
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React from 'react';
 import { net } from '@/utils/netProfile';
 
 type WsState = 'connecting' | 'connected' | 'disconnected';
@@ -33,40 +36,62 @@ type ScanEntry = { ssid: string; rssi?: number; secure?: boolean };
 
 const Dot: React.FC<{ state: WsState }> = ({ state }) => {
   const color =
-    state === 'connected'   ? 'bg-emerald-500' :
-    state === 'connecting'  ? 'bg-amber-400'  :
-                               'bg-rose-500';
+    state === 'connected'  ? 'bg-emerald-500' :
+    state === 'connecting' ? 'bg-amber-400'  :
+                              'bg-rose-500';
   return <span className={`inline-block w-2 h-2 rounded-full ${color}`} aria-hidden />;
 };
 
-const field = 'px-2 py-1 bg-black/20 rounded border border-white/10 text-sm text-white placeholder:text-white/40';
+const field =
+  'px-2 py-1 bg-black/20 rounded border border-white/10 text-sm text-white placeholder:text-white/40 w-full';
+
+function cx(...cls: (string | false | undefined | null)[]) {
+  return cls.filter(Boolean).join(' ');
+}
 
 const NetworkWizard: React.FC = () => {
-  const WS_URL = useMemo(() => net.ws.movement() || '', []);
-  const VIDEO_URL = useMemo(() => net.video() || '', []);
+  // Profile-aware endpoints
+  const WS_URL = React.useMemo(() => net.ws.movement() || '', []);
+  const VIDEO_URL = React.useMemo(() => net.video() || '', []);
 
-  const wsRef = useRef<WebSocket | null>(null);
-  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wsRef = React.useRef<WebSocket | null>(null);
+  const retryRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [wsState, setWsState] = useState<WsState>('disconnected');
-  const [info, setInfo] = useState<NetInfo>({});
-  const [scan, setScan] = useState<ScanEntry[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string>('');
+  const [wsState, setWsState] = React.useState<WsState>('disconnected');
+  const [info, setInfo] = React.useState<NetInfo>({});
+  const [scan, setScan] = React.useState<ScanEntry[]>([]);
+  const [busy, setBusy] = React.useState(false);
+  const [msg, setMsg] = React.useState<string>('');
 
-  // join form
-  const [ssid, setSsid] = useState('');
-  const [pass, setPass] = useState('');
+  // Join form state (kept for full join/forget controls)
+  const [ssid, setSsid] = React.useState('');
+  const [pass, setPass] = React.useState('');
 
-  const movementLink = WS_URL ? WS_URL.replace(/^ws/i, 'http') : '';
-  const videoHealth = useMemo(() => {
+  const movementLink = React.useMemo(() => {
+    if (!WS_URL) return '';
+    // ws:// -> http://, wss:// -> https://
+    return WS_URL.replace(/^ws(s)?:\/\//i, (_m, s) => `http${s ? 's' : ''}://`);
+  }, [WS_URL]);
+
+  const videoHealth = React.useMemo(() => {
     if (!VIDEO_URL) return '';
     const m = VIDEO_URL.match(/^(.*)\/video_feed(?:\?.*)?$/i);
     return m ? `${m[1]}/health` : `${VIDEO_URL.replace(/\/$/, '')}/health`;
   }, [VIDEO_URL]);
 
-  // --- WS lifecycle (dedicated to wizard) ---
-  useEffect(() => {
+  // Safe sender (no-throw)
+  const safeSend = React.useCallback((payload: any) => {
+    try {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify(payload));
+      }
+    } catch {
+      /* swallow */
+    }
+  }, []);
+
+  // WebSocket lifecycle (self-contained; retries with backoff)
+  React.useEffect(() => {
     if (!WS_URL) return;
 
     let cancelled = false;
@@ -74,6 +99,7 @@ const NetworkWizard: React.FC = () => {
     const open = (attempt = 0) => {
       if (cancelled) return;
       setWsState('connecting');
+
       try {
         const ws = new WebSocket(WS_URL);
         wsRef.current = ws;
@@ -81,11 +107,12 @@ const NetworkWizard: React.FC = () => {
         ws.onopen = () => {
           if (cancelled) return;
           setWsState('connected');
-          // Ask for current info immediately
+          // Pull current info immediately
           safeSend({ command: 'net-info' });
         };
 
         ws.onmessage = (ev) => {
+          if (cancelled) return;
           try {
             const data = JSON.parse(ev.data);
             if (data?.type === 'net-info') {
@@ -101,18 +128,23 @@ const NetworkWizard: React.FC = () => {
               setScan(data.networks);
               setMsg('');
             } else if (data?.type === 'ack') {
-              // surface successes/errors
               if (data.status === 'ok') {
                 setMsg(`✓ ${data.action || 'ok'}`);
-                // Re-pull info after join/forget
                 if (data.action === 'net-join' || data.action === 'net-forget') {
+                  // refresh info post-change
                   safeSend({ command: 'net-info' });
                 }
               } else {
                 setMsg(`× ${data.error || 'error'}`);
               }
             }
-          } catch {}
+          } catch {
+            /* ignore parse errors */
+          }
+        };
+
+        ws.onerror = () => {
+          /* onclose will handle retry */
         };
 
         ws.onclose = () => {
@@ -121,51 +153,31 @@ const NetworkWizard: React.FC = () => {
           const backoff = Math.min(1000 * 2 ** attempt, 10_000);
           retryRef.current = setTimeout(() => open(attempt + 1), backoff);
         };
-
-        ws.onerror = () => {
-          // onclose will handle retry
-        };
       } catch {
         const backoff = Math.min(1000 * 2 ** attempt, 10_000);
         retryRef.current = setTimeout(() => open(attempt + 1), backoff);
       }
     };
 
-    const safeSend = (payload: any) => {
-      try {
-        const s = wsRef.current?.readyState;
-        if (s === WebSocket.OPEN) wsRef.current!.send(JSON.stringify(payload));
-      } catch {}
-    };
-
-    // expose for other handlers inside this effect
-    (NetworkWizard as any)._safeSend = safeSend;
-
     open(0);
 
     return () => {
       cancelled = true;
       if (retryRef.current) clearTimeout(retryRef.current);
+      retryRef.current = null;
       try { wsRef.current?.close(); } catch {}
       wsRef.current = null;
     };
-  }, [WS_URL]);
+  }, [WS_URL, safeSend]);
 
-  const safeSend = (payload: any) => {
-    try {
-      const s = wsRef.current?.readyState;
-      if (s === WebSocket.OPEN) wsRef.current!.send(JSON.stringify(payload));
-    } catch {}
-  };
-
-  // --- Actions ---
+  // --- Actions ---------------------------------------------------------------
   const refresh = () => safeSend({ command: 'net-info' });
 
   const doScan = async () => {
     setBusy(true);
     setMsg('Scanning…');
     safeSend({ command: 'net-scan' });
-    // message handler updates list
+    // Response arrives via onmessage handler
     setBusy(false);
   };
 
@@ -189,7 +201,7 @@ const NetworkWizard: React.FC = () => {
     catch { setMsg('× Copy failed'); }
   };
 
-  // Profile switcher: update ?profile=… in URL (util reads it)
+  // Profile switcher updates ?profile and reloads (util reads it)
   const setProfile = (p: 'lan' | 'tailscale' | 'hotspot') => {
     const url = new URL(window.location.href);
     url.searchParams.set('profile', p);
@@ -213,6 +225,9 @@ const NetworkWizard: React.FC = () => {
         </div>
       </div>
 
+      {/* Quick actions: PAN connect + fast Wi-Fi join */}
+      <QuickActionsRow setMsg={setMsg} onAfterAction={refresh} />
+
       {/* Current info */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <div className="bg-black/20 p-2 rounded border border-white/10">
@@ -221,8 +236,10 @@ const NetworkWizard: React.FC = () => {
         </div>
         <div className="bg-black/20 p-2 rounded border border-white/10">
           <div className="text-[11px] text-white/60">IPv4</div>
-          <button className="text-sm underline decoration-dotted"
-            onClick={() => copy(info.ip)} title="Copy IP">
+          <button
+            className="text-sm underline decoration-dotted"
+            onClick={() => copy(info.ip)} title="Copy IP"
+          >
             {info.ip || '—'}
           </button>
         </div>
@@ -232,8 +249,10 @@ const NetworkWizard: React.FC = () => {
         </div>
         <div className="bg-black/20 p-2 rounded border border-white/10">
           <div className="text-[11px] text-white/60">Tailscale</div>
-          <button className="text-sm underline decoration-dotted"
-            onClick={() => copy(info.tailscaleIp)} title="Copy Tailscale IP">
+          <button
+            className="text-sm underline decoration-dotted"
+            onClick={() => copy(info.tailscaleIp)} title="Copy Tailscale IP"
+          >
             {info.tailscaleIp || '—'}
           </button>
         </div>
@@ -274,7 +293,7 @@ const NetworkWizard: React.FC = () => {
         </div>
       </div>
 
-      {/* Join / Forget */}
+      {/* Join / Forget (full controls) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
         <input
           className={field}
@@ -294,7 +313,7 @@ const NetworkWizard: React.FC = () => {
           <button
             onClick={() => join(ssid.trim(), pass)}
             disabled={busy || !ssid}
-            className={`px-3 py-1 rounded text-sm ${busy?'bg-emerald-900':'bg-emerald-600 hover:bg-emerald-500'}`}
+            className={`px-3 py-1 rounded text-sm ${busy ? 'bg-emerald-900' : 'bg-emerald-600 hover:bg-emerald-500'}`}
             title="Join network"
           >
             Join
@@ -302,7 +321,7 @@ const NetworkWizard: React.FC = () => {
           <button
             onClick={() => forget(ssid.trim())}
             disabled={busy || !ssid}
-            className={`px-3 py-1 rounded text-sm ${busy?'bg-rose-900':'bg-rose-600 hover:bg-rose-500'}`}
+            className={`px-3 py-1 rounded text-sm ${busy ? 'bg-rose-900' : 'bg-rose-600 hover:bg-rose-500'}`}
             title="Forget network"
           >
             Forget
@@ -317,7 +336,8 @@ const NetworkWizard: React.FC = () => {
           <button
             onClick={doScan}
             disabled={busy}
-            className={`px-2 py-1 rounded text-xs ${busy?'bg-zinc-700':'bg-zinc-600 hover:bg-zinc-500'}`}
+            className={`px-2 py-1 rounded text-xs ${busy ? 'bg-zinc-700' : 'bg-zinc-600 hover:bg-zinc-500'}`}
+            title="Scan Wi-Fi"
           >
             Scan
           </button>
@@ -331,12 +351,14 @@ const NetworkWizard: React.FC = () => {
                 <div className="truncate">
                   <span className="text-sm">{n.ssid || '(hidden)'}</span>
                   <span className="text-xs text-white/50 ml-2">
-                    {n.secure ? '🔒' : '🔓'} {typeof n.rssi === 'number' ? `${n.rssi} dBm` : ''}
+                    {n.secure ? '🔒' : '🔓'}{' '}
+                    {typeof n.rssi === 'number' ? `${n.rssi} dBm` : ''}
                   </span>
                 </div>
                 <button
                   onClick={() => { setSsid(n.ssid); }}
                   className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-xs shrink-0"
+                  title="Use this SSID"
                 >
                   Use
                 </button>
@@ -364,3 +386,104 @@ const NetworkWizard: React.FC = () => {
 };
 
 export default NetworkWizard;
+
+/* -----------------------------
+   Quick actions (inline block)
+   ----------------------------- */
+const QuickActionsRow: React.FC<{
+  setMsg: (m: string) => void;
+  onAfterAction?: () => void;
+}> = ({ setMsg, onAfterAction }) => {
+  const [busy, setBusy] = React.useState<'pan' | 'wifi' | null>(null);
+  const [ssid, setSsid] = React.useState('');
+  const [pass, setPass] = React.useState('');
+
+  const doPan = async () => {
+    try {
+      setBusy('pan');
+      setMsg('');
+      const res = await fetch('/api/net/pan/connect', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}), // backend can infer default target (env/last used)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `${res.status} ${res.statusText}`);
+      setMsg('✓ PAN connect requested');
+      onAfterAction?.();
+    } catch (e: any) {
+      setMsg(`× PAN failed: ${e?.message ?? e}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doWifi = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ssid || !pass) { setMsg('× Enter SSID and password'); return; }
+    try {
+      setBusy('wifi');
+      setMsg('');
+      const res = await fetch('/api/net/wifi/connect', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ssid, psk: pass }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `${res.status} ${res.statusText}`);
+      setMsg(`✓ Wi-Fi connect requested: ${ssid}`);
+      setSsid(''); setPass('');
+      onAfterAction?.();
+    } catch (e: any) {
+      setMsg(`× Wi-Fi failed: ${e?.message ?? e}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="bg-black/20 border border-white/10 rounded-md p-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={doPan}
+          disabled={!!busy}
+          title="Connect to iPhone PAN (Bluetooth)"
+          className={cx(
+            'text-xs px-2 py-1 rounded text-white',
+            busy === 'pan' ? 'bg-slate-700' : 'bg-emerald-600 hover:bg-emerald-500'
+          )}
+        >
+          Connect PAN
+        </button>
+
+        <form onSubmit={doWifi} className="flex flex-wrap items-center gap-2 grow">
+          <input
+            className="bg-zinc-900 border border-white/10 rounded px-2 py-1 text-xs min-w-[10rem] grow"
+            placeholder="SSID"
+            value={ssid}
+            onChange={(e) => setSsid(e.target.value)}
+            autoCapitalize="none" autoCorrect="off" spellCheck={false}
+          />
+          <input
+            className="bg-zinc-900 border border-white/10 rounded px-2 py-1 text-xs min-w-[10rem] grow"
+            placeholder="Wi-Fi password"
+            type="password"
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+          />
+          <button
+            type="submit"
+            disabled={!!busy}
+            className={cx(
+              'text-xs px-2 py-1 rounded text-white',
+              busy === 'wifi' ? 'bg-slate-700' : 'bg-sky-600 hover:bg-sky-500'
+            )}
+            title="Connect to Wi-Fi"
+          >
+            Wi-Fi →
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
