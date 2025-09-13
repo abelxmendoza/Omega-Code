@@ -1,4 +1,13 @@
-// File: /Omega-Code/ui/robot-controller-ui/src/pages/api/video-proxy.ts
+/*
+# File: /Omega-Code/ui/robot-controller-ui/src/pages/api/video-proxy.ts
+# Summary:
+#   Proxies an MJPEG stream from a profile-selected upstream (tailscale/lan/local)
+#   to avoid mixed-content/CORS issues. Tries IPv4-first, then default lookup.
+#   - Accepts ?profile=lan|tailscale|local (overrides env profile)
+#   - Accepts ?video=<absolute-url> to force a specific upstream
+#   - Streams as-is with keep-alive; header timeout guard
+*/
+
 import type { NextApiRequest, NextApiResponse } from 'next';
 import dns from 'node:dns';
 import http from 'node:http';
@@ -29,6 +38,7 @@ function buildStreamCandidates(req: NextApiRequest): string[] {
     local:     process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL,
   };
 
+  // Try preferred profile first, then the others as fallback
   const all: Profile[] = ['tailscale', 'lan', 'local'];
   const order = [prof, ...all.filter(p => p !== prof)];
   const list  = order.map(p => by[p]).filter(Boolean) as string[];
@@ -40,6 +50,15 @@ function errorShape(err: any) {
   const c = err?.cause || err;
   return { message: String(err?.message || err), code: c?.code, errno: c?.errno, syscall: c?.syscall };
 }
+
+/* ------------------------------ streaming --------------------------- */
+
+// Local type that matches the callback shape of dns.lookup across Node versions
+type LookupFnCompat = (
+  hostname: string,
+  options: number | dns.LookupOneOptions | dns.LookupAllOptions | dns.LookupOptions,
+  cb: (...args: any[]) => void
+) => void;
 
 function streamOnce(
   upstream: string,
@@ -55,17 +74,17 @@ function streamOnce(
     const isHttps = url.protocol === 'https:';
     const mod = isHttps ? https : http;
 
-    const lookup: typeof dns.lookup | undefined = opts.ipv4First
+    // When ipv4First is true, wrap dns.lookup to FORCE family:4 while honoring other options.
+    const lookup: LookupFnCompat | undefined = opts.ipv4First
       ? ((hostname, options, cb) => {
           const o = typeof options === 'object' ? options : {};
-          dns.lookup(hostname, { ...o, family: 4, verbatim: false }, cb as any);
+          dns.lookup(hostname, { ...(o as object), family: 4, verbatim: false }, cb as any);
         })
       : undefined;
 
+    // Keep-alive agent for efficiency
     const agent = new (isHttps ? https.Agent : http.Agent)({
       keepAlive: true,
-      // @ts-expect-error: http.request passes lookup through agent options
-      lookup,
     });
 
     const request = mod.request(
@@ -80,7 +99,9 @@ function streamOnce(
           Accept: 'multipart/x-mixed-replace, image/jpeg;q=0.9,*/*;q=0.8',
           Connection: 'keep-alive',
         },
-        timeout: opts.headerTimeoutMs,
+        timeout: opts.headerTimeoutMs, // connection/header timeout (does not stop streaming later)
+        // Pass custom DNS lookup preference here
+        lookup: lookup as any,
       },
       (upRes) => {
         const status = upRes.statusCode || 0;
@@ -90,21 +111,28 @@ function streamOnce(
         }
 
         responded = true;
-        if (headerTimer) clearTimeout(headerTimer);
+        if (headerTimer) {
+          clearTimeout(headerTimer);
+          headerTimer = null;
+        }
 
+        // Propagate content-type / cache headers for MJPEG
         const ct = upRes.headers['content-type'] || 'multipart/x-mixed-replace; boundary=frame';
         res.setHeader('Content-Type', Array.isArray(ct) ? ct[0] : ct);
         res.setHeader('Cache-Control', 'no-store, no-transform');
         res.setHeader('Connection', 'keep-alive');
 
+        // If upstream errors or client goes away, end the counterpart
         upRes.on('error', () => { try { res.end(); } catch {} });
         req.on('close', () => { try { upRes.destroy(); } catch {} });
 
+        // Pipe the MJPEG stream through
         upRes.pipe(res);
         resolve();
       }
     );
 
+    // Guard for headers never arriving
     headerTimer = setTimeout(() => {
       if (!responded) {
         try { request.destroy(new Error('Header timeout')); } catch {}
@@ -112,11 +140,17 @@ function streamOnce(
     }, opts.headerTimeoutMs + 50);
 
     request.on('error', (e) => {
-      if (headerTimer) clearTimeout(headerTimer);
+      if (headerTimer) {
+        clearTimeout(headerTimer);
+        headerTimer = null;
+      }
       reject(e);
     });
 
-    req.on('close', () => { try { request.destroy(new Error('Client closed')); } catch {} });
+    // If the client disconnects before headers, abort the attempt
+    req.on('close', () => {
+      try { request.destroy(new Error('Client closed')); } catch {}
+    });
 
     request.end();
   });
@@ -143,13 +177,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   for (const upstream of streams) {
     try {
       await streamOnce(upstream, { ipv4First: true, headerTimeoutMs: HEADER_TIMEOUT_MS }, req, res);
-      return; // streaming
+      return; // streaming…
     } catch (e1) {
       tried.push({ upstream, attempt: 'ipv4first', error: errorShape(e1) });
     }
     try {
       await streamOnce(upstream, { ipv4First: false, headerTimeoutMs: HEADER_TIMEOUT_MS }, req, res);
-      return; // streaming
+      return; // streaming…
     } catch (e2) {
       tried.push({ upstream, attempt: 'default', error: errorShape(e2) });
     }

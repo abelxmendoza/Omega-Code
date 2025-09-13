@@ -48,7 +48,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Create the map
+    // Create the map (NOTE: no 'tap' option; not in MapOptions in newer Leaflet types)
     const map = L.map(containerRef.current, {
       zoomControl: interactive,
       dragging: interactive,
@@ -57,9 +57,14 @@ const MapComponent: React.FC<MapComponentProps> = ({
       boxZoom: interactive,
       keyboard: interactive,
       attributionControl: false,
-      tap: interactive as any,
     }).setView(initialCenter, initialZoom);
     mapRef.current = map;
+
+    // Disable legacy tap handler if present and not interactive (older Leaflet/mobile handlers)
+    const anyMap = map as any;
+    if (!interactive && anyMap?.tap?.disable) {
+      anyMap.tap.disable();
+    }
 
     // Tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {

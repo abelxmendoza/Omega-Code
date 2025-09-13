@@ -8,6 +8,7 @@ React hook that tracks a WebSocket's live status per service.
 - Auto-reconnects with a short backoff and exposes:
     status: 'connecting' | 'connected' | 'disconnected'
     latency: number | null (ms)
+- NEW: `enabled?: boolean` to allow callers to always mount the hook but no-op when disabled.
 */
 
 import { useEffect, useRef, useState } from 'react';
@@ -15,6 +16,8 @@ import { useEffect, useRef, useState } from 'react';
 export type ServiceStatus = 'connecting' | 'connected' | 'disconnected';
 
 type Options = {
+  /** When false, the hook cleans up and reports 'disconnected' without opening a socket. */
+  enabled?: boolean;
   /** How often to send JSON pings (ms). */
   pingIntervalMs?: number;
   /** How long to wait for a pong before declaring disconnected (ms). */
@@ -26,8 +29,11 @@ type Options = {
   treatAnyMessageAsAlive?: boolean;
 };
 
-export function useWsStatus(url: string | undefined, opts: Options = {}) {
+type Result = { status: ServiceStatus; latency: number | null };
+
+export function useWsStatus(url: string | undefined, opts: Options = {}): Result {
   const {
+    enabled = true,
     pingIntervalMs = 5000,
     pongTimeoutMs = 2500,
     treatAnyMessageAsAlive = false,
@@ -39,9 +45,24 @@ export function useWsStatus(url: string | undefined, opts: Options = {}) {
   const wsRef = useRef<WebSocket | null>(null);
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pongTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Helpers
+  const clearTimers = () => {
+    if (pingTimerRef.current) clearInterval(pingTimerRef.current);
+    if (pongTimerRef.current) clearTimeout(pongTimerRef.current);
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    pingTimerRef.current = null;
+    pongTimerRef.current = null;
+    reconnectTimerRef.current = null;
+  };
 
   useEffect(() => {
-    if (!url) {
+    // If disabled or URL missing, fully clean up and expose a stable disconnected state.
+    if (!enabled || !url) {
+      clearTimers();
+      try { wsRef.current?.close(); } catch {}
+      wsRef.current = null;
       setStatus('disconnected');
       setLatency(null);
       return;
@@ -49,64 +70,79 @@ export function useWsStatus(url: string | undefined, opts: Options = {}) {
 
     let stopped = false;
 
-    const clearTimers = () => {
-      if (pingTimerRef.current) clearInterval(pingTimerRef.current);
-      if (pongTimerRef.current) clearTimeout(pongTimerRef.current);
-      pingTimerRef.current = null;
-      pongTimerRef.current = null;
-    };
-
     const schedulePongWatchdog = () => {
       if (pongTimerRef.current) clearTimeout(pongTimerRef.current);
       pongTimerRef.current = setTimeout(() => {
+        // No pong (or messages in streaming mode) within timeout → drop to disconnected
         setStatus('disconnected');
         try { wsRef.current?.close(); } catch {}
       }, pongTimeoutMs);
     };
 
     const connect = () => {
+      if (stopped) return;
+
       setStatus('connecting');
+      setLatency(null);
+
+      // Clear any previous timers before a fresh connection
+      clearTimers();
+
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
+      let lastPingTs = 0;
+
+      const sendPing = () => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        const ts = Date.now();
+        lastPingTs = ts;
+        try {
+          ws.send(JSON.stringify({ type: 'ping', ts }));
+        } catch {}
+        schedulePongWatchdog();
+      };
+
       ws.onopen = () => {
         if (stopped) return;
-
-        // Start heartbeat loop
-        const sendPing = () => {
-          if (ws.readyState !== WebSocket.OPEN) return;
-          const ts = Date.now();
-          try {
-            ws.send(JSON.stringify({ type: 'ping', ts }));
-          } catch {}
-          schedulePongWatchdog();
-        };
-
-        // kick off immediately, then every pingIntervalMs
+        setStatus('connected');
+        // Start heartbeat immediately, then repeat
         sendPing();
         pingTimerRef.current = setInterval(sendPing, pingIntervalMs);
       };
 
       ws.onmessage = (e) => {
         if (stopped) return;
+
+        // Try JSON first for pong
+        let parsed: any = null;
         try {
-          const msg = JSON.parse(e.data);
-          if (msg?.type === 'pong' && typeof msg.ts === 'number') {
-            if (pongTimerRef.current) clearTimeout(pongTimerRef.current);
-            setLatency(Math.max(0, Date.now() - msg.ts));
-            setStatus('connected');
-            return;
-          }
+          parsed = JSON.parse(e.data);
         } catch {
-          // non-JSON; fall through to streaming handling if enabled
+          // non-JSON; ignore parse error
         }
 
+        if (parsed && parsed.type === 'pong') {
+          if (pongTimerRef.current) clearTimeout(pongTimerRef.current);
+          setStatus('connected');
+          // Prefer returned ts; fall back to lastPingTs if absent
+          const sentTs = typeof parsed.ts === 'number' ? parsed.ts : lastPingTs;
+          if (sentTs) setLatency(Math.max(0, Date.now() - sentTs));
+          return;
+        }
+
+        // Streaming-alive mode: any message counts as life-sign
         if (treatAnyMessageAsAlive) {
           if (pongTimerRef.current) clearTimeout(pongTimerRef.current);
           setStatus('connected');
-          // If messages stop arriving, watchdog will flip to disconnected
+          // Re-arm watchdog so silence will flip to disconnected
           schedulePongWatchdog();
         }
+      };
+
+      ws.onerror = () => {
+        // Let onclose handle the reconnect & state; forcing close ensures we go through that path
+        try { ws.close(); } catch {}
       };
 
       ws.onclose = () => {
@@ -114,13 +150,10 @@ export function useWsStatus(url: string | undefined, opts: Options = {}) {
         setStatus('disconnected');
         setLatency(null);
         clearTimers();
-        // auto-reconnect
-        setTimeout(connect, 1500);
-      };
-
-      ws.onerror = () => {
-        // force close to trigger reconnect path
-        try { ws.close(); } catch {}
+        // Auto-reconnect with a small backoff
+        reconnectTimerRef.current = setTimeout(() => {
+          if (!stopped) connect();
+        }, 1500);
       };
     };
 
@@ -130,8 +163,9 @@ export function useWsStatus(url: string | undefined, opts: Options = {}) {
       stopped = true;
       clearTimers();
       try { wsRef.current?.close(); } catch {}
+      wsRef.current = null;
     };
-  }, [url, pingIntervalMs, pongTimeoutMs, treatAnyMessageAsAlive]);
+  }, [enabled, url, pingIntervalMs, pongTimeoutMs, treatAnyMessageAsAlive]);
 
   return { status, latency };
 }

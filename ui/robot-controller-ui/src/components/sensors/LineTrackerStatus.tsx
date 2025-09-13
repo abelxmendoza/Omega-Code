@@ -1,4 +1,4 @@
-/**
+x/**
  * File: src/components/sensors/LineTrackerStatus.tsx
  * Summary:
  *   Real-time status panel for the robot's line tracking sensor (3 IR sensors).
@@ -7,7 +7,9 @@
  *   Shows a connection pill (connecting/connected/disconnected) with optional latency from JSON ping/pong.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+'use client';
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 // Prefer Tailscale, fallback to LAN. Never hardcode your own IP!
 const LINE_TRACKER_WS =
@@ -44,7 +46,7 @@ const LineTrackerStatus: React.FC = () => {
       ? 'Connecting…'
       : 'Disconnected';
 
-  // Normalize payload
+  // Normalize payload from various backends
   const normalize = (raw: any) => {
     if (raw?.lineTracking) {
       const lt = raw.lineTracking;
@@ -76,7 +78,7 @@ const LineTrackerStatus: React.FC = () => {
     return null;
   };
 
-  const clearHeartbeat = () => {
+  const clearHeartbeat = useCallback(() => {
     if (hbTimer.current) {
       clearInterval(hbTimer.current);
       hbTimer.current = null;
@@ -86,21 +88,21 @@ const LineTrackerStatus: React.FC = () => {
       pongTimeout.current = null;
     }
     pingSentAt.current = null;
-  };
+  }, []);
 
-  const startHeartbeat = () => {
+  const startHeartbeat = useCallback(() => {
     clearHeartbeat();
     hbTimer.current = setInterval(() => {
       if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
       try {
-        // send JSON ping
+        // Send JSON ping
         pingSentAt.current = performance.now();
         ws.current.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
 
-        // clear any previous pong timeout, start a fresh one
+        // Reset/arm pong timeout
         if (pongTimeout.current) clearTimeout(pongTimeout.current);
         pongTimeout.current = setTimeout(() => {
-          // no pong within window -> mark degraded latency (but keep connected)
+          // No pong in time → drop latency but keep connection state
           pingSentAt.current = null;
           if (mounted.current) setLatencyMs(null);
         }, 6000);
@@ -108,7 +110,7 @@ const LineTrackerStatus: React.FC = () => {
         if (mounted.current) setStatus('disconnected');
       }
     }, 10000);
-  };
+  }, [clearHeartbeat]);
 
   useEffect(() => {
     mounted.current = true;
@@ -126,10 +128,11 @@ const LineTrackerStatus: React.FC = () => {
       if (cancelled) return;
 
       if (mounted.current) setStatus('connecting');
+
       try {
         ws.current = new WebSocket(LINE_TRACKER_WS);
-      } catch (e) {
-        // schedule reconnect
+      } catch {
+        // Schedule reconnect on constructor failure
         const backoff = Math.min(1000 * Math.pow(2, attempt), 10000);
         reconnectTimer.current = setTimeout(() => openWs(attempt + 1), backoff);
         return;
@@ -140,7 +143,7 @@ const LineTrackerStatus: React.FC = () => {
         setStatus('connected');
         setLatencyMs(null);
         startHeartbeat();
-        console.log('[LINE TRACKER] WebSocket connection established');
+        // console.log('[LINE TRACKER] WebSocket connection established');
       };
 
       ws.current.onmessage = (event) => {
@@ -184,7 +187,7 @@ const LineTrackerStatus: React.FC = () => {
         clearHeartbeat();
         const backoff = Math.min(1000 * Math.pow(2, attempt), 10000);
         reconnectTimer.current = setTimeout(() => openWs(attempt + 1), backoff);
-        console.log('[LINE TRACKER] WebSocket connection closed');
+        // console.log('[LINE TRACKER] WebSocket connection closed');
       };
     };
 
@@ -206,7 +209,7 @@ const LineTrackerStatus: React.FC = () => {
         ws.current = null;
       }
     };
-  }, []);
+  }, [startHeartbeat]); // include memoized heartbeat
 
   return (
     <div className="bg-gray-900 text-white p-4 rounded-lg shadow-md my-2 relative">

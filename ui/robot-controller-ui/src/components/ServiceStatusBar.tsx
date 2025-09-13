@@ -16,7 +16,6 @@
 #   - Accessible: aria-expanded, aria-controls, focus ring
 */
 
-
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -160,33 +159,54 @@ const ServiceStatusBar: React.FC = () => {
     return h;
   }, []);
 
-  const canUseProxyHealth = !!VIDEO_PROXY_HEALTH; // always same‑origin
+  const canUseProxyHealth = !!VIDEO_PROXY_HEALTH; // always same-origin
   const canUseDirectHealth = VIDEO_DIRECT_HEALTH && !willBeMixedContent(VIDEO_DIRECT_HEALTH);
 
   const healthUrl = canUseProxyHealth
     ? VIDEO_PROXY_HEALTH
     : (canUseDirectHealth ? (VIDEO_DIRECT_HEALTH as string) : '');
 
-  // Video HTTP status (backend /health)
-  const video: { status: HttpStatus; latency: number | null } =
-    healthUrl
-      ? useHttpStatus(healthUrl, { intervalMs: 5000, timeoutMs: 2500, treat503AsConnecting: true })
-      : { status: 'connecting', latency: null };
+  // Video HTTP status (backend /health) — always call hook; gate with enabled
+  const video = useHttpStatus(healthUrl || undefined, {
+    enabled: !!healthUrl,
+    intervalMs: 5000,
+    timeoutMs: 2500,
+    treat503AsConnecting: true,
+  });
 
-  // WS with pong → latency
-  const move  = MOVE  ? useWsStatus(MOVE,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 }) : { status: 'disconnected' as ServiceStatus, latency: null };
-  const line  = LINE  ? useWsStatus(LINE,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 }) : { status: 'disconnected' as ServiceStatus, latency: null };
-  const light = LIGHT ? useWsStatus(LIGHT, { pingIntervalMs: 5000, pongTimeoutMs: 2500 }) : { status: 'disconnected' as ServiceStatus, latency: null };
+  // WS with pong → latency — always call hooks; gate with enabled
+  const move  = useWsStatus(MOVE,  { enabled: !!MOVE,  pingIntervalMs: 5000, pongTimeoutMs: 2500 });
+  const line  = useWsStatus(LINE,  { enabled: !!LINE,  pingIntervalMs: 5000, pongTimeoutMs: 2500 });
+  const light = useWsStatus(LIGHT, { enabled: !!LIGHT, pingIntervalMs: 5000, pongTimeoutMs: 2500 });
 
   // WS streaming (any message alive)
-  const ultra = ULTRA ? useWsStatus(ULTRA, { treatAnyMessageAsAlive: true, pongTimeoutMs: 4000 }) : { status: 'disconnected' as ServiceStatus, latency: null };
+  const ultra = useWsStatus(ULTRA, {
+    enabled: !!ULTRA,
+    treatAnyMessageAsAlive: true,
+    pongTimeoutMs: 4000,
+  });
 
   // NEW: Speed server (treat like movement: expects pong)
-  const speed = SPEED ? useWsStatus(SPEED, { pingIntervalMs: 5000, pongTimeoutMs: 2500 }) : { status: 'disconnected' as ServiceStatus, latency: null };
+  const speed = useWsStatus(SPEED, {
+    enabled: !!SPEED,
+    pingIntervalMs: 5000,
+    pongTimeoutMs: 2500,
+  });
 
   // NEW: Camera UI status (from CameraFrame bus)
   const [cameraUi, setCameraUi] = useState<CameraUiStatus>(cameraStatusBus.getSnapshot());
-  useEffect(() => cameraStatusBus.subscribe(setCameraUi), []);
+  useEffect(() => {
+    // Some buses return an unsubscribe function; others return boolean + have unsubscribe(cb).
+    const maybeUnsub = (cameraStatusBus as any)?.subscribe?.(setCameraUi);
+    return () => {
+      if (typeof maybeUnsub === 'function') {
+        try { maybeUnsub(); } catch {}
+      } else if (typeof (cameraStatusBus as any)?.unsubscribe === 'function') {
+        try { (cameraStatusBus as any).unsubscribe(setCameraUi); } catch {}
+      }
+      // else: no explicit cleanup needed
+    };
+  }, []);
 
   // Build summary
   const states = [

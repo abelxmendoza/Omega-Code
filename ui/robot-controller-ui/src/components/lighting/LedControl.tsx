@@ -6,8 +6,12 @@ Settings are sent as commands to the backend WebSocket server.
 */
 
 import React, { useState } from 'react';
-import { SketchPicker } from 'react-color';
+import { SketchPicker, type ColorResult } from 'react-color';
 import { COMMAND, LIGHTING_MODES, LIGHTING_PATTERNS } from '../../control_definitions';
+
+// Derive union types from your constant arrays (falls back to string if not `as const`)
+type LightingMode = (typeof LIGHTING_MODES)[number];
+type LightingPattern = (typeof LIGHTING_PATTERNS)[number];
 
 // Props definition for the component
 interface LedControlProps {
@@ -17,19 +21,24 @@ interface LedControlProps {
 const LedControl: React.FC<LedControlProps> = ({ sendCommand }) => {
   // Component states for managing LED settings
   const [color, setColor] = useState('#ffffff'); // Stores the selected color
-  const [mode, setMode] = useState(LIGHTING_MODES[0]); // Stores the selected mode
-  const [pattern, setPattern] = useState(LIGHTING_PATTERNS[0]); // Stores the selected pattern
+
+  // Explicit generics so setMode/setPattern accept union (or string) instead of a single literal
+  const [mode, setMode] = useState<LightingMode>((LIGHTING_MODES?.[0] ?? 'single') as LightingMode);
+  const [pattern, setPattern] = useState<LightingPattern>((LIGHTING_PATTERNS?.[0] ?? 'static') as LightingPattern);
+
   const [interval, setInterval] = useState(1000); // Interval for dynamic patterns (in milliseconds)
   const [brightness, setBrightness] = useState(100); // Brightness in percent (0–100)
 
   // Color change handler
-  const handleColorChange = (color: any) => setColor(color.hex);
+  const handleColorChange = (color: ColorResult) => setColor(color.hex);
 
   // Mode change handler
-  const handleModeChange = (event: React.ChangeEvent<HTMLSelectElement>) => setMode(event.target.value);
+  const handleModeChange = (event: React.ChangeEvent<HTMLSelectElement>) =>
+    setMode(event.target.value as LightingMode);
 
   // Pattern change handler
-  const handlePatternChange = (event: React.ChangeEvent<HTMLSelectElement>) => setPattern(event.target.value);
+  const handlePatternChange = (event: React.ChangeEvent<HTMLSelectElement>) =>
+    setPattern(event.target.value as LightingPattern);
 
   // Interval change handler
   const handleIntervalChange = (event: React.ChangeEvent<HTMLInputElement>) => {

@@ -9,8 +9,9 @@
 #       • network/CORS errors        → "disconnected"
 #
 #   Options:
-#     - intervalMs : poll frequency (default 5000)
-#     - timeoutMs  : request timeout (default 2500)
+#     - enabled   : when false, do nothing and report "disconnected" (default true)
+#     - intervalMs: poll frequency (default 5000)
+#     - timeoutMs : request timeout (default 2500)
 #     - treat503AsConnecting : map generic 503 to "connecting" (default true)
 */
 
@@ -24,6 +25,7 @@ export interface HttpState {
 }
 
 type Options = {
+  enabled?: boolean;              // gate all work; stable disconnected state when false
   intervalMs?: number;            // how often to probe
   timeoutMs?: number;             // per-probe timeout
   treat503AsConnecting?: boolean; // map raw 503 to "connecting"
@@ -31,6 +33,7 @@ type Options = {
 
 export function useHttpStatus(url: string | undefined, opts: Options = {}): HttpState {
   const {
+    enabled = true,
     intervalMs = 5000,
     timeoutMs = 2500,
     treat503AsConnecting = true,
@@ -41,13 +44,14 @@ export function useHttpStatus(url: string | undefined, opts: Options = {}): Http
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    // Clear any existing timer when URL/options change
+    // Always clear any existing timer when inputs change
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
 
-    if (!url) {
+    // Disabled or no URL → stable disconnected, no network activity
+    if (!enabled || !url) {
       setStatus('disconnected');
       setLatency(null);
       return;
@@ -56,8 +60,8 @@ export function useHttpStatus(url: string | undefined, opts: Options = {}): Http
     let cancelled = false;
 
     const probe = async () => {
-      // Only escalate to "connecting" if we aren't in a good known state
-      setStatus(s => (s === 'connected' || s === 'no_camera' ? s : 'connecting'));
+      // Only escalate to "connecting" if we aren't already in a good known state
+      setStatus((s) => (s === 'connected' || s === 'no_camera' ? s : 'connecting'));
 
       const start = performance.now();
       const controller = new AbortController();
@@ -76,7 +80,11 @@ export function useHttpStatus(url: string | undefined, opts: Options = {}): Http
 
         // Try to parse JSON (health endpoint should return JSON)
         let body: any = null;
-        try { body = await res.clone().json(); } catch { /* non-JSON is fine */ }
+        try {
+          body = await res.clone().json();
+        } catch {
+          // non-JSON is fine
+        }
 
         if (cancelled) return;
 
@@ -122,7 +130,7 @@ export function useHttpStatus(url: string | undefined, opts: Options = {}): Http
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = null;
     };
-  }, [url, intervalMs, timeoutMs, treat503AsConnecting]);
+  }, [enabled, url, intervalMs, timeoutMs, treat503AsConnecting]);
 
   return { status, latency };
 }

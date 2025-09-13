@@ -260,7 +260,8 @@ export default function Home() {
       <main className="p-4 space-y-4">
         <div className="flex justify-center items-center space-x-8">
           <div className="flex-shrink-0">
-            <CarControlPanel sendCommand={sendCommandWithLog} />
+            {/* CarControlPanel likely already uses CommandContext, so no prop needed */}
+            <CarControlPanel />
             {/* ↓ Autonomy panel sits right under the car controller */}
             <AutonomyPanel
               connected={ws.current?.readyState === WebSocket.OPEN}
@@ -310,7 +311,8 @@ export default function Home() {
           </div>
 
           <div className="flex-shrink-0">
-            <CameraControlPanel sendCommand={sendCommandWithLog} />
+            {/* CameraControlPanel uses context; don't pass sendCommand */}
+            <CameraControlPanel />
           </div>
         </div>
 
@@ -319,10 +321,16 @@ export default function Home() {
             <SensorDashboard />
           </div>
           <div className="w-1/4">
-            <SpeedControl
-              sendCommand={sendCommandWithLog}
-              onOpenLedModal={() => setIsLedModalOpen(true)}
-            />
+            {/* SpeedControl uses context; no props required */}
+            <SpeedControl />
+            {/* Local button to open LEDs modal (replaces onOpenLedModal prop) */}
+            <button
+              className="mt-3 w-full bg-green-600 hover:bg-green-700 text-white text-sm px-3 py-2 rounded-md"
+              onClick={() => setIsLedModalOpen(true)}
+              type="button"
+            >
+              LEDs…
+            </button>
           </div>
         </div>
 
@@ -340,3 +348,4 @@ export default function Home() {
     </div>
   );
 }
+

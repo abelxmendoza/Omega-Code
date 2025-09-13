@@ -327,13 +327,6 @@ const QuickActions: React.FC<{
    Original Header + additions
    ============================ */
 
-// Graceful wrappers: if a URL is empty, pretend disconnected (keeps UI stable)
-const useMaybeWs = (url: string, opts: Parameters<typeof useWsStatus>[1]) =>
-  url ? useWsStatus(url, opts) : { status: 'disconnected' as ServiceStatus, latency: null };
-
-const useMaybeHttp = (url: string, opts: Parameters<typeof useHttpStatus>[1]) =>
-  url ? useHttpStatus(url, opts) : { status: 'disconnected' as HttpStatus, latency: null };
-
 const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
   const [showNetwork, setShowNetwork] = useState(false);
   const [showQuick, setShowQuick] = useState(false);
@@ -349,16 +342,21 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
   // Prefer probing /health for video to avoid pulling the MJPEG stream.
   const VIDEO_HEALTH = useMemo(() => toHealthUrl(VIDEO_URL), [VIDEO_URL]);
 
-  // WS with pong → latency
-  const move  = useMaybeWs(MOVE_URL,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
-  const line  = useMaybeWs(LINE_URL,  { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
-  const light = useMaybeWs(LIGHT_URL, { pingIntervalMs: 5000, pongTimeoutMs: 2500 });
+  // WS with pong → latency (hooks always called; no-op via enabled=false when URL missing)
+  const move  = useWsStatus(MOVE_URL,  { enabled: !!MOVE_URL,  pingIntervalMs: 5000, pongTimeoutMs: 2500 });
+  const line  = useWsStatus(LINE_URL,  { enabled: !!LINE_URL,  pingIntervalMs: 5000, pongTimeoutMs: 2500 });
+  const light = useWsStatus(LIGHT_URL, { enabled: !!LIGHT_URL, pingIntervalMs: 5000, pongTimeoutMs: 2500 });
 
   // Streaming WS (any message marks alive)
-  const ultra = useMaybeWs(ULTRA_URL, { treatAnyMessageAsAlive: true, pongTimeoutMs: 4000 });
+  const ultra = useWsStatus(ULTRA_URL, {
+    enabled: !!ULTRA_URL,
+    treatAnyMessageAsAlive: true,
+    pongTimeoutMs: 4000,
+  });
 
   // HTTP /health mapping (503+placeholder → "no_camera")
-  const video = useMaybeHttp(VIDEO_HEALTH, {
+  const video = useHttpStatus(VIDEO_HEALTH, {
+    enabled: !!VIDEO_HEALTH,
     intervalMs: 5000,
     timeoutMs: 2500,
     treat503AsConnecting: true,
