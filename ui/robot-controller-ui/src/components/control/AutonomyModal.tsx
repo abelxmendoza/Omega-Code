@@ -1,11 +1,13 @@
 /*
 # File: /src/components/control/AutonomyModal.tsx
 # Summary:
-#   Simple-first autonomy modal:
+#   Simple-first autonomy modal with debounced live updates:
 #     • Top: Mode + Start/Stop, Speed, 2 safety toggles, Waypoints
-#     • Bottom: one "Advanced" fold-out with Navigation, Vision, Behavior, Mapping, Safety, Presets
+#     • Bottom: one "Advanced" fold-out (Navigation, Vision, Behavior, Mapping, Safety, Presets)
 #   - Backwards compatible with onStart/onStop/onDock/onSetWaypoint
-#   - Optional onUpdate(params) to apply live parameter changes
+#   - Optional onUpdate(params) is debounced (250ms) to avoid backend spam
+#   - Duplicate param payloads are suppressed
+#   - Optional liveApply (default: true). "Apply Params" flushes pending updates.
 #   - High-contrast colors (dark bg, bright text/borders)
 */
 
@@ -22,8 +24,9 @@ import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { useDebouncedCallback } from '@/utils/debounce';
 
-/* ------------------------------ Types (unchanged) ------------------------------ */
+/* ------------------------------ Types ------------------------------ */
 
 export type AutonomyMode =
   | 'idle' | 'patrol' | 'follow' | 'dock' | 'line_track' // legacy
@@ -36,7 +39,7 @@ export type AutonomyParams = {
   aggressiveness: number;  // 0–100
   obstacleAvoidance: boolean;
   laneKeeping: boolean;
-  headlights: boolean;
+  headlights: boolean;     // interpreted as "Auto-lights" permission
 
   // nav
   avoidStopDistM: number;
@@ -74,6 +77,8 @@ export type AutonomyModalProps = {
   autonomyActive?: boolean;
   batteryPct?: number;
   triggerLabel?: string;
+  /** If true (default), param changes auto-push via debounce. If false, only "Apply Params" sends. */
+  liveApply?: boolean;
 };
 
 /* -------------------------------- Defaults -------------------------------- */
@@ -124,6 +129,7 @@ export default function AutonomyModal({
   autonomyActive = false,
   batteryPct = 100,
   triggerLabel = 'Autonomy',
+  liveApply = true,
 }: AutonomyModalProps) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<AutonomyMode>(initialMode);
@@ -141,42 +147,109 @@ export default function AutonomyModal({
   const fileRef = useRef<HTMLInputElement>(null);
 
   const statusTone = useMemo(() => {
-    if (!connected) return 'bg-red-500/20 text-red-300 border-red-500/50';
-    if (autonomyActive) return 'bg-emerald-600/20 text-emerald-200 border-emerald-500/60';
-    return 'bg-amber-500/20 text-amber-200 border-amber-500/60';
+    if (!connected) return 'bg-red-500/25 text-red-200 border-red-500/60';
+    if (autonomyActive) return 'bg-emerald-600/25 text-emerald-200 border-emerald-500/70';
+    return 'bg-amber-500/25 text-amber-200 border-amber-500/70';
   }, [connected, autonomyActive]);
+
+  /* --------------------------- Debounced onUpdate --------------------------- */
+  // Suppress duplicate payloads (same JSON)
+  const lastSentRef = useRef<string>('');
+
+  const debouncedPush = useDebouncedCallback(
+    async (next: AutonomyParams) => {
+      if (!onUpdate) return;
+      const json = safeStableStringify(next);
+      if (json === lastSentRef.current) return;
+      lastSentRef.current = json;
+      try { await onUpdate(next); }
+      catch (e) { console.warn('autonomy onUpdate failed:', e); }
+    },
+    250, // ms
+    { trailing: true, leading: false },
+    [onUpdate]
+  );
+
+  // Helper: update local state and schedule debounced backend push (if liveApply)
+  function setParam<K extends keyof AutonomyParams>(key: K, value: AutonomyParams[K]) {
+    setParams(prev => {
+      const next = { ...prev, [key]: value };
+      if (liveApply && onUpdate) debouncedPush(next);
+      return next;
+    });
+  }
 
   /* -------------------------------- Handlers -------------------------------- */
 
-  async function handleStart() { setBusy(true); try { await onStart?.(canonicalizeMode(mode), params); } finally { setBusy(false); } }
-  async function handleStop()  { setBusy(true); try { await onStop?.(); }            finally { setBusy(false); } }
-  async function handleDock()  { setBusy(true); try { setMode('dock'); await onDock?.(); } finally { setBusy(false); } }
+  async function handleStart() {
+    setBusy(true);
+    try { await onStart?.(canonicalizeMode(mode), params); }
+    catch (e) { console.warn('autonomy start failed:', e); }
+    finally { setBusy(false); }
+  }
+
+  async function handleStop()  {
+    setBusy(true);
+    try { await onStop?.(); }
+    catch (e) { console.warn('autonomy stop failed:', e); }
+    finally { setBusy(false); }
+  }
+
+  async function handleDock()  {
+    setBusy(true);
+    try { setMode('dock'); await onDock?.(); }
+    catch (e) { console.warn('autonomy dock failed:', e); }
+    finally { setBusy(false); }
+  }
 
   async function handleSetWaypoint() {
-    if (!wpLabel || !wpLat || !wpLon) return;
     const lat = Number(wpLat), lon = Number(wpLon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    const valid =
+      wpLabel.trim().length > 0 &&
+      Number.isFinite(lat) && Number.isFinite(lon) &&
+      lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+    if (!valid) return;
+
     setBusy(true);
     try {
-      await onSetWaypoint?.(wpLabel, lat, lon);
-      setWaypoints((prev) => [...prev, { label: wpLabel, lat, lon }]);
+      await onSetWaypoint?.(wpLabel.trim(), lat, lon);
+      setWaypoints((prev) => [...prev, { label: wpLabel.trim(), lat, lon }]);
       setWpLabel(''); setWpLat(''); setWpLon('');
-    } finally { setBusy(false); }
+    } catch (e) {
+      console.warn('set waypoint failed:', e);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleApplyParams() {
     if (!onUpdate) return;
     setBusy(true);
-    try { await onUpdate(params); }
-    finally { setBusy(false); }
+    try {
+      if (liveApply) {
+        // Force any pending debounced call to run immediately
+        debouncedPush.flush();
+      } else {
+        lastSentRef.current = ''; // ensure not suppressed
+        await onUpdate(params);
+      }
+    } catch (e) {
+      console.warn('apply params failed:', e);
+    } finally {
+      setBusy(false);
+    }
   }
 
   // presets
   function downloadPresets() {
-    const blob = new Blob([JSON.stringify({ mode, params, waypoints }, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'autonomy-preset.json'; a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([JSON.stringify({ mode, params, waypoints }, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'autonomy-preset.json'; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.warn('export presets failed:', e);
+    }
   }
   function openFileDialog() { fileRef.current?.click(); }
   function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
@@ -186,15 +259,27 @@ export default function AutonomyModal({
       try {
         const json = JSON.parse(String(reader.result || '{}'));
         if (json.mode) setMode(json.mode);
-        if (json.params) setParams((p) => ({ ...p, ...json.params }));
+        if (json.params) {
+          setParams((p) => {
+            const next = { ...p, ...json.params };
+            if (liveApply && onUpdate) debouncedPush(next);
+            return next;
+          });
+        }
         if (Array.isArray(json.waypoints)) setWaypoints(json.waypoints);
-      } catch { /* no-op */ }
+      } catch (err) {
+        console.warn('import presets failed:', err);
+      }
     };
     reader.readAsText(f);
     e.target.value = '';
   }
 
   /* --------------------------------- Render --------------------------------- */
+
+  const waypointError =
+    (wpLat && !isFinite(+wpLat)) || (wpLon && !isFinite(+wpLon)) ||
+    (+wpLat < -90 || +wpLat > 90 || +wpLon < -180 || +wpLon > 180);
 
   return (
     <div className={className}>
@@ -208,6 +293,7 @@ export default function AutonomyModal({
               text-white shadow-lg shadow-emerald-500/25
               focus-visible:ring-2 focus-visible:ring-emerald-400/70
             "
+            aria-label="Open Autonomy settings"
           >
             <Bot className="h-4 w-4" /> {triggerLabel}
           </Button>
@@ -222,21 +308,21 @@ export default function AutonomyModal({
 
           {/* Status */}
           <div className="px-5 pb-3 flex items-center justify-between gap-2">
-            <Badge variant="outline" className={`${statusTone} border`}>
+            <Badge variant="outline" className={`${statusTone} border`} aria-live="polite">
               {connected ? (autonomyActive ? 'Active' : 'Connected') : 'Disconnected'}
             </Badge>
-            <div className="flex items-center gap-2 text-xs text-neutral-200">
-              <Gauge className="h-4 w-4" /> {batteryPct}%
+            <div className="flex items-center gap-2 text-xs text-neutral-100">
+              <Gauge className="h-4 w-4" aria-hidden /> {batteryPct}%
             </div>
           </div>
 
           <div className="px-5 pb-5 grid grid-cols-1 gap-4">
             {/* BASIC: Mode + Start/Stop */}
-            <Card className="bg-neutral-900/70 border-neutral-800">
+            <Card className="bg-neutral-900/80 border-neutral-800">
               <CardContent className="p-4 grid gap-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
                   <div>
-                    <label className="text-xs text-neutral-300">Mode</label>
+                    <label className="text-xs text-neutral-200">Mode</label>
                     <Select value={mode} onValueChange={(v) => setMode(v as AutonomyMode)}>
                       <SelectTrigger className="mt-1 bg-neutral-950 border-neutral-800 text-neutral-100">
                         <SelectValue placeholder="Select mode" />
@@ -257,10 +343,10 @@ export default function AutonomyModal({
                     </Select>
                   </div>
                   <div className="flex gap-2">
-                    <Button disabled={busy} onClick={handleStart} className="gap-2">
+                    <Button disabled={busy || !connected} onClick={handleStart} className="gap-2" aria-busy={busy}>
                       <Play className="h-4 w-4" /> Start
                     </Button>
-                    <Button disabled={busy} variant="destructive" onClick={handleStop} className="gap-2">
+                    <Button disabled={busy} variant="destructive" onClick={handleStop} className="gap-2" aria-busy={busy}>
                       <Square className="h-4 w-4" /> Stop
                     </Button>
                   </div>
@@ -268,8 +354,8 @@ export default function AutonomyModal({
 
                 {/* BASIC: Speed + two obvious toggles */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <SliderField label="Speed" value={params.speedPct} onChange={(n) => setParams((p) => ({ ...p, speedPct: n }))} />
-                  <SliderField label="Aggressiveness" value={params.aggressiveness} onChange={(n) => setParams((p) => ({ ...p, aggressiveness: n }))} />
+                  <SliderField label="Speed" value={params.speedPct} onChange={(n) => setParam('speedPct', n)} />
+                  <SliderField label="Aggressiveness" value={params.aggressiveness} onChange={(n) => setParam('aggressiveness', n)} />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -277,46 +363,58 @@ export default function AutonomyModal({
                     icon={<Shield className="h-4 w-4" />}
                     label="Obstacle Avoidance"
                     checked={params.obstacleAvoidance}
-                    onCheckedChange={(v) => setParams((p) => ({ ...p, obstacleAvoidance: v }))}
+                    onCheckedChange={(v) => setParam('obstacleAvoidance', v)}
                   />
                   <ToggleRow
                     icon={<Zap className="h-4 w-4" />}
-                    label="Headlights"
+                    label="Auto-lights (suggest LED preset)"
                     checked={params.headlights}
-                    onCheckedChange={(v) => setParams((p) => ({ ...p, headlights: v }))}
+                    onCheckedChange={(v) => setParam('headlights', v)}
                   />
                 </div>
               </CardContent>
             </Card>
 
             {/* BASIC: Waypoints */}
-            <Card className="bg-neutral-900/70 border-neutral-800">
+            <Card className="bg-neutral-900/80 border-neutral-800">
               <CardContent className="p-4 grid gap-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
                   <Flag className="h-4 w-4" /> Waypoints
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <Input value={wpLabel} onChange={(e) => setWpLabel(e.target.value)} placeholder="Label" className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
-                  <Input value={wpLat}   onChange={(e) => setWpLat(e.target.value)}   placeholder="Lat"   className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
-                  <Input value={wpLon}   onChange={(e) => setWpLon(e.target.value)}   placeholder="Lon"   className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
-                  <Button disabled={busy || !wpLat || !wpLon} onClick={handleSetWaypoint} className="gap-2">
+                  <Input value={wpLabel} onChange={(e) => setWpLabel(e.target.value)} placeholder="Label"
+                         className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
+                  <Input value={wpLat}   onChange={(e) => setWpLat(e.target.value)}   placeholder="Lat"
+                         inputMode="decimal" className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
+                  <Input value={wpLon}   onChange={(e) => setWpLon(e.target.value)}   placeholder="Lon"
+                         inputMode="decimal" className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
+                  <Button
+                    disabled={busy || waypointError || !wpLat || !wpLon || !wpLabel.trim()}
+                    onClick={handleSetWaypoint}
+                    className="gap-2"
+                    aria-disabled={busy || waypointError}
+                    title={waypointError ? 'Lat must be -90..90, Lon -180..180' : 'Add waypoint'}
+                  >
                     <Crosshair className="h-4 w-4" /> Add
                   </Button>
                 </div>
+                {waypointError && (
+                  <div className="text-[11px] text-red-300">Lat must be -90..90 and Lon -180..180.</div>
+                )}
 
                 {waypoints.length > 0 && (
                   <div className="mt-2 text-xs text-neutral-300 grid gap-1">
                     {waypoints.map((w, i) => (
                       <div key={`${w.label}-${i}`} className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-950 px-2 py-1">
                         <span className="font-medium text-neutral-100">{w.label}</span>
-                        <span className="tabular-nums text-neutral-400">{w.lat.toFixed(5)}, {w.lon.toFixed(5)}</span>
+                        <span className="tabular-nums text-neutral-300">{w.lat.toFixed(5)}, {w.lon.toFixed(5)}</span>
                       </div>
                     ))}
                   </div>
                 )}
 
                 <div className="flex gap-2">
-                  <Button disabled={busy} variant="secondary" onClick={handleDock} className="gap-2">
+                  <Button disabled={busy} variant="secondary" onClick={handleDock} className="gap-2" aria-busy={busy}>
                     <Bot className="h-4 w-4" /> Dock
                   </Button>
                 </div>
@@ -327,7 +425,7 @@ export default function AutonomyModal({
             <button
               type="button"
               onClick={() => setShowAdvanced(v => !v)}
-              className="text-left w-full rounded-md border border-neutral-800 bg-neutral-900/70 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-900 flex items-center justify-between"
+              className="text-left w-full rounded-md border border-neutral-800 bg-neutral-900/80 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-900 flex items-center justify-between"
               aria-expanded={showAdvanced}
             >
               <span>Advanced settings</span>
@@ -338,27 +436,27 @@ export default function AutonomyModal({
             {showAdvanced && (
               <div className="grid grid-cols-1 gap-4">
                 {/* Navigation tuning */}
-                <Card className="bg-neutral-900/70 border-neutral-800">
+                <Card className="bg-neutral-900/80 border-neutral-800">
                   <CardContent className="p-4 grid gap-4">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <NumberField label="Stop Distance (m)" value={params.avoidStopDistM} step={0.05} min={0.05} max={1.5}
-                        onChange={(n) => setParams((p) => ({ ...p, avoidStopDistM: n }))} />
+                        onChange={(n) => setParam('avoidStopDistM', n)} />
                       <NumberField label="Line kP" value={params.line_kP} step={0.05} min={0} max={3}
-                        onChange={(n) => setParams((p) => ({ ...p, line_kP: n }))} />
+                        onChange={(n) => setParam('line_kP', n)} />
                       <NumberField label="Search Yaw Rate (°/s)" value={params.searchYawRate} step={1} min={5} max={120}
-                        onChange={(n) => setParams((p) => ({ ...p, searchYawRate: n }))} />
+                        onChange={(n) => setParam('searchYawRate', n)} />
                     </div>
                     <ToggleRow
                       icon={<span className="inline-block h-4 w-4 rounded-sm bg-neutral-400" />}
                       label="Lane Keeping (IR line hold)"
                       checked={params.laneKeeping}
-                      onCheckedChange={(v) => setParams((p) => ({ ...p, laneKeeping: v }))}
+                      onCheckedChange={(v) => setParam('laneKeeping', v)}
                     />
                   </CardContent>
                 </Card>
 
                 {/* Vision */}
-                <Card className="bg-neutral-900/70 border-neutral-800">
+                <Card className="bg-neutral-900/80 border-neutral-800">
                   <CardContent className="p-4 grid gap-4">
                     <p className="text-xs text-neutral-300">
                       Color/Object tracking uses HSV thresholds; steering centers the blob, speed scales by area.
@@ -367,18 +465,18 @@ export default function AutonomyModal({
                       <TripletField
                         label="HSV Low"
                         value={params.hsvLow}
-                        onChange={(arr) => setParams((p) => ({ ...p, hsvLow: arr as [number,number,number] }))}
+                        onChange={(arr) => setParam('hsvLow', arr as [number,number,number])}
                       />
                       <TripletField
                         label="HSV High"
                         value={params.hsvHigh}
-                        onChange={(arr) => setParams((p) => ({ ...p, hsvHigh: arr as [number,number,number] }))}
+                        onChange={(arr) => setParam('hsvHigh', arr as [number,number,number])}
                       />
                       <div className="grid grid-cols-2 gap-3">
                         <NumberField label="Min Area (px)" value={params.minArea} min={0} max={200000} step={100}
-                          onChange={(n)=> setParams((p)=> ({...p, minArea:n}))} />
+                          onChange={(n)=> setParam('minArea', n)} />
                         <NumberField label="Max Area (px)" value={params.maxArea} min={100} max={500000} step={100}
-                          onChange={(n)=> setParams((p)=> ({...p, maxArea:n}))} />
+                          onChange={(n)=> setParam('maxArea', n)} />
                       </div>
                     </div>
                     <div className="text-[11px] text-neutral-400">
@@ -388,32 +486,32 @@ export default function AutonomyModal({
                 </Card>
 
                 {/* Behavior priorities */}
-                <Card className="bg-neutral-900/70 border-neutral-800">
+                <Card className="bg-neutral-900/80 border-neutral-800">
                   <CardContent className="p-4 grid gap-4">
                     <p className="text-xs text-neutral-300">Priority (top preempts lower). Use arrows to reorder.</p>
                     <PriorityEditor
                       items={params.priorities}
-                      onChange={(items) => setParams((p)=> ({ ...p, priorities: items }))}
+                      onChange={(items) => setParam('priorities', items)}
                     />
                   </CardContent>
                 </Card>
 
                 {/* Mapping + Safety */}
-                <Card className="bg-neutral-900/70 border-neutral-800">
+                <Card className="bg-neutral-900/80 border-neutral-800">
                   <CardContent className="p-4 grid gap-4">
                     <ToggleRow
                       icon={<span className="inline-block h-4 w-4 rounded-sm bg-neutral-400" />}
                       label="Enable Grid Mapping"
                       checked={params.gridEnabled}
-                      onCheckedChange={(v) => setParams((p) => ({ ...p, gridEnabled: v }))}
+                      onCheckedChange={(v) => setParam('gridEnabled', v)}
                     />
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <NumberField label="Cell Size (m)" value={params.gridCellSizeM} min={0.05} max={0.5} step={0.01}
-                        onChange={(n)=> setParams((p)=> ({...p, gridCellSizeM:n}))} />
+                        onChange={(n)=> setParam('gridCellSizeM', n)} />
                       <NumberField label="Decay (0–1)" value={params.gridDecay} min={0} max={1} step={0.01}
-                        onChange={(n)=> setParams((p)=> ({...p, gridDecay:n}))} />
+                        onChange={(n)=> setParam('gridDecay', n)} />
                       <NumberField label="Battery Floor (%)" value={params.batteryMinPct} min={0} max={100} step={1}
-                        onChange={(n)=> setParams((p)=> ({...p, batteryMinPct:n}))} />
+                        onChange={(n)=> setParam('batteryMinPct', n)} />
                     </div>
                     <div className="text-[11px] text-neutral-400">
                       Safety overrides always win. Backend must stop if battery below floor, cliff detected, or ultrasonic &lt; stop distance.
@@ -422,7 +520,7 @@ export default function AutonomyModal({
                 </Card>
 
                 {/* Presets */}
-                <Card className="bg-neutral-900/70 border-neutral-800">
+                <Card className="bg-neutral-900/80 border-neutral-800">
                   <CardContent className="p-4 grid gap-3">
                     <div className="flex flex-wrap gap-2">
                       <Button variant="secondary" className="gap-2" onClick={downloadPresets}>
@@ -440,7 +538,9 @@ export default function AutonomyModal({
                 </Card>
 
                 <div className="flex items-center justify-end gap-2">
-                  <Button disabled={busy || !onUpdate} onClick={handleApplyParams} variant="secondary">Apply Params</Button>
+                  <Button disabled={busy || !onUpdate} onClick={handleApplyParams} variant="secondary" aria-busy={busy}>
+                    Apply Params
+                  </Button>
                 </div>
               </div>
             )}
@@ -475,7 +575,7 @@ function ToggleRow({
   return (
     <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
       <div className="flex items-center gap-2 text-sm text-neutral-100">{icon} <span>{label}</span></div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={label} />
     </div>
   );
 }
@@ -496,6 +596,7 @@ function SliderField({
         max={100}
         step={1}
         className="mt-2"
+        aria-label={label}
       />
     </div>
   );
@@ -514,8 +615,9 @@ function NumberField({
         className="bg-neutral-950 border-neutral-800 text-neutral-100"
         value={Number.isFinite(value) ? value : 0}
         step={step}
-        min={min as any}
-        max={max as any}
+        min={min}
+        max={max}
+        inputMode="decimal"
         onChange={(e) => {
           const n = Number(e.target.value);
           if (Number.isFinite(n)) onChange(clamp(n, min, max));
@@ -532,17 +634,20 @@ function TripletField({
   value: [number,number,number];
   onChange: (arr: number[]) => void;
 }) {
-  const [a, b, c] = value;
+  const [h, s, v] = value;
   return (
     <div className="grid gap-1">
       <label className="text-xs text-neutral-300">{label}</label>
       <div className="grid grid-cols-3 gap-2">
-        <Input type="number" value={a} className="bg-neutral-950 border-neutral-800 text-neutral-100"
-          onChange={(e)=> onChange([num(e.target.value, a), b, c])} />
-        <Input type="number" value={b} className="bg-neutral-950 border-neutral-800 text-neutral-100"
-          onChange={(e)=> onChange([a, num(e.target.value, b), c])} />
-        <Input type="number" value={c} className="bg-neutral-950 border-neutral-800 text-neutral-100"
-          onChange={(e)=> onChange([a, b, num(e.target.value, c)])} />
+        <Input type="number" value={h} min={0} max={179} step={1}
+          className="bg-neutral-950 border-neutral-800 text-neutral-100"
+          onChange={(e)=> onChange([clampNum(e.target.value, h, 0, 179), s, v])} />
+        <Input type="number" value={s} min={0} max={255} step={1}
+          className="bg-neutral-950 border-neutral-800 text-neutral-100"
+          onChange={(e)=> onChange([h, clampNum(e.target.value, s, 0, 255), v])} />
+        <Input type="number" value={v} min={0} max={255} step={1}
+          className="bg-neutral-950 border-neutral-800 text-neutral-100"
+          onChange={(e)=> onChange([h, s, clampNum(e.target.value, v, 0, 255)])} />
       </div>
     </div>
   );
@@ -567,8 +672,8 @@ function PriorityEditor({
         <div key={`${k}-${i}`} className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-950 px-2 py-1">
           <span className="text-sm capitalize text-neutral-100">{k}</span>
           <div className="flex gap-1">
-            <Button variant="secondary" size="sm" onClick={() => move(i, -1)} disabled={i===0}>↑</Button>
-            <Button variant="secondary" size="sm" onClick={() => move(i, +1)} disabled={i===items.length-1}>↓</Button>
+            <Button variant="secondary" size="sm" onClick={() => move(i, -1)} disabled={i===0} aria-label={`Move ${k} up`}>↑</Button>
+            <Button variant="secondary" size="sm" onClick={() => move(i, +1)} disabled={i===items.length-1} aria-label={`Move ${k} down`}>↓</Button>
           </div>
         </div>
       ))}
@@ -577,10 +682,24 @@ function PriorityEditor({
 }
 
 /* utils */
-function num(s: string, fallback: number) { const n = Number(s); return Number.isFinite(n) ? n : fallback; }
 function clamp(n: number, min?: number, max?: number) {
   let v = n;
   if (typeof min === 'number') v = Math.max(min, v);
   if (typeof max === 'number') v = Math.min(max, v);
   return v;
+}
+function num(s: string, fallback: number) { const n = Number(s); return Number.isFinite(n) ? n : fallback; }
+function clampNum(s: string, fallback: number, min: number, max: number) {
+  return clamp(num(s, fallback), min, max);
+}
+function canonicalize(obj: any) {
+  // stable stringify (sort keys shallowly; arrays kept order)
+  if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+    return Object.keys(obj).sort().reduce((acc:any, k) => { acc[k] = canonicalize(obj[k]); return acc; }, {} as any);
+  }
+  if (Array.isArray(obj)) return obj.map(canonicalize);
+  return obj;
+}
+function safeStableStringify(x: any) {
+  try { return JSON.stringify(canonicalize(x)); } catch { return ''; }
 }

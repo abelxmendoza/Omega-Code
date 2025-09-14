@@ -11,8 +11,10 @@
 #
 #   Notes:
 #   • Camera health ping inside CameraFrame derives /health from the src. Since we feed the proxy,
-#     the health latency badge will show “— ms” (that’s expected). The image onload/onerror still
+#     the health latency badge may show “— ms” (that’s expected). The image onload/onerror still
 #     drives status reliably, and the stream avoids CORS issues via the proxy.
+#   • When NEXT_PUBLIC_MOCK_WS=1 is set, the page does NOT open a real WebSocket connection.
+#     UI still functions using the mock autonomy wire and local logs.
 */
 
 import Head from 'next/head';
@@ -23,14 +25,22 @@ import CommandLog from '../components/CommandLog';
 import SensorDashboard from '../components/sensors/SensorDashboard';
 import CarControlPanel from '../components/control/CarControlPanel';
 import CameraControlPanel from '../components/control/CameraControlPanel';
-import AutonomyPanel from '../components/control/AutonomyModal'; // ← NEW
+import AutonomyPanel from '../components/control/AutonomyModal';
 import { useCommand } from '../context/CommandContext';
 import { COMMAND } from '../control_definitions';
 import Header from '../components/Header';
 import LedModal from '../components/lighting/LedModal';
 import { v4 as uuidv4 } from 'uuid';
 
+// Autonomy API client (WS/HTTP/mock wires)
+import {
+  makeAutonomyApi,
+  createWsWire,
+  mockWire,
+} from '@/utils/autonomyApi';
+
 const DEBUG = !!process.env.NEXT_PUBLIC_WS_DEBUG;
+const MOCK_WS = process.env.NEXT_PUBLIC_MOCK_WS === '1';
 
 /* ------------------ Client-only camera (avoids SSR issues) ------------------ */
 const CameraFrame = dynamic(() => import('../components/CameraFrame'), {
@@ -113,16 +123,14 @@ export default function Home() {
 
   /* -------- Camera proxy URL (built on client so we can read page query) -------- */
   const cameraProxyUrl = useMemo(() => {
-    // Build /api/video-proxy?profile=<active>[&video=...]
     const prof = getActiveProfile();
     const qs = new URLSearchParams();
     qs.set('profile', prof);
 
-    // honor page override ?video=… to force upstream
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       const override = url.searchParams.get('video');
-      const qProf = url.searchParams.get('profile'); // optional override for profile
+      const qProf = url.searchParams.get('profile');
       if (override) qs.set('video', override);
       if (qProf && ['lan', 'tailscale', 'local'].includes(qProf)) {
         qs.set('profile', qProf);
@@ -136,9 +144,10 @@ export default function Home() {
 
   /* --------------------------- WebSocket connect --------------------------- */
   const ws = useRef<WebSocket | null>(null);
-  const keepAliveTimer = useRef<number | null>(null);
-  const reconnectTimer = useRef<number | null>(null);
+  const keepAliveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backoffRef = useRef<number>(800);
+  const closingRef = useRef<boolean>(false);
 
   const connectWebSocket = useCallback(() => {
     const rawUrl = movementWsResolved;
@@ -155,26 +164,29 @@ export default function Home() {
       ws.current.onopen = () => {
         addCommand('WebSocket connection established');
         if (DEBUG) console.log('[WS] open');
-
         backoffRef.current = 800;
 
-        if (keepAliveTimer.current) window.clearInterval(keepAliveTimer.current);
-        keepAliveTimer.current = window.setInterval(() => {
+        if (keepAliveTimer.current) clearInterval(keepAliveTimer.current);
+        keepAliveTimer.current = setInterval(() => {
           try {
             if (ws.current?.readyState === WebSocket.OPEN) {
               ws.current.send(JSON.stringify({ type: 'keep-alive', ts: Date.now() }));
             }
-          } catch {}
+          } catch {
+            /* swallow */
+          }
         }, 25_000);
       };
 
-      ws.current.onclose = () => {
-        if (DEBUG) console.log('[WS] close');
+      ws.current.onclose = (ev) => {
+        if (DEBUG) console.log('[WS] close', ev?.reason || '');
+        if (keepAliveTimer.current) { clearInterval(keepAliveTimer.current); keepAliveTimer.current = null; }
+        if (closingRef.current) return; // user-initiated close during unmount
+
         addCommand('WebSocket connection closed. Reconnecting…');
-        if (keepAliveTimer.current) { window.clearInterval(keepAliveTimer.current); keepAliveTimer.current = null; }
-        if (reconnectTimer.current) { window.clearTimeout(reconnectTimer.current); reconnectTimer.current = null; }
+        if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null; }
         const delay = backoffRef.current;
-        reconnectTimer.current = window.setTimeout(() => {
+        reconnectTimer.current = setTimeout(() => {
           backoffRef.current = nextBackoff(backoffRef.current);
           connectWebSocket();
         }, delay);
@@ -182,47 +194,80 @@ export default function Home() {
 
       ws.current.onerror = (error) => {
         if (DEBUG) console.warn('[WS] error', error);
-        addCommand('WebSocket error');
-        // onclose will handle the backoff reconnect
+        addCommand('WebSocket error (see console)');
+        // onclose handler will schedule reconnect if needed
       };
 
       ws.current.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          if (message.command) addCommand(`Received: ${message.command}`);
+          if (message?.command) addCommand(`Received: ${message.command}`);
         } catch {
-          addCommand('Error parsing WebSocket message');
+          addCommand('WS message parse error');
         }
       };
     } catch (err) {
       addCommand(`WebSocket connect failed: ${String(err)}`);
       const delay = backoffRef.current;
-      reconnectTimer.current = window.setTimeout(() => {
+      reconnectTimer.current = setTimeout(() => {
         backoffRef.current = nextBackoff(backoffRef.current);
         connectWebSocket();
       }, delay);
     }
   }, [addCommand]);
 
+  // Only open a real socket if mocks are OFF.
   useEffect(() => {
+    if (MOCK_WS) {
+      if (DEBUG) console.log('[WS] MOCK_WS=1 → skipping real WebSocket connect');
+      addCommand('Mock WS mode: UI will not open real sockets.');
+      return; // no connect
+    }
+
     connectWebSocket();
     return () => {
-      if (keepAliveTimer.current) window.clearInterval(keepAliveTimer.current);
-      if (reconnectTimer.current) window.clearTimeout(reconnectTimer.current);
+      // graceful shutdown
+      closingRef.current = true;
+      if (keepAliveTimer.current) { clearInterval(keepAliveTimer.current); keepAliveTimer.current = null; }
+      if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null; }
       try { ws.current?.close(); } catch {}
+      ws.current = null;
     };
-  }, [connectWebSocket]);
+  }, [connectWebSocket, addCommand]);
+
+  /* ---------------- Autonomy API (WS wire, with mock toggle) --------------- */
+  const autonomyApi = useMemo(() => {
+    try {
+      if (MOCK_WS || !movementWsResolved) {
+        addCommand('Autonomy API using MOCK wire.');
+        return makeAutonomyApi(mockWire);
+      }
+      const wire = createWsWire(() => coerceWsScheme(movementWsResolved), { timeoutMs: 3000 });
+      return makeAutonomyApi(wire);
+    } catch (e) {
+      addCommand(`Autonomy API fallback to MOCK (${String(e)})`);
+      return makeAutonomyApi(mockWire);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movementWsResolved]);
 
   /* ---------------------- Send command helper with logs --------------------- */
   const sendCommandWithLog = useCallback(
     (command: string, angle: number = 0) => {
       const requestId = uuidv4();
+
+      // In mock mode, don't send—just log.
+      if (MOCK_WS) {
+        addCommand(`[MOCK] Sent: ${command} (ID: ${requestId})`);
+        return;
+      }
+
       if (ws.current?.readyState === WebSocket.OPEN) {
         try {
           ws.current.send(JSON.stringify({ command, angle, request_id: requestId }));
           addCommand(`Sent: ${command} (ID: ${requestId})`);
-        } catch {
-          addCommand('Failed to send command (serialization or socket error)');
+        } catch (e) {
+          addCommand(`Failed to send command: ${String(e)}`);
         }
       } else {
         addCommand('Failed to send command: WebSocket is not open');
@@ -235,10 +280,10 @@ export default function Home() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       switch (event.key.toLowerCase()) {
-        case 'p': return sendCommandWithLog(COMMAND.INCREASE_SPEED);
-        case 'o': return sendCommandWithLog(COMMAND.DECREASE_SPEED);
-        case ' ': return sendCommandWithLog(COMMAND.CMD_BUZZER);
-        case 'i': return setIsLedModalOpen(true);
+        case 'p': event.preventDefault(); return sendCommandWithLog(COMMAND.INCREASE_SPEED);
+        case 'o': event.preventDefault(); return sendCommandWithLog(COMMAND.DECREASE_SPEED);
+        case ' ': event.preventDefault(); return sendCommandWithLog(COMMAND.CMD_BUZZER);
+        case 'i': event.preventDefault(); return setIsLedModalOpen(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -246,6 +291,9 @@ export default function Home() {
   }, [sendCommandWithLog]);
 
   /* ---------------------------------- UI ---------------------------------- */
+  const isConnected =
+    MOCK_WS || (ws.current?.readyState === WebSocket.OPEN);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Head>
@@ -260,42 +308,51 @@ export default function Home() {
       <main className="p-4 space-y-4">
         <div className="flex justify-center items-center space-x-8">
           <div className="flex-shrink-0">
-            {/* CarControlPanel likely already uses CommandContext, so no prop needed */}
             <CarControlPanel />
-            {/* ↓ Autonomy panel sits right under the car controller */}
+
+            {/* Autonomy panel under the car controller */}
             <AutonomyPanel
-              connected={ws.current?.readyState === WebSocket.OPEN}
+              connected={isConnected}
               batteryPct={75}
-              onStart={(mode, params) => {
-                if (ws.current?.readyState === WebSocket.OPEN) {
-                  ws.current.send(JSON.stringify({ command: 'autonomy-start', mode, params }));
+              onStart={async (mode, params) => {
+                try {
+                  await autonomyApi.start(mode, params);
                   addCommand(`Sent: autonomy-start (${mode})`);
-                } else {
-                  addCommand('autonomy-start failed: WS not open');
+                  autonomyApi.maybeSuggestLights(Boolean((params as any)?.headlights));
+                } catch (e) {
+                  addCommand(`autonomy-start failed: ${String(e)}`);
                 }
               }}
-              onStop={() => {
-                if (ws.current?.readyState === WebSocket.OPEN) {
-                  ws.current.send(JSON.stringify({ command: 'autonomy-stop' }));
+              onStop={async () => {
+                try {
+                  await autonomyApi.stop();
                   addCommand('Sent: autonomy-stop');
-                } else {
-                  addCommand('autonomy-stop failed: WS not open');
+                } catch (e) {
+                  addCommand(`autonomy-stop failed: ${String(e)}`);
                 }
               }}
-              onDock={() => {
-                if (ws.current?.readyState === WebSocket.OPEN) {
-                  ws.current.send(JSON.stringify({ command: 'autonomy-dock' }));
+              onDock={async () => {
+                try {
+                  await autonomyApi.dock();
                   addCommand('Sent: autonomy-dock');
-                } else {
-                  addCommand('autonomy-dock failed: WS not open');
+                } catch (e) {
+                  addCommand(`autonomy-dock failed: ${String(e)}`);
                 }
               }}
-              onSetWaypoint={(label, lat, lon) => {
-                if (ws.current?.readyState === WebSocket.OPEN) {
-                  ws.current.send(JSON.stringify({ command: 'set-waypoint', label, lat, lon }));
+              onSetWaypoint={async (label, lat, lon) => {
+                try {
+                  await autonomyApi.setWaypoint(label, lat, lon);
                   addCommand(`Sent: set-waypoint "${label}" (${lat}, ${lon})`);
-                } else {
-                  addCommand('set-waypoint failed: WS not open');
+                } catch (e) {
+                  addCommand(`set-waypoint failed: ${String(e)}`);
+                }
+              }}
+              onUpdate={async (params) => {
+                try {
+                  await autonomyApi.update(params);
+                  addCommand('Sent: autonomy-update (params)');
+                } catch (e) {
+                  addCommand(`autonomy-update failed: ${String(e)}`);
                 }
               }}
             />
@@ -311,7 +368,6 @@ export default function Home() {
           </div>
 
           <div className="flex-shrink-0">
-            {/* CameraControlPanel uses context; don't pass sendCommand */}
             <CameraControlPanel />
           </div>
         </div>
@@ -321,16 +377,9 @@ export default function Home() {
             <SensorDashboard />
           </div>
           <div className="w-1/4">
-            {/* SpeedControl uses context; no props required */}
             <SpeedControl />
-            {/* Local button to open LEDs modal (replaces onOpenLedModal prop) */}
-            <button
-              className="mt-3 w-full bg-green-600 hover:bg-green-700 text-white text-sm px-3 py-2 rounded-md"
-              onClick={() => setIsLedModalOpen(true)}
-              type="button"
-            >
-              LEDs…
-            </button>
+            {/* Optional: visible LED modal trigger */}
+            {/* <Button onClick={() => setIsLedModalOpen(true)}>LEDs…</Button> */}
           </div>
         </div>
 
@@ -348,4 +397,3 @@ export default function Home() {
     </div>
   );
 }
-

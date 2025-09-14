@@ -4,11 +4,12 @@
 #   MJPEG camera frame with controls (play/pause, fit, rotate, flip, filters,
 #   snapshot/record, fullscreen) and a status dot that matches the status bar.
 #
-#   Improvements:
-#   - Always render <img> while playing → avoids "blank until connected" race.
-#   - Robust load/error handling with cache-busting and backoff retries.
-#   - Safer snapshot/record (CORS-aware). Cleanups for object URLs & intervals.
-#   - Clear comments & small UX niceties (Retry button, keyboard-friendly).
+#   Improvements in this pass:
+#   - Use computed transform (`mediaTransform`) consistently for <img>.
+#   - rAF loop only runs when recording or a snapshot is shown (CPU saver).
+#   - Extra guardrails around /health fetch (AbortController timeout).
+#   - More robust cleanup of timers, object-URLs and recorder streams.
+#   - Minor a11y/title polish and clearer debug logs.
 #
 #   Status mapping (via GET to /health):
 #     • 200 → "connected" (green)
@@ -17,6 +18,7 @@
 #     • network/CORS errors → "disconnected" (red)
 */
 
+'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { cameraStatusBus } from '@/utils/cameraStatusBus';
@@ -66,6 +68,7 @@ const IconBtn: React.FC<
                 disabled:opacity-40 disabled:cursor-not-allowed`}
     onClick={onClick}
     title={title}
+    aria-label={title}
     disabled={disabled}
   >
     {children}
@@ -86,23 +89,21 @@ const filterClass = (mode: FilterMode) => {
 const buildHealthUrl = (srcUrl?: string) => {
   if (!srcUrl) return '';
   try {
-    // Normalize to a URL for reliable parsing, even if `src` is relative
     const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
     const u = new URL(srcUrl, base);
 
-    // If the pathname indicates our same-origin proxy, mirror its query to /api/video-health
+    // If same-origin proxy, mirror its query to /api/video-health (and drop our cache-buster)
     if (u.pathname.startsWith('/api/video-proxy')) {
       const qs = new URLSearchParams(u.search);
-      qs.delete('b'); // drop our cache-buster
+      qs.delete('b');
       const q = qs.toString();
       return `/api/video-health${q ? `?${q}` : ''}`;
     }
 
     // Direct upstream:
-    // .../video_feed[?...] → .../health, else <base>/health
     if (/\/video_feed\/?$/i.test(u.pathname)) {
       u.pathname = u.pathname.replace(/\/video_feed\/?$/i, '/health');
-      u.search = ''; // health doesn’t need stream query
+      u.search = '';
       return u.toString();
     }
     u.pathname = (u.pathname.replace(/\/+$/,'') || '') + '/health';
@@ -111,6 +112,18 @@ const buildHealthUrl = (srcUrl?: string) => {
     return '';
   }
 };
+
+/** fetch with timeout guard (component-local) */
+async function fetchWithTimeout(url: string, ms: number) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), Math.max(500, ms));
+  try {
+    const res = await fetch(url, { method: 'GET', cache: 'no-store', signal: ac.signal });
+    return res;
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 const CameraFrame: React.FC<CameraFrameProps> = ({
   src,
@@ -126,7 +139,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
 
   const [status, setStatus] = useState<ServerStatus>('connecting');
   const [pingMs, setPingMs] = useState<number | null>(null);
-  const [lastHttp, setLastHttp] = useState<number | null>(null);   // NEW: expose HTTP code
+  const [lastHttp, setLastHttp] = useState<number | null>(null);
   const [fps, setFps] = useState<number>(0);
 
   const [playing, setPlaying] = useState(true);
@@ -137,7 +150,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
   const [filter, setFilter] = useState<FilterMode>('none');
 
   const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
-  const lastBlobUrlRef = useRef<string | null>(null); // revoke snapshot object URLs
+  const lastBlobUrlRef = useRef<string | null>(null);
 
   const recStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -145,7 +158,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
   const [recording, setRecording] = useState(false);
 
   const rafRef = useRef<number | null>(null);
-  const fpsCounterRef = useRef<{ last: number; frames: number }>({ last: performance.now(), frames: 0 });
+  const fpsCounterRef = useRef<{ last: number; frames: number }>({ last: performance.now?.() ?? Date.now(), frames: 0 });
 
   const retryTimerRef = useRef<number | null>(null);
   const backoffRef = useRef<number>(800); // ms; grows up to ~6s
@@ -161,9 +174,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
   // Push current status to the bus
   const publish = (s: Partial<Parameters<typeof cameraStatusBus.publish>[0]>) => {
     cameraStatusBus.publish({
-      state:
-        s.state ||
-        (status as any),
+      state: (s.state as any) ?? status,
       pingMs: s.pingMs ?? pingMs,
       lastHttp: s.lastHttp ?? lastHttp,
       playing: s.playing ?? playing,
@@ -190,9 +201,9 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
         setStatus(s => (s === 'connected' || s === 'no_camera') ? s : 'connecting');
         publish({ state: 'connecting' });
 
-        const start = performance.now();
-        const res = await fetch(healthUrl, { method: 'GET', cache: 'no-store' });
-        const end = performance.now();
+        const start = performance.now?.() ?? Date.now();
+        const res = await fetchWithTimeout(healthUrl, Math.max(1500, checkIntervalMs - 500));
+        const end = performance.now?.() ?? Date.now();
         if (cancelled) return;
 
         setLastHttp(res.status);
@@ -214,8 +225,9 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
           setStatus('disconnected'); setPingMs(null);
           publish({ state: 'disconnected', pingMs: null, lastHttp: res.status });
         }
-      } catch {
+      } catch (e) {
         if (!cancelled) {
+          if (DEBUG) console.warn('[CameraFrame] /health fetch error:', e);
           setStatus('disconnected'); setPingMs(null);
           setLastHttp(null);
           publish({ state: 'disconnected', pingMs: null, lastHttp: null });
@@ -229,8 +241,15 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, checkIntervalMs]);
 
-  // ---------- FPS estimate (only while recording or snapshotting to canvas) ----------
+  // ---------- FPS estimate (only while recording or snapshot to canvas) ----------
   useEffect(() => {
+    if (!(recording || snapshotUrl)) {
+      // reset fps to 0 when not drawing
+      setFps(0);
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      return;
+    }
+
     const loop = () => {
       const img = imgRef.current;
       const cvs = canvasRef.current;
@@ -255,7 +274,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
           }
           ctx.restore();
         }
-        const now = performance.now();
+        const now = performance.now?.() ?? Date.now();
         fpsCounterRef.current.frames += 1;
         if (now - fpsCounterRef.current.last >= 1000) {
           setFps(fpsCounterRef.current.frames);
@@ -266,7 +285,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       rafRef.current = requestAnimationFrame(loop);
     };
     rafRef.current = requestAnimationFrame(loop);
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+    return () => { if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; } };
   }, [recording, snapshotUrl, showGrid]);
 
   // ---------- helpers ----------
@@ -283,10 +302,9 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
     clearRetryTimer();
     const delay = Math.min(6000, backoffRef.current);
     retryTimerRef.current = window.setTimeout(() => {
-      // Just bump buster → re-requests the stream once
       setBuster(Date.now());
       if (DEBUG) console.log('[CameraFrame] retrying MJPEG after', delay, 'ms');
-      backoffRef.current = Math.min(6000, backoffRef.current * 1.6);
+      backoffRef.current = Math.min(6000, Math.floor(backoffRef.current * 1.6));
     }, delay);
   };
 
@@ -340,12 +358,16 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
   };
 
   const handlePlay = () => {
+    // drop previous snapshot and revoke any blob URL
+    if (lastBlobUrlRef.current) {
+      URL.revokeObjectURL(lastBlobUrlRef.current);
+      lastBlobUrlRef.current = null;
+    }
     setSnapshotUrl(null);
     setPlaying(true);
     publish({ playing: true });
     resetBackoff();
-    // force new request once
-    setBuster(Date.now());
+    setBuster(Date.now()); // force new request once
   };
 
   const handleTogglePlay = () => (playing ? handlePause() : handlePlay());
@@ -361,8 +383,8 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       a.href = dataUrl;
       a.download = `snapshot-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    } catch {
-      console.warn('Snapshot blocked (likely CORS). Make sure the source is same-origin or set proper CORS headers.');
+    } catch (e) {
+      console.warn('Snapshot blocked (likely CORS). Same-origin or proper CORS is required.', e);
     }
   };
 
@@ -381,12 +403,16 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       chunksRef.current = [];
       rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data); };
       rec.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mimeType || 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = `recording-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        try {
+          const blob = new Blob(chunksRef.current, { type: mimeType || 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = `recording-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 10000);
+        } catch (e) {
+          console.warn('Recording finalize failed:', e);
+        }
       };
       rec.start();
       recStreamRef.current = stream;
@@ -412,6 +438,11 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
     return `rotate(${r}deg) scale(${sx}, ${sy})`;
   }, [rotate, flipH, flipV]);
 
+  const mediaStyle: React.CSSProperties = useMemo(
+    () => ({ transform: mediaTransform, transformOrigin: 'center center' }),
+    [mediaTransform]
+  );
+
   // ---------- Image load/error → status + retries ----------
   const handleImgLoad = () => {
     setStatus('connected');
@@ -420,10 +451,10 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
     if (DEBUG) console.log('[CameraFrame] <img> load OK');
   };
 
-  const handleImgError = () => {
+  const handleImgError = (e?: any) => {
     setStatus(prev => (prev === 'no_camera' ? prev : 'disconnected'));
     publish({ state: 'disconnected' });
-    if (DEBUG) console.warn('[CameraFrame] <img> error');
+    if (DEBUG) console.warn('[CameraFrame] <img> error', e?.message || e);
     scheduleRetry();
   };
 
@@ -434,10 +465,8 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       try { recorderRef.current?.stop(); } catch {}
       try { recStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
       recorderRef.current = null; recStreamRef.current = null;
-      if (lastBlobUrlRef.current) {
-        URL.revokeObjectURL(lastBlobUrlRef.current);
-        lastBlobUrlRef.current = null;
-      }
+      if (lastBlobUrlRef.current) { URL.revokeObjectURL(lastBlobUrlRef.current); lastBlobUrlRef.current = null; }
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
   }, []);
 
@@ -502,7 +531,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
             src={IMG_SRC}
             alt="Live Camera"
             className={`absolute inset-0 w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
-            style={{ transform: `rotate(${rotate}deg) scale(${flipH ? -1 : 1}, ${flipV ? -1 : 1})`, transformOrigin: 'center center' }}
+            style={mediaStyle}
             onError={handleImgError}
             onLoad={handleImgLoad}
             draggable={false}
@@ -513,7 +542,8 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
               src={snapshotUrl}
               alt="Last frame"
               className={`absolute inset-0 w-full h-full opacity-25 ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
-              style={{ transform: `rotate(${rotate}deg) scale(${flipH ? -1 : 1}, ${flipV ? -1 : 1})`, transformOrigin: 'center center' }}
+              style={mediaStyle}
+              draggable={false}
             />
           )
         )}
@@ -527,7 +557,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
             <button
               type="button"
               className="px-2 py-1 rounded bg-black/40 hover:bg-black/55 text-white text-xs backdrop-blur border border-white/15 transition"
-              onClick={() => { setSnapshotUrl(null); setPlaying(true); setBuster(Date.now()); resetBackoff(); publish({ playing: true }); }}
+              onClick={() => { handlePlay(); }}
               title="Retry"
             >
               Retry

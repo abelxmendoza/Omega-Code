@@ -1,23 +1,32 @@
-/*
-# File: /Omega-Code/ui/robot-controller-ui/tests/setupTests.ts
-# Summary:
-#   Jest test setup. Extends RTL matchers and provides a minimal global fetch mock
-#   so tests that don’t stub fetch themselves still run. Uses @jest/globals so
-#   “Cannot use namespace 'jest' as a value” never occurs during type-check.
-*/
+// tests/setupTests.ts
+// Extends RTL matchers and provides stable browser-ish APIs for JSDOM tests.
+import '@testing-library/jest-dom'
+import 'whatwg-fetch' // polyfills fetch/Request/Response in JSDOM
 
-import '@testing-library/jest-dom';
-import { jest } from '@jest/globals';
+// --- OPTIONAL toggles (uncomment when needed) --------------------------------
+// MSW for API mocking across tests (recommended for /api/*):
+// import { setupServer } from 'msw/node'
+// export const server = setupServer()
+// beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }))
+// afterEach(() => server.resetHandlers())
+// afterAll(() => server.close())
 
-/** Minimal fetch mock used by tests that don't stub fetch explicitly. */
-const mockFetch = jest.fn(() =>
-  Promise.resolve({
-    ok: true,
-    json: () => Promise.resolve({}),
-  } as any)
-) as unknown as typeof fetch;
+// If some components rely on createObjectURL (e.g., camera blobs), provide stubs:
+if (typeof URL !== 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const U: any = URL
+  if (!U.createObjectURL) U.createObjectURL = () => 'blob://test'
+  if (!U.revokeObjectURL) U.revokeObjectURL = () => {}
+}
 
-// Install on the global scope used by both Node and JSDOM.
-globalThis.fetch = mockFetch;
+// If a lib expects ResizeObserver in JSDOM:
+if (typeof (globalThis as any).ResizeObserver === 'undefined') {
+  ;(globalThis as any).ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}
 
-export {};
+// Keep the module a TS file
+export {}

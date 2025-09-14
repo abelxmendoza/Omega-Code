@@ -2,15 +2,14 @@
 # File: /Omega-Code/ui/robot-controller-ui/src/components/Header.tsx
 # Summary:
 #   App header with overall health + battery and per-service status pills.
-#   - Uses profile-aware resolver (`netProfile`) for all endpoints
-#   - WS services (movement/line/lighting): JSON ping→pong for latency
-#   - Ultrasonic: marks alive on any message (no pong)
-#   - Video: probes sibling `/health` (cheap 200/503) instead of touching MJPEG
-#   - Colors match ServiceStatusBar (green=connected, amber=connecting, red=disconnected, sky=no_camera)
-#   - Network extras (MVP):
-#       • Live Link pill (click toggles Network Wizard; opens Quick Actions when shown)
-#       • Quick Actions: Connect iPhone PAN, Connect Wi-Fi (inline form)
-#       • Polls /api/net/summary every 8s (safe if backend missing)
+#   - Profile-aware endpoints (via netProfile)
+#   - WS services: ping→pong for latency (movement/line/lighting)
+#   - Ultrasonic: any message marks alive (no pong)
+#   - Video: probes sibling `/health` (cheap 200/503) instead of MJPEG
+#   - Live Link pill: toggles Network Wizard + exposes Quick Actions
+#   - Polls /api/net/summary every 8s with timeout + abort + stale-guard
+#   - Shows current profile and MOCK badge (when NEXT_PUBLIC_MOCK_WS=1|true)
+#   - Defensive error handling throughout; never throws during render
 */
 
 'use client';
@@ -22,21 +21,51 @@ import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { net } from '@/utils/netProfile';
 
-// Lazy (client-only) load for the wizard — matches your file location
 const NetworkWizard = dynamic(() => import('@/components/NetworkWizard'), { ssr: false });
 
 interface HeaderProps {
   batteryLevel: number;
 }
 
-/** Convert an MJPEG URL (.../video_feed[?]) to the sibling `/health`. */
+/* ----------------------------- utilities ------------------------------ */
+
+type HeaderState = ServiceStatus | HttpStatus; // includes 'no_camera'
+
+const truthy = (v: unknown) =>
+  String(v ?? '').trim().toLowerCase() === '1' ||
+  String(v ?? '').trim().toLowerCase() === 'true' ||
+  String(v ?? '').trim().toLowerCase() === 'yes';
+
+const MOCK_WS = truthy(process.env.NEXT_PUBLIC_MOCK_WS);
+
+const getActiveProfile = (): 'lan' | 'tailscale' | 'local' => {
+  try {
+    if (typeof window !== 'undefined') {
+      const q = new URL(window.location.href).searchParams.get('profile');
+      if (q && ['lan', 'tailscale', 'local'].includes(q)) return q as any;
+    }
+  } catch {}
+  const env = (process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local').toLowerCase();
+  return (['lan', 'tailscale', 'local'].includes(env) ? env : 'local') as any;
+};
+
+/** Convert an MJPEG URL (.../video_feed[?]) to sibling `/health`. */
 function toHealthUrl(videoUrl?: string) {
   if (!videoUrl) return '';
-  const m = videoUrl.match(/^(.*)\/video_feed(?:\?.*)?$/i);
-  return m ? `${m[1]}/health` : `${videoUrl.replace(/\/$/, '')}/health`;
+  try {
+    const u = new URL(videoUrl);
+    if (/\/video_feed\/?$/i.test(u.pathname)) {
+      u.pathname = u.pathname.replace(/\/video_feed\/?$/i, '/health');
+      u.search = '';
+    } else {
+      u.pathname = (u.pathname.replace(/\/+$/, '') || '') + '/health';
+    }
+    return u.toString();
+  } catch {
+    // Fallback: string replace
+    return videoUrl.replace(/\/video_feed(?:\?.*)?$/i, '').replace(/\/+$/, '') + '/health';
+  }
 }
-
-type HeaderState = ServiceStatus | HttpStatus; // allow 'no_camera' from http hook
 
 const Dot: React.FC<{ state: HeaderState }> = ({ state }) => {
   const color =
@@ -76,17 +105,7 @@ const Pill: React.FC<PillProps> = ({
     ? ' cursor-pointer hover:bg-black/40 focus:outline-none focus:ring-2 focus:ring-white/20'
     : '';
 
-  const content = (
-    <>
-      <Dot state={state} />
-      <span className="text-white/90 truncate max-w-[18ch]">{label}</span>
-      <span className={`ml-0.5 ${glyphClass}`} aria-hidden>{glyph}</span>
-      {latency != null && <span className="text-white/50 ml-0.5">{latency} ms</span>}
-    </>
-  );
-
-  const title =
-    titleOverride ?? `${label}: ${state}${latency != null ? ` • ${latency} ms` : ''}`;
+  const title = titleOverride ?? `${label}: ${state}${latency != null ? ` • ${latency} ms` : ''}`;
 
   return isInteractive ? (
     <button
@@ -97,11 +116,17 @@ const Pill: React.FC<PillProps> = ({
       aria-expanded={ariaExpanded}
       aria-controls={ariaControls}
     >
-      {content}
+      <Dot state={state} />
+      <span className="text-white/90 truncate max-w-[18ch]">{label}</span>
+      <span className={`ml-0.5 ${glyphClass}`} aria-hidden>{glyph}</span>
+      {latency != null && <span className="text-white/50 ml-0.5">{latency} ms</span>}
     </button>
   ) : (
     <div className={base} title={title}>
-      {content}
+      <Dot state={state} />
+      <span className="text-white/90 truncate max-w-[18ch]">{label}</span>
+      <span className={`ml-0.5 ${glyphClass}`} aria-hidden>{glyph}</span>
+      {latency != null && <span className="text-white/50 ml-0.5">{latency} ms</span>}
     </div>
   );
 };
@@ -128,37 +153,40 @@ function useNetSummary(intervalMs = 8000) {
   const [error, setError]     = useState<string | null>(null);
 
   const fetchOnce = useCallback(async () => {
+    // stale-request guard + timeout
+    const ac = new AbortController();
+    const t  = setTimeout(() => ac.abort(), 3000);
     try {
       setError(null);
-      const res = await fetch('/api/net/summary', { method: 'GET' });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      const data = await res.json();
-      setSummary(data);
+      const res = await fetch('/api/net/summary', { method: 'GET', signal: ac.signal, cache: 'no-store' });
+      const ok = res.ok;
+      let data: any = null;
+      try { data = await res.json(); } catch { data = null; }
+      if (!ok) throw new Error(`${res.status} ${res.statusText}`);
+      setSummary(data ?? { linkType: 'unknown', online: false });
     } catch (e: any) {
-      // Gracefully degrade: keep existing summary; mark error
+      // Keep last good summary; only inject a minimal one if we have none
       setError(e?.message ?? 'fetch failed');
-      if (summary == null) {
-        setSummary({ linkType: 'unknown', online: false });
-      }
+      setSummary(prev => prev ?? { linkType: 'unknown', online: false });
     } finally {
+      clearTimeout(t);
       setLoading(false);
     }
-  }, [summary]);
+  }, []);
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;
-    fetchOnce();
-    timer = setInterval(fetchOnce, intervalMs);
-    return () => { if (timer) clearInterval(timer); };
+    let mounted = true;
+    (async () => { if (mounted) await fetchOnce(); })();
+    timer = setInterval(() => { void fetchOnce(); }, intervalMs);
+    return () => { mounted = false; if (timer) clearInterval(timer); };
   }, [fetchOnce, intervalMs]);
 
-  // Derive a header pill state
   const state: HeaderState =
     loading ? 'connecting'
     : summary?.online ? 'connected'
     : 'disconnected';
 
-  // Nice label
   const label =
     summary?.linkType === 'wifi'      ? `Wi-Fi: ${summary?.ssid ?? '…'}` :
     summary?.linkType === 'pan'       ? `PAN: ${summary?.panDevice ?? 'iPhone'}` :
@@ -167,7 +195,6 @@ function useNetSummary(intervalMs = 8000) {
     summary?.linkType === 'none'      ? 'Offline' :
                                         'Network';
 
-  // Tooltip details
   const title = [
     summary?.ifname ? `if=${summary.ifname}` : '',
     summary?.ipv4   ? `ipv4=${summary.ipv4}` : '',
@@ -186,14 +213,21 @@ function useNetActions() {
   const [msg, setMsg]   = useState<string | null>(null);
 
   const postJson = async (url: string, body: any) => {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body ?? {}),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || `${res.status} ${res.statusText}`);
-    return data;
+    const ac = new AbortController();
+    const t  = setTimeout(() => ac.abort(), 5000);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body ?? {}),
+        signal: ac.signal,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `${res.status} ${res.statusText}`);
+      return data;
+    } finally {
+      clearTimeout(t);
+    }
   };
 
   const connectPan = async (macOrName?: string) => {
@@ -324,7 +358,7 @@ const QuickActions: React.FC<{
 };
 
 /* ============================
-   Original Header + additions
+   Header
    ============================ */
 
 const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
@@ -332,29 +366,36 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
   const [showQuick, setShowQuick] = useState(false);
   const networkPanelId = 'network-wizard-panel';
 
-  // Resolve all endpoints via the profile-aware helper (honors ?profile).
-  const MOVE_URL  = net.ws.movement();
-  const ULTRA_URL = net.ws.ultrasonic();
-  const LINE_URL  = net.ws.line();
-  const LIGHT_URL = net.ws.lighting();
-  const VIDEO_URL = net.video();
+  // Resolve endpoints defensively (never throw during render)
+  const { MOVE_URL, ULTRA_URL, LINE_URL, LIGHT_URL, VIDEO_URL } = useMemo(() => {
+    try {
+      return {
+        MOVE_URL:  net.ws.movement()  || '',
+        ULTRA_URL: net.ws.ultrasonic()|| '',
+        LINE_URL:  net.ws.line()      || '',
+        LIGHT_URL: net.ws.lighting()  || '',
+        VIDEO_URL: net.video()        || '',
+      };
+    } catch {
+      return { MOVE_URL:'', ULTRA_URL:'', LINE_URL:'', LIGHT_URL:'', VIDEO_URL:'' };
+    }
+  }, []);
 
-  // Prefer probing /health for video to avoid pulling the MJPEG stream.
   const VIDEO_HEALTH = useMemo(() => toHealthUrl(VIDEO_URL), [VIDEO_URL]);
 
-  // WS with pong → latency (hooks always called; no-op via enabled=false when URL missing)
+  // WS with pong → latency
   const move  = useWsStatus(MOVE_URL,  { enabled: !!MOVE_URL,  pingIntervalMs: 5000, pongTimeoutMs: 2500 });
   const line  = useWsStatus(LINE_URL,  { enabled: !!LINE_URL,  pingIntervalMs: 5000, pongTimeoutMs: 2500 });
   const light = useWsStatus(LIGHT_URL, { enabled: !!LIGHT_URL, pingIntervalMs: 5000, pongTimeoutMs: 2500 });
 
-  // Streaming WS (any message marks alive)
+  // Streaming WS (any message → alive)
   const ultra = useWsStatus(ULTRA_URL, {
     enabled: !!ULTRA_URL,
     treatAnyMessageAsAlive: true,
     pongTimeoutMs: 4000,
   });
 
-  // HTTP /health mapping (503+placeholder → "no_camera")
+  // HTTP /health (503+placeholder → "no_camera")
   const video = useHttpStatus(VIDEO_HEALTH, {
     enabled: !!VIDEO_HEALTH,
     intervalMs: 5000,
@@ -362,7 +403,7 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
     treat503AsConnecting: true,
   });
 
-  // Net summary (MVP)
+  // Net summary
   const netSummary = useNetSummary(8000);
 
   const states = [move.status, ultra.status, line.status, light.status, video.status] as const;
@@ -375,13 +416,24 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
     batteryLevel > 20 ? 'bg-blue-500 neon-blue' :
                         'bg-red-500';
 
-  // Label with chevron to mimic "Network ▼/▲" while still showing the live link
   const liveLinkLabel = `${netSummary.label} ${showNetwork ? '▲' : '▼'}`;
+  const profile = getActiveProfile();
 
   return (
     <div className="flex flex-col gap-2 bg-gray-800 text-white p-4 sticky top-0 z-10 shadow-md">
       <div className="flex justify-between items-center">
-        <div className="text-lg font-bold">Robot Controller</div>
+        <div className="text-lg font-bold flex items-center gap-2">
+          Robot Controller
+          {/* Profile + MOCK badges (no hostnames = no leaks) */}
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 border border-white/15">
+            {profile.toUpperCase()}
+          </span>
+          {MOCK_WS && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/40 text-amber-100">
+              MOCK
+            </span>
+          )}
+        </div>
 
         {/* Overall status + battery */}
         <div className="flex items-center space-x-4">
@@ -407,7 +459,7 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
 
       {/* Per-service pills */}
       <div className="flex flex-wrap gap-2 items-center">
-        {/* Live Link pill (click toggles wizard; opens Quick Actions when showing) */}
+        {/* Live Link pill */}
         <Pill
           label={liveLinkLabel}
           state={netSummary.state}
