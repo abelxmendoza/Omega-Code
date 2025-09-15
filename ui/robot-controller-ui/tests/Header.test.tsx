@@ -56,3 +56,4 @@ describe('Header Component', () => {
     expect(batteryElement).toHaveTextContent('Battery:75%');
   });
 });
+

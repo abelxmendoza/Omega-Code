@@ -7,6 +7,8 @@
 #   Query:
 #     • ?profile=lan|tailscale|local  → overrides env profile
 #     • ?video=<absolute-http(s)-url> → forces a specific upstream
+#     • ?mock=1                       → stream a built-in placeholder MJPEG (Pi-free dev)
+#     • ?fps=5                        → mock frame rate (default 5)
 #
 #   Env (URLs per profile; keep absolute http/https):
 #     NEXT_PUBLIC_VIDEO_STREAM_URL_LAN
@@ -24,6 +26,8 @@ import dns from 'node:dns';
 import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
+import fs from 'node:fs';
+import path from 'node:path';
 
 export const config = { api: { bodyParser: false, responseLimit: false } };
 
@@ -32,14 +36,12 @@ type Profile = 'lan' | 'tailscale' | 'local';
 const DEBUG = !!process.env.NEXT_PUBLIC_WS_DEBUG; // reuse your existing debug flag
 const HEADER_TIMEOUT_MS = 3500;
 const MAX_REDIRECTS = 3;
+const BOUNDARY = 'frame';
 
 /* ----------------------------- helpers ------------------------------ */
 
 function logDebug(...args: any[]) {
-  if (DEBUG) {
-    // eslint-disable-next-line no-console
-    console.log('[video-proxy]', ...args);
-  }
+  if (DEBUG) console.log('[video-proxy]', ...args); // eslint-disable-line no-console
 }
 
 function pickProfile(req: NextApiRequest): Profile {
@@ -62,10 +64,7 @@ function buildStreamCandidates(req: NextApiRequest): string[] {
   const override = typeof req.query.video === 'string' ? req.query.video.trim() : '';
   const list: string[] = [];
 
-  if (override) {
-    if (isAbsoluteHttpUrl(override)) list.push(override);
-    // else it will be ignored (and we’ll fall back to env)
-  }
+  if (override && isAbsoluteHttpUrl(override)) list.push(override);
 
   const prof = pickProfile(req);
   const by: Record<Profile, string | undefined> = {
@@ -76,10 +75,9 @@ function buildStreamCandidates(req: NextApiRequest): string[] {
 
   const all: Profile[] = ['tailscale', 'lan', 'local'];
   const order = [prof, ...all.filter(p => p !== prof)];
-  const envUrls = order.map(p => by[p]).filter(Boolean) as string[];
-
-  for (const u of envUrls) {
-    if (isAbsoluteHttpUrl(u)) list.push(u);
+  for (const p of order) {
+    const u = by[p];
+    if (u && isAbsoluteHttpUrl(u)) list.push(u);
   }
 
   // de-dup while preserving order
@@ -97,7 +95,82 @@ function errorShape(err: any) {
   };
 }
 
-/* ------------------------------ streaming --------------------------- */
+/* ------------------------------ MOCK STREAM --------------------------- */
+/** Try public/mock.jpg; fall back to a tiny inline 1x1 JPEG. */
+let CACHED_MOCK_BUF: Buffer | null = null;
+function getMockFrame(): Buffer {
+  if (CACHED_MOCK_BUF) return CACHED_MOCK_BUF;
+  try {
+    const p = path.join(process.cwd(), 'public', 'mock.jpg');
+    CACHED_MOCK_BUF = fs.readFileSync(p);
+    logDebug('mock: using public/mock.jpg');
+    return CACHED_MOCK_BUF;
+  } catch {
+    // 1x1 black JPEG (baseline) inline
+    const ONE_BY_ONE_JPEG_BASE64 =
+      '/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBxAQEBAQEA8PDw8QDw8QDw8PDw8QFREWFhURFRUYHSggGBolGxUVITEhJSkrLi4uFx8zODMtNygtLisBCgoKDg0OGxAQGy0lICUtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLf/AABEIAHAAcAMBIgACEQEDEQH/xAAaAAADAQEBAQAAAAAAAAAAAAAEBQYDAgcB/8QAMhAAAQMDAgQFBAMAAAAAAAAAAQIDBAAFEQYSITFBURMiYXGBkRQjMlLB0fAzYoL/xAAaAQADAQEBAQAAAAAAAAAAAAABAgMABAUH/8QAHxEBAAIDAQEAAwAAAAAAAAAAAAECERIhAzFBIlGh/9oADAMBAAIRAxEAPwD2XAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADQQW4mjXG2kq2m0nU7l3nO0pXk7yq5JY+0r0e9Vb9CwY/7r2b3h7f1w5m2p5u+Q3c3k2c1f3y0yX6yN8k3l9W1S0i0e2b3d2gS4nKq5fM0M2o3m8i5Jb8f9r5Z4i3n3m9f8A9K0j3o5Tnn9m0+1e7S1z7HjW8Z1V8T2Gz7rBG0lAAAAAAAAAAAAAAAAAABKqkqWJt0c1e8a3z2v0mW5Zk0a5y0fqpv9xTq0b3V6ZdT8f7t8bXbY3f6m3bH2l8m9u2z3d32P2N9o7K3m9Yb9ZpU3kY0s0Wc2k9m9bqO9aZ1JmV3fDWrq0bY8+8cT2W5q9sQqV8Y2b7f0rW+K2dG7cG0nAAAAAAAAAAAAAAAAAABQv0q1q9bL2ulXkzTzq8x3Zf1c1pUV5U1n1q2s7cY9xV5m5c8m9H1k9m6xq6T9LQv1b2rL3WqV7lG8o5l1U0m2Z1s1l8r5tO1e9b2fL9H1gkAAAAAAAAAAAAAAAAAAAB//9k=';
+    CACHED_MOCK_BUF = Buffer.from(ONE_BY_ONE_JPEG_BASE64, 'base64');
+    logDebug('mock: using inline 1x1 JPEG');
+    return CACHED_MOCK_BUF;
+  }
+}
+
+function isMock(req: NextApiRequest) {
+  const q = String(req.query.mock || '').trim();
+  if (q === '1' || q.toLowerCase() === 'true') return true;
+  return process.env.MOCK_BACKEND === '1';
+}
+
+function parseFps(req: NextApiRequest) {
+  const raw = Number(req.query.fps);
+  return Number.isFinite(raw) && raw > 0 && raw <= 30 ? Math.floor(raw) : 5;
+}
+
+function streamMock(req: NextApiRequest, res: NextApiResponse) {
+  const fps = parseFps(req);
+  const periodMs = Math.max(50, Math.floor(1000 / fps));
+  const frame = getMockFrame();
+
+  res.status(200);
+  res.setHeader('Content-Type', `multipart/x-mixed-replace; boundary=${BOUNDARY}`);
+  res.setHeader('Cache-Control', 'no-store, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  let timer: NodeJS.Timeout | null = null;
+  let closed = false;
+
+  const writeFrame = () => {
+    if (closed) return;
+    try {
+      res.write(`--${BOUNDARY}\r\n`);
+      res.write('Content-Type: image/jpeg\r\n');
+      res.write(`Content-Length: ${frame.length}\r\n\r\n`);
+      res.write(frame);
+      res.write('\r\n');
+    } catch {
+      // client likely closed mid-write
+      cleanup();
+    }
+  };
+
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    if (timer) clearInterval(timer);
+    try { res.end(`--${BOUNDARY}--\r\n`); } catch {}
+  };
+
+  // start ticking
+  writeFrame();
+  timer = setInterval(writeFrame, periodMs);
+
+  req.once('close', cleanup);
+  res.once('close', cleanup);
+}
+
+/* ------------------------------ REAL STREAM --------------------------- */
 
 // Minimal compatibility type for dns.lookup callback signature
 type LookupFnCompat = (
@@ -196,7 +269,7 @@ function streamOnce(
         }
 
         // Propagate stream-friendly headers
-        const ct = upRes.headers['content-type'] || 'multipart/x-mixed-replace; boundary=frame';
+        const ct = upRes.headers['content-type'] || `multipart/x-mixed-replace; boundary=${BOUNDARY}`;
         res.setHeader('Content-Type', Array.isArray(ct) ? ct[0] : ct);
         res.setHeader('Cache-Control', 'no-store, no-transform');
         res.setHeader('Connection', 'keep-alive');
@@ -271,14 +344,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
-  // HEAD is a lightweight “is it configured?” check
+  // HEAD → light “is it configured?” check (mock always OK)
   if (req.method === 'HEAD') {
+    if (isMock(req)) { res.status(200).end(); return; }
     const candidates = buildStreamCandidates(req);
-    if (candidates.length === 0) {
-      res.status(400).end();
-    } else {
-      res.status(200).end();
-    }
+    res.status(candidates.length ? 200 : 400).end();
+    return;
+  }
+
+  // Mock stream for Pi-free dev
+  if (isMock(req)) {
+    streamMock(req, res);
     return;
   }
 

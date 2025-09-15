@@ -1,19 +1,18 @@
 // tests/setupTests.ts
-// Extends RTL matchers and provides stable browser-ish APIs for JSDOM tests.
 import '@testing-library/jest-dom'
-import 'whatwg-fetch' // polyfills fetch/Request/Response in JSDOM
+import 'whatwg-fetch'
 
-// --- OPTIONAL toggles (uncomment when needed) --------------------------------
-// MSW for API mocking across tests (recommended for /api/*):
-// import { setupServer } from 'msw/node'
-// export const server = setupServer()
-// beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }))
-// afterEach(() => server.resetHandlers())
-// afterAll(() => server.close())
+// --- MSW: global server + default handlers ---
+import { server } from './mswServer'
+import { handlers } from './handlers/default'
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }))
+beforeEach(() => server.use(...handlers)) // reset defaults each test
+afterEach(() => server.resetHandlers())
+afterAll(() => server.close())
 
 // If some components rely on createObjectURL (e.g., camera blobs), provide stubs:
 if (typeof URL !== 'undefined') {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const U: any = URL
   if (!U.createObjectURL) U.createObjectURL = () => 'blob://test'
   if (!U.revokeObjectURL) U.revokeObjectURL = () => {}
@@ -28,5 +27,15 @@ if (typeof (globalThis as any).ResizeObserver === 'undefined') {
   }
 }
 
-// Keep the module a TS file
-export {}
+// (Optional) quiet next/dynamic act() warnings in tests
+// jest.mock('next/dynamic', () => (importer: any) => {
+//   try {
+//     const mod = importer()
+//     if (mod && typeof (mod as any).then === 'function') return () => null
+//     return (mod as any).default ?? mod
+//   } catch {
+//     return () => null
+//   }
+// })
+
+export { server } // so tests can override handlers

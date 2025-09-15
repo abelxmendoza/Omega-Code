@@ -6,6 +6,7 @@
 #   - Actions: Refresh info, Quick Actions (Connect PAN, fast Wi-Fi), Scan Wi-Fi, Join SSID, Forget SSID
 #   - Shows current SSID/IP/iface and quick links (Movement endpoint, Video /health)
 #   - Profile switcher (LAN / Tailscale / Hotspot) updates the UI ?profile param
+#   - NEW: Persists profile to localStorage and query (?profile) so it sticks across reloads.
 #
 # Backend (movement_ws_server.py) expected handlers:
 #   { "command":"net-info" }                 -> { "type":"net-info", ssid, ip, iface, tailscaleIp?, ts }
@@ -15,12 +16,14 @@
 #
 # Notes:
 #   • Header should import this as: dynamic(() => import('@/components/network/NetworkWizard'), { ssr:false })
+#   • “Hotspot” maps to the app’s `local` profile internally (keeps environment consistent).
 */
 
 'use client';
 
 import React from 'react';
 import { net } from '@/utils/netProfile';
+import { setStoredProfile, type Profile } from '@/utils/profilePref';
 
 type WsState = 'connecting' | 'connected' | 'disconnected';
 
@@ -201,10 +204,13 @@ const NetworkWizard: React.FC = () => {
     catch { setMsg('× Copy failed'); }
   };
 
-  // Profile switcher updates ?profile and reloads (util reads it)
-  const setProfile = (p: 'lan' | 'tailscale' | 'hotspot') => {
+  // Profile switcher: map UI labels → app profiles, persist, and reload.
+  // "Hotspot" == app's "local" profile to stay consistent with env/options.
+  const switchProfile = (uiChoice: 'lan' | 'tailscale' | 'hotspot') => {
+    const mapped: Profile = uiChoice === 'hotspot' ? 'local' : uiChoice;
+    setStoredProfile(mapped);
     const url = new URL(window.location.href);
-    url.searchParams.set('profile', p);
+    url.searchParams.set('profile', mapped);
     window.location.href = url.toString();
   };
 
@@ -279,17 +285,17 @@ const NetworkWizard: React.FC = () => {
       {/* Profile switcher */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="text-sm text-white/70">Profile:</div>
-        <button onClick={() => setProfile('lan')} className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-sm">
+        <button onClick={() => switchProfile('lan')} className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-sm">
           LAN
         </button>
-        <button onClick={() => setProfile('tailscale')} className="px-3 py-1 rounded bg-violet-600 hover:bg-violet-500 text-sm">
+        <button onClick={() => switchProfile('tailscale')} className="px-3 py-1 rounded bg-violet-600 hover:bg-violet-500 text-sm">
           Tailscale
         </button>
-        <button onClick={() => setProfile('hotspot')} className="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-sm">
+        <button onClick={() => switchProfile('hotspot')} className="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-sm">
           Hotspot
         </button>
         <div className="text-xs text-white/50 ml-1">
-          (updates ?profile and reloads)
+          (persists to localStorage; updates ?profile and reloads)
         </div>
       </div>
 
