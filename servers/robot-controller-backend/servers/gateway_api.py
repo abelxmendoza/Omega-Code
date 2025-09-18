@@ -123,25 +123,183 @@ async def ws_echo_with_wizard(ws: WebSocket, role: str):
             if cmd == "keep-alive":
                 await ws.send_text(json.dumps({"type": "pong", "ts": time.time()}))
             elif cmd == "net-info":
-                await ws.send_text(json.dumps({
-                    "type":"net-info",
-                    "ssid":"OmegaNet", "ip":"192.168.1.123",
-                    "iface":"wlan0", "tailscaleIp":"100.x.y.z",
-                    "ts": int(time.time()*1000)
-                }))
+                # Get current network information
+                try:
+                    import subprocess
+                    import socket
+                    
+                    # Get current SSID
+                    ssid = "Unknown"
+                    try:
+                        result = subprocess.run(['iwgetid', '-r'], capture_output=True, text=True, timeout=5)
+                        if result.returncode == 0 and result.stdout.strip():
+                            ssid = result.stdout.strip()
+                    except Exception:
+                        pass
+                    
+                    # Get IP address
+                    ip = "Unknown"
+                    try:
+                        # Get primary network interface IP
+                        result = subprocess.run(['hostname', '-I'], capture_output=True, text=True, timeout=5)
+                        if result.returncode == 0 and result.stdout.strip():
+                            ip = result.stdout.strip().split()[0]  # First IP
+                    except Exception:
+                        try:
+                            # Fallback: get IP of default interface
+                            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                            s.connect(("8.8.8.8", 80))
+                            ip = s.getsockname()[0]
+                            s.close()
+                        except Exception:
+                            pass
+                    
+                    # Get network interface
+                    iface = "Unknown"
+                    try:
+                        result = subprocess.run(['ip', 'route', 'get', '8.8.8.8'], capture_output=True, text=True, timeout=5)
+                        if result.returncode == 0:
+                            for line in result.stdout.split('\n'):
+                                if 'dev' in line:
+                                    iface = line.split('dev')[1].split()[0]
+                                    break
+                    except Exception:
+                        pass
+                    
+                    # Check for Tailscale IP
+                    tailscale_ip = None
+                    try:
+                        result = subprocess.run(['ip', 'addr', 'show', 'tailscale0'], capture_output=True, text=True, timeout=5)
+                        if result.returncode == 0:
+                            for line in result.stdout.split('\n'):
+                                if 'inet' in line and 'tailscale0' in line:
+                                    tailscale_ip = line.split()[1].split('/')[0]
+                                    break
+                    except Exception:
+                        pass
+                    
+                    await ws.send_text(json.dumps({
+                        "type": "net-info",
+                        "ssid": ssid,
+                        "ip": ip,
+                        "iface": iface,
+                        "tailscaleIp": tailscale_ip,
+                        "ts": int(time.time()*1000)
+                    }))
+                except Exception as e:
+                    await ws.send_text(json.dumps({"type":"ack","status":"error","error":f"net-info-failed: {str(e)}"}))
+
             elif cmd == "net-scan":
-                await ws.send_text(json.dumps({
-                    "type":"net-scan",
-                    "networks":[
-                        {"ssid":"OmegaNet","rssi":-54,"secure":True},
-                        {"ssid":"Shop","rssi":-70,"secure":True},
-                        {"ssid":"OpenGuest","rssi":-60,"secure":False},
-                    ]
-                }))
+                # Scan for nearby WiFi networks
+                try:
+                    import subprocess
+                    networks = []
+                    
+                    # Use iwlist to scan for networks
+                    result = subprocess.run(['iwlist', 'scan'], capture_output=True, text=True, timeout=15)
+                    if result.returncode == 0:
+                        current_ssid = None
+                        current_rssi = None
+                        current_secure = False
+                        
+                        for line in result.stdout.split('\n'):
+                            line = line.strip()
+                            if 'ESSID:' in line:
+                                if current_ssid:
+                                    networks.append({
+                                        "ssid": current_ssid,
+                                        "rssi": current_rssi,
+                                        "secure": current_secure
+                                    })
+                                current_ssid = line.split('ESSID:')[1].strip().strip('"')
+                                if current_ssid == '':
+                                    current_ssid = '(hidden)'
+                            elif 'Signal level=' in line:
+                                try:
+                                    rssi_str = line.split('Signal level=')[1].split()[0]
+                                    current_rssi = int(rssi_str)
+                                except Exception:
+                                    current_rssi = None
+                            elif 'Encryption key:on' in line:
+                                current_secure = True
+                            elif 'Encryption key:off' in line:
+                                current_secure = False
+                        
+                        # Add the last network
+                        if current_ssid:
+                            networks.append({
+                                "ssid": current_ssid,
+                                "rssi": current_rssi,
+                                "secure": current_secure
+                            })
+                    
+                    await ws.send_text(json.dumps({
+                        "type": "net-scan",
+                        "networks": networks,
+                        "ts": int(time.time()*1000)
+                    }))
+                except Exception as e:
+                    await ws.send_text(json.dumps({"type":"ack","status":"error","error":f"net-scan-failed: {str(e)}"}))
+
             elif cmd == "net-join":
-                await ws.send_text(json.dumps({"type":"ack","status":"ok","action":"net-join"}))
+                # Join a WiFi network
+                ssid = data.get("ssid", "").strip()
+                password = data.get("pass", "").strip()
+                
+                if not ssid:
+                    await ws.send_text(json.dumps({"type":"ack","status":"error","error":"SSID required"}))
+                else:
+                    try:
+                        import subprocess
+                        
+                        # Try to connect using nmcli (NetworkManager)
+                        if password:
+                            result = subprocess.run([
+                                'nmcli', 'device', 'wifi', 'connect', ssid, 'password', password
+                            ], capture_output=True, text=True, timeout=30)
+                        else:
+                            result = subprocess.run([
+                                'nmcli', 'device', 'wifi', 'connect', ssid
+                            ], capture_output=True, text=True, timeout=30)
+                        
+                        if result.returncode == 0:
+                            await ws.send_text(json.dumps({"type":"ack","status":"ok","action":"net-join","ssid":ssid}))
+                        else:
+                            await ws.send_text(json.dumps({"type":"ack","status":"error","error":result.stderr.strip()}))
+                            
+                    except Exception as e:
+                        await ws.send_text(json.dumps({"type":"ack","status":"error","error":f"net-join-failed: {str(e)}"}))
+
             elif cmd == "net-forget":
-                await ws.send_text(json.dumps({"type":"ack","status":"ok","action":"net-forget"}))
+                # Forget a WiFi network
+                ssid = data.get("ssid", "").strip()
+                
+                if not ssid:
+                    await ws.send_text(json.dumps({"type":"ack","status":"error","error":"SSID required"}))
+                else:
+                    try:
+                        import subprocess
+                        
+                        # Use nmcli to forget the network
+                        result = subprocess.run([
+                            'nmcli', 'connection', 'delete', ssid
+                        ], capture_output=True, text=True, timeout=10)
+                        
+                        if result.returncode == 0:
+                            await ws.send_text(json.dumps({"type":"ack","status":"ok","action":"net-forget","ssid":ssid}))
+                        else:
+                            # Try alternative method
+                            result2 = subprocess.run([
+                                'nmcli', 'connection', 'delete', f'"{ssid}"'
+                            ], capture_output=True, text=True, timeout=10)
+                            
+                            if result2.returncode == 0:
+                                await ws.send_text(json.dumps({"type":"ack","status":"ok","action":"net-forget","ssid":ssid}))
+                            else:
+                                await ws.send_text(json.dumps({"type":"ack","status":"error","error":result.stderr.strip()}))
+                                
+                    except Exception as e:
+                        await ws.send_text(json.dumps({"type":"ack","status":"error","error":f"net-forget-failed: {str(e)}"}))
             else:
                 # generic echo (lets pills measure latency)
                 await ws.send_text(json.dumps({"type":"echo","data":data,"ts":time.time()}))
