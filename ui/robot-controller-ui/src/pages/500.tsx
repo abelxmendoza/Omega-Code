@@ -25,7 +25,7 @@ export default function FiveHundred() {
           Something went wrong
         </h1>
         <p className="mt-2 text-gray-600">
-          The server encountered an error. It’s not you—it's us.
+          The server encountered an error. It’s not you—it&apos;s us.
         </p>
 
         <div className="mt-6 flex items-center justify-center gap-3">

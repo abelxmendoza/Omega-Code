@@ -10,6 +10,7 @@ import React from 'react';
 import { AppProps } from 'next/app'; // Import Next.js App component props type
 import { Provider } from 'react-redux'; // Redux Provider for global state management
 import { CommandProvider } from '../context/CommandContext'; // Provides WebSocket and command state management
+import { MacroProvider } from '../context/MacroContext'; // Macro builder + automation runtime
 import store from '../redux/store'; // Redux store configuration
 import '../styles/globals.scss'; // Import global styles
 import { ErrorBoundary } from 'react-error-boundary'; // Error boundary for runtime error handling
@@ -48,9 +49,11 @@ const MyApp = ({ Component, pageProps }: AppProps) => {
   return (
     <Provider store={store}> {/* Wrap all components with Redux state management */}
       <CommandProvider> {/* Provide WebSocket and command logging functionality */}
-        <ErrorBoundary FallbackComponent={ErrorFallback}> {/* Gracefully handle runtime errors */}
-          <Component {...pageProps} /> {/* Render the current page */}
-        </ErrorBoundary>
+        <MacroProvider> {/* Persisted macro editor + runtime */}
+          <ErrorBoundary FallbackComponent={ErrorFallback}> {/* Gracefully handle runtime errors */}
+            <Component {...pageProps} /> {/* Render the current page */}
+          </ErrorBoundary>
+        </MacroProvider>
       </CommandProvider>
     </Provider>
   );
