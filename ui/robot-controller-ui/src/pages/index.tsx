@@ -26,6 +26,7 @@ import SensorDashboard from '../components/sensors/SensorDashboard';
 import CarControlPanel from '../components/control/CarControlPanel';
 import CameraControlPanel from '../components/control/CameraControlPanel';
 import AutonomyPanel from '../components/control/AutonomyModal';
+import MacroManager from '../components/macros/MacroManager';
 import { useCommand } from '../context/CommandContext';
 import { COMMAND } from '../control_definitions';
 import Header from '../components/Header';
@@ -383,7 +384,8 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="flex flex-col items-center space-y-4 mt-4">
+        <div className="flex flex-col items-center space-y-6 mt-6">
+          <MacroManager />
           <CommandLog />
         </div>
       </main>
