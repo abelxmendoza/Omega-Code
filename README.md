@@ -1,344 +1,135 @@
 # Omega-Code
 
-Omega-Code is a comprehensive project aimed at developing a fully-featured robot controller interface. The project integrates a backend server for handling robot commands and a frontend user interface for controlling the robot's movements, camera, and LED lights. The project is structured to facilitate ease of use and maintainability, with clear separation of concerns between the backend and frontend components.
-
-<img src="image/README/1719064424761.png" alt="1719064424761" width="400"/>
-
-<img src="image/README/1719168223539.png" alt="Screenshot" width="400"/>
-
-## Project Structure
-
-The project is organized into several directories:
-
-
-
-- **config** (removed): Configuration is now handled through environment
-  variables and `.env` files such as `.env.example` in the repository root.
-- **scripts**: Contains shell scripts for connecting to a hotspot.
-- **servers**: Contains the backend server code for handling robot commands.
-- **ui**: Contains the frontend user interface code for the robot controller.
-- **ros**: Contains ROS nodes and scripts for various functionalities including path planning, sensor fusion, and autonomous driving.
-
-## Backend Server
-
-The backend server, written in Go, handles incoming HTTP and WebSocket requests to control the robot. It includes command execution for movements, speed control, servo control, and LED control.
-
-## Key Backend Files
-
-### PCA9685
-
-- **PCA9685 Control**: `PCA9685.py` - Controls the PCA9685 PWM driver.
-
-### LED Control
-
-- **LED Control**: `led_control.py` - Manages the LED lights on the robot.
-
-### Servo Control
-
-- **Servo Control**: `servo_control.py` - Controls the servo motors.
-
-### ADC
-
-- **ADC**: `adc.py` - Handles analog to digital conversion.
-
-### Main Application
-
-- **Main Application (Go)**: `main.go` - Entry point of the backend server.
-- **Combined Application (Go)**: `main_combined.go` - Starts the Go server along with the Python video server and ROS nodes.
-
-### Line Tracking
-
-- **Line Tracking**: `line_tracking.py` - Manages the line tracking functionality.
-
-### Threading Control
-
-- **Threading Control**: `threading_control.py` - Manages threading for concurrent tasks.
-
-### Ultrasonic Sensor
-
-- **Ultrasonic Sensor**: `ultrasonic_sensor.py` - Controls the ultrasonic sensor for distance measurement.
-
-### Command Definitions
-
-- **Command Definitions**: `command_definitions.py` - Defines commands for the robot.
-
-### Mock PCA9685
-
-- **Mock PCA9685**: `mock_pca9685.py` - Mock implementation of PCA9685 for testing.
-
-### Video Server
-
-- **Video Server**: `video_server.py` - Handles video streaming from the robot.
-
-### Certificates and Logs
-
-- **Certificates Directory**: `certs` - Contains SSL certificates for secure communication.
-- **Server CSR**: `server.csr` - Certificate Signing Request file.
-- **Server Log**: `server.log` - Log file for server activities.
-
-### Go Modules
-
-- **Go Mod File**: `go.mod` - Go module definitions.
-- **Go Sum File**: `go.sum` - Go module dependencies.
-
-### Virtual Environment
-
-- **Virtual Environment**: `venv` - Python virtual environment for dependencies.
-
-## Frontend User Interface
-
-The frontend UI, built with Next.js and React, provides a web-based interface for controlling the robot. Features include a video feed, control panels, speed control, command log, and LED control.
-
-## Key Files and Components
-
-### Home
-
-- **Main Page**: `src/pages/index.tsx` - Main page integrating all components.
-
-### Command Log Context
-
-- **Context for Logging Commands**: `src/components/CommandLogContext.tsx`
-
-### Control Panel
-
-- **Control Panel**: `src/components/CarControlPanel.tsx` - Component for controlling the car's movements.
-
-### Speed Control
-
-- **Speed Control**: `src/components/SpeedControl.tsx` - Component for controlling robot speed.
-
-### LED Control
-
-- **LED Control**: `src/components/LedControl.tsx` - Component for controlling LED lights.
-
-### Video Feed
-
-- **Video Feed**: `src/components/VideoFeed.tsx` - Component for displaying video feed.
-
-### Status and Header
-
-- **Header**: `src/components/Header.tsx` - Displays connection status and battery level.
-- **Status**: `src/components/Status.tsx` - Displays connection status and battery level.
-
-### LED Modal
-
-- **LED Modal**: `src/components/LedModal.tsx` - Modal for configuring LED settings.
-
-### Lighting Settings
-
-- **Lighting Pattern**: `src/components/LightingPattern.tsx` - Selects lighting patterns.
-- **Lighting Mode**: `src/components/LightingMode.tsx` - Selects lighting modes.
-- **Interval Timing**: `src/components/IntervalTiming.tsx` - Sets interval timing for LED patterns.
-
-### Control Buttons
-
-- **Control Buttons**: `src/components/ControlButtons.tsx` - Start, stop, and apply settings buttons.
-
-### Color Selection
-
-- **Color Wheel**: `src/components/ColorWheel.tsx` - Color selection using a color wheel.
-
-### Command Definitions
-
-- **Command Definitions**: `control_definitions.ts` - Command definitions used throughout the project.
-
-## ROS Integration
-
-The ROS directory contains nodes and scripts for various functionalities including path planning, sensor fusion, and autonomous driving. Key functionalities include:
-
-### A* Path Planning
-
-- **A* Path Planning**: `a_star.py` - Implements the A* algorithm for path planning.
-- **A* ROS Node**: `a_star_ros.py` - ROS node for A* path planning.
-
-### RRT Path Planning
-
-- **RRT Path Planning**: `rrt.py` - Implements the RRT algorithm for path planning.
-- **RRT ROS Node**: `rrt_ros.py` - ROS node for RRT path planning.
-
-### D* Lite Path Planning
-
-- **D* Lite Path Planning**: `d_star_lite.py` - Implements the D* Lite algorithm for dynamic path planning.
-- **D* Lite ROS Node**: `d_star_lite_ros.py` - ROS node for D* Lite path planning.
-
-### Autonomous Driving
-
-- **Autonomous Driving**: `autonomous_driving.py` - Handles autonomous driving using machine learning.
-- **Autonomous Driving with A***: `autonomous_driving_with_astar.py` - Combines A* path planning with autonomous driving.
-
-### Sensor Fusion
-
-- **Sensor Fusion**: `sensor_fusion.py` - Fuses data from multiple sensors and publishes the fused data.
-
-### Sensor Publishing
-
-- **Camera Publisher**: `camera_publisher.py` - Captures video from the camera and publishes as ROS messages.
-- **Line Tracking Publisher**: `line_tracking_publisher.py` - Reads line tracking sensor data and publishes as ROS messages.
-- **Ultrasonic Publisher**: `ultrasonic_publisher.py` - Reads distance data from an ultrasonic sensor and publishes as ROS messages.
-
-### Miscellaneous
-
-- **Battery Monitor**: `battery_monitor.py` - Monitors battery status and sends alerts if low.
-- **Log Sensor Data**: `log_sensor_data.py` - Logs data from various sensors for later analysis.
-- **Start Sensors**: `start_sensors.py` - Manages the startup of sensor nodes based on configuration.
-- **Visualize Sensor Data**: `visualize_sensor_data.py` - Visualizes data from various sensors in real-time using Matplotlib.
-
-## Testing
-
-The repository includes a comprehensive set of tests organized into unit tests, integration tests, and end-to-end tests for both ROS nodes and scripts, as well as the robot controller frontend and backend.
-
-### Unit Tests
-
-- **Unit Tests**: Located in `tests/unit`, these tests cover individual components of the backend, frontend, and ROS nodes.
-
-### Integration Tests
-
-- **Integration Tests**: Located in `tests/integration`, these tests cover interactions between components of the backend, frontend, and ROS nodes.
-
-### End-to-End Tests
-
-- **End-to-End Tests**: Located in `tests/e2e`, these tests cover the full system functionality for the backend, frontend, and ROS nodes.
-
-## Scripts
-
-### Connect Laptop to Phone Hotspot Scripts
-
-- **Connect Hotspot v1**: `connect_hotspot_v1.sh` - Script for connecting the robot to a hotspot (version 1).
-- **Connect Hotspot v2**: `connect_hotspot_v2.sh` - Script for connecting the robot to a hotspot (version 2).
-- **Connect PAN**: `connect_pan.sh` - Script for connecting the robot to a PAN (Personal Area Network).
-- **Start Robot**: `start_robot.sh` - Script for starting the robot system.
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js
-- Go
-- Python
-- ROS
-
-
-
-### Installation
-
-1. Install backend dependencies:
+Omega-Code is a full robotics control stack for a Raspberry Pi based rover. The repository
+hosts the backend services that talk to the hardware, a modern web frontend for operators,
+ROS packages for autonomy experiments, and helper scripts for provisioning the device. The
+project is designed so you can run the backend on a Pi while developing the UI on your
+laptop, or run everything locally for fast iteration.
+
+## Repository layout
+
+| Path | Description |
+| --- | --- |
+| `servers/robot-controller-backend` | Go + Python services that expose WebSocket and REST APIs, talk to the PCA9685, sensors, lighting, and stream video. |
+| `ui/robot-controller-ui` | Next.js/React single-page application that drives the rover, renders telemetry, and manages lighting scenes. |
+| `ros` | ROS 2 packages, launch files, and scripts for autonomy features such as A\* and RRT path planners. |
+| `scripts` | Shell utilities for networking (Wi-Fi/Bluetooth PAN), provisioning, and diagnostics when deploying to a Pi. |
+| `image` | Reference screenshots used in the documentation. |
+| `.env.example` | Root environment template with shared settings (phone hotspot, default backend port). |
+
+Other subdirectories inside `servers/robot-controller-backend` contain hardware shims,
+Rust helpers, and vendored libcamera utilities that support the capture pipeline.
+
+## Technology stack
+
+- **Hardware**: Raspberry Pi 5 (works on Pi 4 with `lgpio` compatibility layer).
+- **Backend**: Go 1.22 WebSocket server plus Python controllers, FastAPI gateway, and
+  optional ROS integration.
+- **Frontend**: Next.js 14 with React 18, Redux Toolkit, Radix UI primitives, Leaflet
+  for mapping, and Cypress/Jest for testing.
+- **Autonomy**: ROS nodes for path planning, simulation, and sensor fusion.
+
+## Prerequisites
+
+Install the tooling you need for the parts you plan to work on:
+
+- Go 1.22+
+- Python 3.10+ with `pip` and (optionally) `virtualenv`
+- Node.js 18.17+ (Node 20 LTS recommended) and npm
+- Optional hardware libraries on the Pi: `lgpio`, `libcamera`, `picamera2`, and ROS 2
+  (see the backend README for exact packages)
+
+## Getting started
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/abelxmendoza/Omega-Code.git
+   cd Omega-Code
+   ```
+2. **Configure shared environment variables**
+   ```bash
+   cp .env.example .env
+   # Edit .env with the hotspot MAC address, Pi IP, and backend port.
+   ```
+3. **Install backend dependencies (on the Pi or your dev machine)**
    ```bash
    cd servers/robot-controller-backend
-   go get ./...
+   go mod download
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   cp .env.example .env  # customise IPs, ports, TLS paths, camera backend...
    ```
-2. Install frontend dependencies:
+4. **Install frontend dependencies**
    ```bash
-   cd ui/robot-controller-ui
+   cd ../../ui/robot-controller-ui
    npm install
+   cp .env.local.example .env.local  # update URLs to point at your backend
    ```
-3. Set up environment variables:
-   Create a `.env` file in the `servers/robot-controller-backend` directory with the following variables:
-   ```env
-   CERT_PATH=/path/to/cert.pem
-  KEY_PATH=/path/to/key.pem
-  ```
 
-### Additional Environment Variables
+## Running the stack
 
-The helper scripts in `scripts/` and in the backend support an optional
-`OMEGA_CODE_ROOT` variable. Set this to the absolute path of the repository if
-the scripts cannot automatically determine it. You can also override the path to
-the backend `.env` file with the `ENV_FILE` variable when running these scripts.
+### Backend services
 
-### Running the Project
+From `servers/robot-controller-backend`:
 
-1. Start the backend server:
-   ```bash
-   cd servers/robot-controller-backend
-   go run main.go
-   ```
-2. Start the frontend development server:
-   ```bash
-   cd ui/robot-controller-ui
-  npm run dev
-  ```
-
-### Optional Dependencies
-
-- **OpenCV (`cv2` Python package)** – required for video streaming and image processing. If not installed, the
-  application will warn and disable camera features. Tests that rely on OpenCV are skipped automatically when
-  the module is missing.
-
-### Usage
-
-Open a web browser and navigate to `http://localhost:3000` to access the robot controller interface. If you have configured HTTPS, use `https://localhost:3000` instead. Use the provided controls to send commands to the robot.
-
-## Raspberry Pi 5 Compatibility
-
-Omega-Code runs on the Raspberry Pi&nbsp;5. The new board replaces the legacy
-`RPi.GPIO` interface used on the Pi&nbsp;4&nbsp;B with the `libgpiod` driver. Older
-scripts that import `RPi.GPIO` must be updated to use the `lgpio` package.
-
-Install `lgpio` using pip:
-
-```bash
-pip install lgpio
-```
-
-Grant the GPIO group access to the device before running the software:
-
-```bash
-sudo chown root:gpio /dev/gpiochip0
-sudo chmod g+rw /dev/gpiochip0
-```
-
-With these permissions in place, the rest of the project behaves just as it does
-on a Pi&nbsp;4&nbsp;B but benefits from the Pi&nbsp;5's improved performance.
-
-## Acknowledgements
-
-Special thanks to Freenove for providing the **Freenove 4WD Smart Car Kit for Raspberry Pi** and their comprehensive support.
-
-### Freenove 4WD Smart Car Kit for Raspberry Pi
-
-> A 4WD smart car kit for Raspberry Pi.
-
-
-#### Download
-
-- **Use command in console:**
+- WebSocket controller only (movement, sensors, lighting):
   ```bash
-  git clone https://github.com/Freenove/Freenove_4WD_Smart_Car_Kit_for_Raspberry_Pi.git
+  go run main.go
   ```
-- **Manually download in browser:**
-  Click the green "Clone or download" button, then click "Download ZIP" button in the pop-up window.
+- Full stack with Python video server and ROS bootstrapping:
+  ```bash
+  go run main_combined.go
+  ```
+- REST API gateway (FastAPI + Uvicorn, optional):
+  ```bash
+  python main_api.py
+  ```
+- Standalone MJPEG video stream if you need to debug camera output:
+  ```bash
+  python video/video_server.py
+  ```
 
-For any difficulties, please contact Freenove support at [support@freenove.com](mailto:support@freenove.com).
+The `.env` file in this directory governs which IP/ports to bind, TLS certificate
+locations, and whether to use Tailscale or LAN hosts. See the backend README for the
+complete list.
 
-#### Support
+### Frontend UI
 
-Freenove provides free and quick customer support, including but not limited to:
+From `ui/robot-controller-ui`:
+```bash
+npm run dev
+```
+The UI will start on <http://localhost:3000>. It uses the WebSocket URLs from
+`.env.local` to connect to the backend and adapts automatically between `local`, `lan`,
+and `tailscale` profiles.
 
-- Quality problems of products
-- Using problems of products
-- Questions of learning and creation
-- Opinions and suggestions
-- Ideas and thoughts
+### ROS tooling
 
-#### Purchase
+ROS components live in `ros/`. Use the supplied launch files and scripts from that
+folder when working on autonomy features. The shell helpers in `scripts/` provide common
+networking tasks such as connecting the Pi to a hotspot (`connect_hotspot_v2.sh`) and
+configuring Bluetooth PAN (`pi_bt_pair_and_pan.sh`).
 
-Visit [Freenove Store](http://store.freenove.com) to purchase their products. For business inquiries, contact [sale@freenove.com](mailto:sale@freenove.com).
+## Testing and linting
 
-#### Copyright
+Run the suites relevant to your changes:
 
-All files in the Freenove repository are released under [Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License](http://creativecommons.org/licenses/by-nc-sa/3.0/).
+- **Backend Go**: `go test ./...`
+- **Backend Python**: `pytest` (with `PYTHONPATH=$(pwd)` when running from the backend
+  directory)
+- **Frontend**: `npm run lint`, `npm test`, and `npx cypress run`
+- **ROS**: ROS-specific tests live under `ros/tests`
 
-![Creative Commons](https://i.creativecommons.org/l/by-nc-sa/3.0/88x31.png)
+Continuous integration runs the same commands on pull requests.
 
-Freenove brand and logo are copyright of Freenove Creative Technology Co., Ltd. Can't be used without formal permission.
+## Contributing
 
-#### About Freenove
-
-Freenove is an open-source electronics platform committed to helping customers quickly realize creative ideas and product prototypes. They offer robot kits, learning kits for Arduino, Raspberry Pi, and micro:bit, electronic components and modules, tools, and product customization services.
+Bug reports and pull requests are welcome. Please include tests when possible and keep the
+backend/frontend READMEs up to date with any new configuration. Review the existing scripts
+in the `scripts/` directory before adding new automation—there may already be a helper for
+what you need.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
-
-
-![1719168124569](image/README/1719168124569.png)
+Omega-Code is distributed under the MIT License. See `LICENSE` for details.
