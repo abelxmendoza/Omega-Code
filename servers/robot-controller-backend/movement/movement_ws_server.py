@@ -32,6 +32,11 @@ import asyncio
 import inspect
 from typing import Optional, Set, Tuple
 
+# Add parent directory to path for autonomy module
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT not in sys.path:
+    sys.path.append(ROOT)
+
 from autonomy import AutonomyError, build_default_controller
 
 # Optional .env loader (backend root)
@@ -120,10 +125,7 @@ if SIM_MODE:
     servo = _NoopServo()
 else:
     try:
-        # Prefer controllers/… paths
-        ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        if ROOT not in sys.path:
-            sys.path.append(ROOT)
+        # Prefer controllers/… paths (ROOT already added to sys.path above)
 
         try:
             from controllers.minimal_motor_control import Motor as _Motor
