@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse, JSONResponse
+import websockets
 
 # ---------- Config ----------
 PORT = int(os.getenv("PORT", "7070"))
@@ -65,6 +66,49 @@ async def connect_wifi(payload: dict):
 
 # ---------- WebSocket helpers ----------
 async def ws_echo_with_wizard(ws: WebSocket, role: str):
+
+async def ws_proxy_to_downstream(ws: WebSocket, downstream_url: str, role: str):
+    """Proxy WebSocket connection to downstream service."""
+    if not downstream_url:
+        print(f"[GATEWAY] No downstream URL configured for {role}, using echo mode")
+        await ws_echo_with_wizard(ws, role)
+        return
+    
+    print(f"[GATEWAY] Proxying {role} to {downstream_url}")
+    await ws.accept()
+    
+    try:
+        async with websockets.connect(downstream_url) as downstream_ws:
+            print(f"[GATEWAY] Connected to downstream {role} service")
+            
+            # Create tasks for bidirectional message forwarding
+            async def forward_to_downstream():
+                try:
+                    while True:
+                        message = await ws.receive_text()
+                        await downstream_ws.send(message)
+                except WebSocketDisconnect:
+                    pass
+            
+            async def forward_to_client():
+                try:
+                    async for message in downstream_ws:
+                        await ws.send_text(message)
+                except WebSocketDisconnect:
+                    pass
+            
+            # Run both forwarding tasks concurrently
+            await asyncio.gather(
+                forward_to_downstream(),
+                forward_to_client(),
+                return_exceptions=True
+            )
+            
+    except Exception as e:
+        print(f"[GATEWAY] Error connecting to downstream {role}: {e}")
+        await ws.close(code=1011, reason="Downstream service unavailable")
+    except WebSocketDisconnect:
+        print(f"[GATEWAY] Client disconnected from {role}")
     """A working stub so UI pills & the Network Wizard function now."""
     await ws.accept()
     try:
@@ -105,13 +149,17 @@ async def ws_echo_with_wizard(ws: WebSocket, role: str):
         return
 
 @app.websocket("/ws/movement")
-async def ws_movement(ws: WebSocket):   await ws_echo_with_wizard(ws, "movement")
+async def ws_movement(ws: WebSocket):
+    await ws_proxy_to_downstream(ws, DS_MOVE, "movement")
 
 @app.websocket("/ws/lighting")
-async def ws_lighting(ws: WebSocket):   await ws_echo_with_wizard(ws, "lighting")
+async def ws_lighting(ws: WebSocket):
+    await ws_proxy_to_downstream(ws, DS_LIGHT, "lighting")
 
 @app.websocket("/ws/ultrasonic")
-async def ws_ultra(ws: WebSocket):      await ws_echo_with_wizard(ws, "ultrasonic")
+async def ws_ultra(ws: WebSocket):
+    await ws_proxy_to_downstream(ws, DS_ULTRA, "ultrasonic")
 
 @app.websocket("/ws/line")
-async def ws_line(ws: WebSocket):       await ws_echo_with_wizard(ws, "line")
+async def ws_line(ws: WebSocket):
+    await ws_proxy_to_downstream(ws, DS_LINE, "line")
