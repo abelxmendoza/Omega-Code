@@ -1,22 +1,37 @@
 # /Omega-Code/servers/robot-controller-backend/movement/minimal_motor_control.py
+"""Minimal motor controller with basic trim support."""
+
 from PCA9685 import PCA9685
 import time
+from typing import Dict
+
+MAX_PWM = 4095
 
 class Motor:
+    MAX_PWM = MAX_PWM
     def __init__(self):
         self.pwm = PCA9685(0x40, debug=True)
         self.pwm.setPWMFreq(50)
+        self.left_trim = 0
+        self.right_trim = 0
 
     def setMotors(self, duty):
         """All 4 wheels same direction (tank forward/back)."""
-        self.pwm.setMotorPwm(0, duty if duty > 0 else 0)
-        self.pwm.setMotorPwm(1, 0 if duty > 0 else abs(duty))
-        self.pwm.setMotorPwm(2, duty if duty > 0 else 0)
-        self.pwm.setMotorPwm(3, 0 if duty > 0 else abs(duty))
-        self.pwm.setMotorPwm(4, duty if duty > 0 else 0)
-        self.pwm.setMotorPwm(5, 0 if duty > 0 else abs(duty))
-        self.pwm.setMotorPwm(6, duty if duty > 0 else 0)
-        self.pwm.setMotorPwm(7, 0 if duty > 0 else abs(duty))
+        left = self._apply_trim(duty, self.left_trim)
+        right = self._apply_trim(duty, self.right_trim)
+        self._set_lr(left, right)
+
+    # Straight-drive helpers -------------------------------------------------
+
+    def set_trim(self, left: int | float = 0, right: int | float = 0) -> Dict[str, int]:
+        """Configure compensation offsets for the left and right wheel pairs."""
+        self.left_trim = self._clamp_trim(int(left))
+        self.right_trim = self._clamp_trim(int(right))
+        return self.get_trim()
+
+    def get_trim(self) -> Dict[str, int]:
+        """Return the currently configured trim values."""
+        return {"left": self.left_trim, "right": self.right_trim}
 
     def forward(self, speed=2000):
         print("Moving forward")
@@ -65,12 +80,26 @@ class Motor:
         # Left pair: channels 0/1 and 4/5; Right pair: 2/3 and 6/7 (adjust if different)
         for ch_fwd, ch_rev, duty in [(0,1,left_duty), (4,5,left_duty),
                                      (2,3,right_duty), (6,7,right_duty)]:
+            duty = self._clamp_duty(duty)
             if duty >= 0:
                 self.pwm.setMotorPwm(ch_fwd, duty)
                 self.pwm.setMotorPwm(ch_rev, 0)
             else:
                 self.pwm.setMotorPwm(ch_fwd, 0)
                 self.pwm.setMotorPwm(ch_rev, -duty)
+
+    # Internal helpers -------------------------------------------------------
+
+    def _apply_trim(self, duty: int, trim: int) -> int:
+        if duty == 0 or trim == 0:
+            return duty
+        return duty + (trim if duty > 0 else -trim)
+
+    def _clamp_duty(self, duty: int) -> int:
+        return max(-MAX_PWM, min(MAX_PWM, int(duty)))
+
+    def _clamp_trim(self, trim: int) -> int:
+        return max(-MAX_PWM, min(MAX_PWM, trim))
 
 if __name__ == "__main__":
     m = Motor()
