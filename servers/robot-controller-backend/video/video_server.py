@@ -39,6 +39,7 @@ from dotenv import load_dotenv, find_dotenv
 
 # Local
 from video.camera import Camera
+from video.face_recognition import FaceRecognizer
 from video.motion_detection import MotionDetector
 from video.object_tracking import ObjectTracker
 
@@ -67,6 +68,10 @@ RESTART_ON_STALL  = os.getenv("RESTART_ON_STALL", "1").lower() in ("1", "true", 
 STALE_MS          = int(os.getenv("STALE_MS", os.getenv("FRAME_STALE_MS", "2500")))
 WATCHDOG_PERIOD_MS= int(os.getenv("WATCHDOG_PERIOD_MS", "1500"))
 
+FACE_RECOGNITION_ENABLED = os.getenv("FACE_RECOGNITION", "1").lower() in ("1", "true", "yes", "on")
+FACE_RECOGNITION_THRESHOLD = float(os.getenv("FACE_RECOGNITION_THRESHOLD", "0.6"))
+KNOWN_FACES_DIR = os.getenv("KNOWN_FACES_DIR") or None
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
@@ -75,14 +80,29 @@ CORS(app, resources={
     r"/video_feed":     {"origins": ALLOWED_ORIGINS},
     r"/start_tracking": {"origins": ALLOWED_ORIGINS},
     r"/health":         {"origins": ALLOWED_ORIGINS},
+    r"/face_recognition/reload": {"origins": ALLOWED_ORIGINS},
 })
 
 # Globals
 camera: Optional[Camera] = None
 motion_detector: Optional[MotionDetector] = None
 tracker: Optional[ObjectTracker] = None
+face_recognizer: Optional[FaceRecognizer] = None
 tracking_enabled = False
 _last_init_attempt = 0.0
+
+if FACE_RECOGNITION_ENABLED:
+    try:
+        face_recognizer = FaceRecognizer(
+            known_faces_dir=KNOWN_FACES_DIR,
+            recognition_threshold=FACE_RECOGNITION_THRESHOLD,
+        )
+        if face_recognizer and not face_recognizer.active:
+            logging.info("Face recognition configured but inactive (cascade or OpenCV missing).")
+    except Exception as exc:  # pragma: no cover - defensive guard for runtime issues
+        face_recognizer = None
+        logging.warning("Face recognition initialisation failed: %s", exc)
+
 
 
 def _log_startup() -> None:
@@ -186,6 +206,9 @@ def generate_frames():
         if tracking_enabled and tracker is not None:
             frame, _ = tracker.update_tracking(frame)
 
+        if FACE_RECOGNITION_ENABLED and face_recognizer and face_recognizer.active:
+            frame, _ = face_recognizer.annotate(frame)
+
         # Encode JPEG
         import cv2 as _cv2  # type: ignore
         ok, buf = _cv2.imencode(".jpg", frame)
@@ -247,6 +270,11 @@ def health():
         "drops_total": int(drops_total),
         "ts": int(time.time() * 1000),
     }
+    payload["face_recognition"] = {
+        "configured": FACE_RECOGNITION_ENABLED,
+        "active": bool(face_recognizer and face_recognizer.active),
+        "known_faces": int(face_recognizer.known_faces_count if face_recognizer else 0),
+    }
     return jsonify(payload), (200 if connected else 503)
 
 
@@ -274,6 +302,18 @@ def start_tracking():
     except Exception as e:
         logging.error(f"⚠️ Tracking error: {e}")
         return f"❌ Tracking failed: {e}", 500
+
+
+@app.post("/face_recognition/reload")
+def reload_face_recognition():
+    if not FACE_RECOGNITION_ENABLED:
+        return jsonify({"ok": False, "error": "disabled"}), 400
+
+    if face_recognizer is None or not face_recognizer.active:
+        return jsonify({"ok": False, "error": "not_available"}), 503
+
+    count = face_recognizer.reload_known_faces()
+    return jsonify({"ok": True, "faces": count}), 200
 
 
 # ---------------- Watchdog / init loop ----------------
