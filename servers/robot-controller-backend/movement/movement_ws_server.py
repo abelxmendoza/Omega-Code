@@ -167,7 +167,7 @@ SERVO_MIN, SERVO_MAX = 0, 180
 DEFAULT_SPEED_STEP   = 200
 DEFAULT_SERVO_STEP   = 5
 
-current_speed             = 2000
+current_speed             = 1200
 current_horizontal_angle  = 90
 current_vertical_angle    = 90
 
@@ -289,9 +289,9 @@ async def do_move(fn_name: str, speed: int):
         fn = getattr(motor, fn_name, None)
         if not callable(fn):
             if fn_name == "left":
-                fn = getattr(motor, "turn_left", None)
+                fn = getattr(motor, "pivot_left", None)
             elif fn_name == "right":
-                fn = getattr(motor, "turn_right", None)
+                fn = getattr(motor, "pivot_right", None)
         if not callable(fn):
             raise RuntimeError(f"motor missing method: {fn_name}")
         _call_motor(fn, speed)
