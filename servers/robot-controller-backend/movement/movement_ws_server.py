@@ -32,6 +32,8 @@ import asyncio
 import inspect
 from typing import Optional, Set, Tuple
 
+from autonomy import AutonomyError, build_default_controller
+
 # Optional .env loader (backend root)
 try:
     from dotenv import load_dotenv
@@ -147,6 +149,14 @@ else:
         servo = _NoopServo()
         buzz_on = _noop_buzz_on
         buzz_off = _noop_buzz_off
+
+# Autonomy controller (modular command routing)
+AUTONOMY = build_default_controller(context={
+    "motor": motor,
+    "servo": servo,
+    "buzz_on": buzz_on,
+    "buzz_off": buzz_off,
+})
 
 # ---------- server state ----------
 
@@ -483,6 +493,52 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     _buzz_task = asyncio.create_task(_pulse(on_ms, off_ms, repeat, my_id))
                     await send_json(ws, ok("buzz-pulse", onMs=on_ms, offMs=off_ms, repeat=repeat))
 
+                # -------- AUTONOMY --------
+                elif cmd == "autonomy-start":
+                    mode = data.get("mode")
+                    try:
+                        status = await AUTONOMY.start(mode, data.get("params") or {})
+                    except AutonomyError as exc:
+                        await send_json(ws, err("autonomy-error", detail=str(exc)))
+                    else:
+                        await send_json(ws, ok("autonomy-start", autonomy=status))
+
+                elif cmd == "autonomy-stop":
+                    try:
+                        status = await AUTONOMY.stop()
+                    except AutonomyError as exc:
+                        await send_json(ws, err("autonomy-error", detail=str(exc)))
+                    else:
+                        await send_json(ws, ok("autonomy-stop", autonomy=status))
+
+                elif cmd == "autonomy-update":
+                    try:
+                        status = await AUTONOMY.update(data.get("params") or {})
+                    except AutonomyError as exc:
+                        await send_json(ws, err("autonomy-error", detail=str(exc)))
+                    else:
+                        await send_json(ws, ok("autonomy-update", autonomy=status))
+
+                elif cmd == "autonomy-dock":
+                    try:
+                        status = await AUTONOMY.dock()
+                    except AutonomyError as exc:
+                        await send_json(ws, err("autonomy-error", detail=str(exc)))
+                    else:
+                        await send_json(ws, ok("autonomy-dock", autonomy=status))
+
+                elif cmd == "autonomy-set_waypoint":
+                    try:
+                        status = await AUTONOMY.set_waypoint(
+                            data.get("label", ""),
+                            data.get("lat"),
+                            data.get("lon"),
+                        )
+                    except AutonomyError as exc:
+                        await send_json(ws, err("autonomy-error", detail=str(exc)))
+                    else:
+                        await send_json(ws, ok("autonomy-set_waypoint", autonomy=status))
+
                 # -------- SERVOS --------
                 elif cmd == "servo-horizontal":
                     delta = int(data.get("angle", 0))
@@ -560,6 +616,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                             "vertical": current_vertical_angle,
                         },
                         "buzzer": buzzer_on_state,
+                        "autonomy": AUTONOMY.status(),
                         "ts": _now_ms(),
                         "sim": SIM_MODE,
                     })
