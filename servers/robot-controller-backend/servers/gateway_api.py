@@ -65,8 +65,6 @@ async def connect_wifi(payload: dict):
     return {"message": f"Requested Wi-Fi connect to \"{ssid}\""}
 
 # ---------- WebSocket helpers ----------
-async def ws_echo_with_wizard(ws: WebSocket, role: str):
-
 async def ws_proxy_to_downstream(ws: WebSocket, downstream_url: str, role: str):
     """Proxy WebSocket connection to downstream service."""
     if not downstream_url:
@@ -109,6 +107,8 @@ async def ws_proxy_to_downstream(ws: WebSocket, downstream_url: str, role: str):
         await ws.close(code=1011, reason="Downstream service unavailable")
     except WebSocketDisconnect:
         print(f"[GATEWAY] Client disconnected from {role}")
+
+async def ws_echo_with_wizard(ws: WebSocket, role: str):
     """A working stub so UI pills & the Network Wizard function now."""
     await ws.accept()
     try:
