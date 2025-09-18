@@ -8,6 +8,7 @@
 #   - Optional timed moves (durationMs) with guard so newer moves aren't stopped by older timers
 #   - Single-writer motor lock + buzzer lock to avoid concurrent device writes
 #   - Optional origin allowlist + optional simulation (no hardware)
+#   - Straight-drive assist trim helper with remote tuning commands
 #
 #   Env:
 #     PORT_MOVEMENT=8081
@@ -39,6 +40,11 @@ if ROOT not in sys.path:
 
 from autonomy import AutonomyError, build_default_controller
 
+try:
+    from .straight_drive_assist import StraightDriveAssist
+except Exception:  # pragma: no cover - fallback for script execution
+    from straight_drive_assist import StraightDriveAssist
+
 # Optional .env loader (backend root)
 try:
     from dotenv import load_dotenv
@@ -68,6 +74,27 @@ def _now_ms() -> int:
 
 def clamp(v: int, lo: int, hi: int) -> int:
     return max(lo, min(hi, v))
+
+def _as_bool(value, default: Optional[bool] = None) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        s = value.strip().lower()
+        if s in {"1", "true", "yes", "on", "enable", "enabled"}:
+            return True
+        if s in {"0", "false", "no", "off", "disable", "disabled"}:
+            return False
+    return default
+
+def _as_int(value, default: Optional[int] = None) -> Optional[int]:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except Exception:
+        return default
 
 def log(*a):    print("[MOVE]", *a, file=sys.stdout, flush=True)
 def warn(*a):   print("[MOVE][WARN]", *a, file=sys.stdout, flush=True)
@@ -159,6 +186,8 @@ AUTONOMY = build_default_controller(context={
     "buzz_on": buzz_on,
     "buzz_off": buzz_off,
 })
+
+STRAIGHT_ASSIST = StraightDriveAssist(motor)
 
 # ---------- server state ----------
 
@@ -404,6 +433,64 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     await do_stop()
                     await send_json(ws, ok("stop"))
 
+                # -------- STRAIGHT ASSIST --------
+                elif cmd in {"straight-assist", "straight-assist-config"}:
+                    status_payload = STRAIGHT_ASSIST.status()
+
+                    bool_enable = _as_bool(data.get("enable"), None)
+                    if bool_enable is None:
+                        bool_enable = _as_bool(data.get("enabled"), None)
+                    if bool_enable is not None:
+                        status_payload = STRAIGHT_ASSIST.set_enabled(bool_enable)
+
+                    bool_disable = _as_bool(data.get("disable"), None)
+                    if bool_disable is not None:
+                        status_payload = STRAIGHT_ASSIST.set_enabled(not bool_disable)
+
+                    step_val = _as_int(data.get("step"), None)
+                    if step_val is not None:
+                        status_payload = STRAIGHT_ASSIST.set_step(step_val)
+
+                    max_val = _as_int(data.get("maxTrim", data.get("max_trim")), None)
+                    if max_val is not None:
+                        status_payload = STRAIGHT_ASSIST.set_max_trim(max_val)
+
+                    left_val = data.get("leftTrim", data.get("left_trim"))
+                    right_val = data.get("rightTrim", data.get("right_trim"))
+                    trim_kwargs = {}
+                    if left_val is not None:
+                        parsed = _as_int(left_val, None)
+                        if parsed is not None:
+                            trim_kwargs["left"] = parsed
+                    if right_val is not None:
+                        parsed = _as_int(right_val, None)
+                        if parsed is not None:
+                            trim_kwargs["right"] = parsed
+                    if trim_kwargs:
+                        status_payload = STRAIGHT_ASSIST.set_trim(**trim_kwargs)
+
+                    await send_json(ws, ok("straight-assist", straightAssist=status_payload))
+
+                elif cmd == "straight-assist-nudge":
+                    direction = data.get("direction") or data.get("drift") or data.get("dir")
+                    amount = _as_int(data.get("amount", data.get("step", data.get("by"))), None)
+                    if not direction:
+                        await send_json(ws, err("invalid-straight-assist", detail="direction required"))
+                    else:
+                        try:
+                            status_payload = STRAIGHT_ASSIST.nudge(direction, amount)
+                        except ValueError as exc:
+                            await send_json(ws, err("invalid-straight-assist", detail=str(exc)))
+                        else:
+                            await send_json(ws, ok("straight-assist-nudge", straightAssist=status_payload))
+
+                elif cmd in {"straight-assist-reset", "straight-assist-clear"}:
+                    status_payload = STRAIGHT_ASSIST.reset()
+                    await send_json(ws, ok(cmd, straightAssist=status_payload))
+
+                elif cmd == "straight-assist-status":
+                    await send_json(ws, ok("straight-assist-status", straightAssist=STRAIGHT_ASSIST.status()))
+
                 # -------- SPEED --------
                 elif cmd == "increase-speed":
                     current_speed = clamp(current_speed + DEFAULT_SPEED_STEP, SPEED_MIN, SPEED_MAX)
@@ -619,6 +706,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                         },
                         "buzzer": buzzer_on_state,
                         "autonomy": AUTONOMY.status(),
+                        "straightAssist": STRAIGHT_ASSIST.status(),
                         "ts": _now_ms(),
                         "sim": SIM_MODE,
                     })
