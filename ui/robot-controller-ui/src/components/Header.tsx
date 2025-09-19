@@ -364,6 +364,7 @@ const QuickActions: React.FC<{
 const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
   const [showNetwork, setShowNetwork] = useState(false);
   const [showQuick, setShowQuick] = useState(false);
+  const [showServers, setShowServers] = useState(true);
   const networkPanelId = 'network-wizard-panel';
 
   // Resolve endpoints defensively (never throw during render)
@@ -457,8 +458,19 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
         </div>
       </div>
 
-      {/* Per-service pills */}
+      {/* Servers section with toggle */}
       <div className="flex flex-wrap gap-2 items-center">
+        {/* Servers toggle button */}
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md bg-black/30 border border-white/10 cursor-pointer hover:bg-black/40 focus:outline-none focus:ring-2 focus:ring-white/20"
+          onClick={() => setShowServers(!showServers)}
+          title={`${showServers ? 'Hide' : 'Show'} server status pills`}
+        >
+          <span className="text-white/90">Servers</span>
+          <span className="text-white/50">{showServers ? '▼' : '▶'}</span>
+        </button>
+
         {/* Live Link pill */}
         <Pill
           label={liveLinkLabel}
@@ -476,11 +488,16 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
           ariaControls={networkPanelId}
         />
 
-        <Pill label="Movement"   state={move.status}   latency={move.latency} />
-        <Pill label="Ultrasonic" state={ultra.status} />
-        <Pill label="Line"       state={line.status}   latency={line.latency} />
-        <Pill label="Lighting"   state={light.status}  latency={light.latency} />
-        <Pill label="Video"      state={video.status}  latency={video.latency} />
+        {/* Server status pills - collapsible */}
+        {showServers && (
+          <>
+            <Pill label="Movement"   state={move.status}   latency={move.latency} />
+            <Pill label="Ultrasonic" state={ultra.status} />
+            <Pill label="Line"       state={line.status}   latency={line.latency} />
+            <Pill label="Lighting"   state={light.status}  latency={light.latency} />
+            <Pill label="Video"      state={video.status}  latency={video.latency} />
+          </>
+        )}
       </div>
 
       {/* Quick Actions row */}

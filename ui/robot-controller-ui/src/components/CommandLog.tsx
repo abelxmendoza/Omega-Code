@@ -25,7 +25,7 @@ const CommandLog: React.FC = () => {
           // Render the list of commands
           commands.map((entry, index) => (
             <li
-              key={index} // Unique key for React rendering
+              key={`${entry.timestamp}-${index}`} // More unique key for React rendering
               className="text-green-300 py-1 text-sm hover:text-green-200 transition-colors cursor-pointer flex items-start"
               title={`Command #${index + 1}`} // Tooltip for better UX
             >
