@@ -1,140 +1,137 @@
 # Robot Controller UI
 
-This project is the frontend user interface for the Omega-Code robot controller. Built with Next.js and React, it provides a web-based interface for controlling the robot's movements, camera, and LED lights.
+The Robot Controller UI is the Next.js frontend for Omega-Code. It provides a control
+centre for driving the rover, tuning servos and speed, orchestrating lighting scenes,
+monitoring sensors, and managing connectivity. The app targets desktop browsers and
+talks to the backend via WebSockets, REST APIs, and the gateway proxy.
 
+## Features
 
-![1719083171038](image/README/1719083171038.png)
+- Real-time drive controls with keyboard/gamepad bindings, timed moves, and servo
+  nudges.
+- Live MJPEG video feed with placeholder frames and health polling.
+- Lighting composer with colour selection, pattern/mode controls, and brightness
+  sliders.
+- Sensor dashboards for ultrasonic distance, line tracker state, and GPS data.
+- Autonomy modal for starting/stopping modes exposed by the backend controller.
+- Header service bar showing link health and gateway profile, backed by REST/WS checks.
+- Network wizard that scans Wi-Fi, triggers PAN helpers, and exposes active URLs.
 
-## Project Structure
+## Project structure
 
-The project is organized into several directories:
+| Path | Purpose |
+| --- | --- |
+| `src/pages/` | Application routes, custom `_app`, error pages, and API routes that proxy backend services (`api/net/*`, `video-*`). |
+| `src/components/` | UI building blocks. Subfolders contain control panels, lighting widgets, sensor dashboards, status bars, and shared UI primitives (`components/ui`). |
+| `src/constants/` | Enumerations such as service status badges. |
+| `src/context/` | React context for command logging. |
+| `src/hooks/` | Custom hooks for WebSocket lifecycles, network summaries, HTTP polling, and JSON heartbeat helpers. |
+| `src/lib/` | Small shared utilities (date/time helpers, etc.). |
+| `src/redux/` | Redux Toolkit slices, actions, and the store configuration. |
+| `src/utils/` | Network profile resolvers, WebSocket connectors, debounce helpers, autonomy API client, and profile persistence. |
+| `src/styles/` | Global Tailwind styles and theme tokens. |
+| `tests/` | Jest + Testing Library suites with MSW handlers, mocks, and helpers. |
+| `cypress/` | End-to-end specs (headless by default; UI runner available via `npx cypress open`). |
+| `find_unused_components.py` | Optional utility for auditing unused React components. |
 
-- **components**: Contains all the React components used in the UI.
-- **pages**: Contains the Next.js pages.
-- **styles**: Contains global CSS styles.
-- **control_definitions.ts**: Contains command definitions used throughout the project.
-- **redux**: Redux store configuration located in `src/redux`.
+Images referenced in the documentation live in `image/README/` at the repository root.
 
+## Prerequisites
 
-![1719083563125](image/README/1719083563125.png)
+- Node.js 18.17+ (Node 20 LTS recommended)
+- npm 9+ (pnpm/yarn also work if you prefer)
 
+## Setup
 
-![1719083575021](image/README/1719083575021.png)
+```bash
+cd ui/robot-controller-ui
+npm install
+```
 
-#### LED Modal
+### Environment variables
 
-<img src="image/README/1719083688816.png" alt="description" width="300"/>
+Copy the example file and customise it for your deployment:
 
+```bash
+cp .env.local.example .env.local
+```
 
-# Components
+Key variables include:
 
-### Home
+- `NEXT_PUBLIC_NETWORK_PROFILE` – default profile (`local`, `lan`, `tailscale`). The UI
+  persists profile changes from the header/wizard via `localStorage` and the `?profile`
+  query parameter.
+- `NEXT_PUBLIC_GATEWAY_HOST` / `NEXT_PUBLIC_GATEWAY_PORT` – base host + port for the
+  FastAPI gateway (`servers/gateway_api.py`).
+- `NEXT_PUBLIC_VIDEO_STREAM_URL_*` – per-profile MJPEG endpoints (used by
+  `/api/video-proxy` and the video component).
+- `NEXT_PUBLIC_BACKEND_WS_URL_*` – per-profile WebSocket URLs for movement, lighting,
+  ultrasonic, line tracker, and (optionally) location services.
+- `NEXT_PUBLIC_WS_FORCE_INSECURE` – keep `ws://` even on HTTPS pages (set to `1` when a
+  reverse proxy handles TLS).
+- `NEXT_PUBLIC_WS_DEBUG` – emit verbose console logs for profile resolution and socket
+  lifecycle events.
 
-- **Main Page**: `src/pages/index.tsx` - Main page integrating all components.
+The resolvers in `src/utils/netProfile.ts` and `src/utils/resolveWsUrl.ts` automatically
+select the best URL for the active profile and expose ordered fallbacks for logging.
 
-### Command Log Context
+## Running the app
 
-- **Context for Logging Commands**: `src/components/CommandLogContext.tsx`
+Start the development server and open <http://localhost:3000> in your browser:
 
-### Car Control Panel
+```bash
+npm run dev
+```
 
-- **Car Control Panel**: `src/components/CarControlPanel.tsx` - Component for controlling robot movements.
+You can also use the root Makefile so the correct profile is exported:
 
-### Speed Control
+```bash
+make ui-dev PROFILE=lan
+```
 
-- **Speed Control**: `src/components/SpeedControl.tsx` - Component for controlling robot speed.
+For production builds:
 
-### LED Control
+```bash
+npm run build
+npm run start
+```
 
-- **LED Control**: `src/components/LedControl.tsx` - Component for controlling LED lights.
+## Testing and linting
 
-### Video Feed
+Run the available quality checks before opening a pull request:
 
-- **Video Feed**: `src/components/VideoFeed.tsx` - Component for displaying video feed.
+```bash
+npm run lint      # ESLint (Next.js + Tailwind config)
+npm test          # Jest unit/component tests
+npx cypress run   # Cypress end-to-end tests (requires backend/gateway running)
+```
 
-### Status and Header
+Launch the Cypress UI locally with `npx cypress open` if you prefer an interactive run.
 
-- **Header**: `src/components/Header.tsx` - Displays connection status and battery level.
-- **Status**: `src/components/Status.tsx` - Displays connection status and battery level.
+## Network tooling
 
-### LED Modal
+- `src/components/NetworkWizard.tsx` opens a dedicated WebSocket (movement service) and
+  exposes quick actions for Wi-Fi/PAN workflows. It honours the profile stored in
+  `localStorage` and surfaces active URLs, scan results, and acknowledgement messages.
+- The header status bar uses `src/hooks/useWsStatus`, `useHttpStatus`, and
+  `useNetSummary` to monitor gateway reachability. REST calls are routed through
+  `src/pages/api/net/*` to avoid CORS headaches during development.
+- API routes `video-proxy.ts` and `video-health.ts` proxy MJPEG and health checks so
+  browsers only ever talk to the Next.js origin.
 
-- **LED Modal**: `src/components/LedModal.tsx` - Modal for configuring LED settings.
+## Development tips
 
-### Lighting Settings
-
-- **Lighting Pattern**: `src/components/LightingPattern.tsx` - Selects lighting patterns.
-- **Lighting Mode**: `src/components/LightingMode.tsx` - Selects lighting modes.
-- **Interval Timing**: `src/components/IntervalTiming.tsx` - Sets interval timing for LED patterns.
-
-### Control Buttons
-
-- **Control Buttons**: `src/components/ControlButtons.tsx` - Start, stop, and apply settings buttons.
-
-### Color Selection
-
-- **Color Wheel**: `src/components/ColorWheel.tsx` - Color selection using a color wheel.
-
-
-### Sensor Dashboard
-
-- **Sensor Dashboard**: `src/components/SensorDashboard.tsx` - Displays line tracking and ultrasonic sensor data.
-
-### GPS Location and Map
-
-- **GPS Location**: `src/components/GpsLocation.tsx` - Wrapper component that loads the map.
-- **Map Component**: `src/components/MapComponent.tsx` - Interactive map showing the robot's position.
-
-### Additional Status Components
-
-- **Line Tracker Status**: `src/components/LineTrackerStatus.tsx` - Shows line tracking sensor values.
-- **Ultrasonic Sensor Status**: `src/components/UltrasonicSensorStatus.tsx` - Displays ultrasonic sensor distances.
-
-
-## Styles
-
-- **Global Styles**: `src/styles/globals.css` - Global CSS styles for the project.
-
-## Redux Store
-
-- The Redux logic lives in `src/redux` and is initialized in `src/redux/store.ts`.
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js
-
-### Installation
-
-1. Install frontend dependencies:
-
-   ```bash
-   npm install
-   ```
-2. Set up environment variables:
-   Create a `.env.local` file in the root directory with any necessary environment variables.
-
-### Running the Project
-
-1. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-### Usage
-
-Open a web browser and navigate to `http://localhost:3000` to access the robot controller interface. Use the provided controls to send commands to the robot.
-
-## Testing
-
-This project includes **Jest** unit tests in the `tests` directory and **Cypress** end-to-end tests. Run `npm test` for Jest and `npx cypress open` for Cypress.
-
-
-## Contributing
-
-Contributions are welcome! Please fork the repository and submit a pull request for any improvements or bug fixes.
+- `src/control_definitions.ts` centralises command strings so backend/UI changes stay in
+  sync.
+- Set `NEXT_PUBLIC_WS_DEBUG=1` to log profile resolution, candidate URLs, and socket
+  transitions in the browser console.
+- The WebSocket connectors in `src/utils/connect*Ws.ts` handle exponential back-off,
+  heartbeats, and JSON parsing. Use them when wiring new services.
+- Tests under `tests/` use MSW (`tests/mswServer.ts`) to stub backend responses; mirror
+  new routes there when you add API features.
+- `find_unused_components.py` is handy during refactors to locate components that are no
+  longer imported.
 
 ## License
 
-This project is licensed under the MIT License.
+This UI is covered by the repository's MIT license.
