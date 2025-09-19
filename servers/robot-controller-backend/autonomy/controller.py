@@ -32,11 +32,17 @@ __all__ = [
 ModeFactory = Callable[..., AutonomyModeHandler]
 
 
+# Backwards compatibility aliases for legacy mode names used by older UIs.
+_MODE_ALIASES = {
+    "line_track": "line_follow",
+}
+
+
 def _canonical_name(name: str) -> str:
-    cleaned = (name or "").strip().lower().replace("-", "_")
+    cleaned = (name or "").strip().lower().replace("-", "_").replace(" ", "_")
     if not cleaned:
         raise AutonomyError("mode name is empty")
-    return cleaned
+    return _MODE_ALIASES.get(cleaned, cleaned)
 
 
 @dataclass(slots=True)
