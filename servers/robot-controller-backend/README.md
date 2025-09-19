@@ -1,158 +1,224 @@
 # Robot Controller Backend
 
-This directory contains the backend services for Omega-Code. The stack combines a Go 1.22
-WebSocket server with Python helpers, FastAPI REST endpoints, ROS node orchestration, and a
-Python MJPEG video streamer. Together they expose movement, lighting, sensor, and autonomy
-capabilities to the frontend UI and hardware controllers running on the Raspberry Pi.
+This directory contains every service that runs on (or alongside) the robot: Go
+WebSocket servers, Python controllers, FastAPI/Flask gateways, ROS bootstrap hooks,
+a robust MJPEG video streamer, and tooling for diagnostics and test automation. The
+services are intentionally modular so you can run only the pieces you need while
+iterating on hardware or the UI.
 
-## Capabilities
+## What's in this directory?
 
-- WebSocket control channels for driving, ultrasonic sensing, lighting, line tracking, and
-  speed adjustments (`/ws/*`).
-- PCA9685 motor/servo management and GPIO sensor drivers (backed by `lgpio` on the Pi 5).
-- Optional FastAPI gateway (`main_api.py`) that proxies the WebSocket services and exposes
-  REST endpoints for Wi-Fi/Bluetooth management and diagnostics.
-- Python MJPEG video server (`video/video_server.py`) with libcamera/picamera2 backends and
-  a health-check API used by the frontend.
-- ROS bootstrap hooks (`commands/ros_integration.go`) used by `main_combined.go` to start
-  autonomy services alongside the Go server.
-
-## Directory map
-
-| Path | Description |
+| Path / file | Purpose |
 | --- | --- |
-| `api/` | FastAPI routers grouped by domain (movement, lighting, sensors, autonomy). |
-| `commands/` | Go command handlers that translate WebSocket payloads into hardware calls. |
-| `controllers/` | Python classes for servo, LED, and line tracking control. |
-| `gpio/` | Hardware abstraction layer with mocks for local development. |
-| `movement/`, `sensors/` | Python modules that speak to the PCA9685, ultrasonic sensors, etc. |
-| `video/` | Streaming server and helpers around libcamera/picamera2. |
-| `utils/` | Cross-cutting helpers (threading, camera selection, logging). |
-| `tests/` | Unit, integration, and end-to-end suites for both Go and Python components. |
-| `scripts/` | Local utilities for reorganising tests and updating imports. |
+| `api/` | FastAPI routers (`lighting_routes.py`, `autonomy_routes.py`) composed into `main_api.py`. |
+| `autonomy/` | Pluggable autonomy controller (`controller.py`, `base.py`) with async mode handlers under `modes/`. |
+| `commands/` | Go helpers for ROS startup, GPIO initialisation, and WebSocket command routing (`command_processor.go`, `ros_integration.go`). |
+| `common/`, `core/` | Legacy Go server core used by `main.go` / `main_combined.go` (still handy when testing the older stack). |
+| `controllers/` | Python + Go device drivers (servo, buzzer, lighting) invoked by WebSocket servers and FastAPI actions. |
+| `gpio/` | Hardware abstraction with mock interfaces for local development. |
+| `movement/` | Primary movement WebSocket server (`movement_ws_server.py`) plus Go experiments. |
+| `sensors/` | Ultrasonic Go server (`main_ultrasonic.go`), line-tracker WebSocket, ADC helpers, and sensor runners. |
+| `servers/` | Python gateways (`gateway_api.py`, `control_api.py`) that provide unified `/ws/*`, `/video_feed`, and network APIs. |
+| `video/` & `video_server.py` | Hardened Flask/OpenCV MJPEG server with watchdogs, motion detection hooks, and snapshot blueprint. |
+| `rust_integration/`, `rust_module/` | Experimental Rust bindings used for advanced camera/control integrations. |
+| `scripts/` | Local automation (`organize_tests.sh`, `update_test_imports.py`). |
+| `tests/` | Pytest suites (`unit/`, `integration/`, `e2e/`, `api/`) plus shared fixtures under `tests/utils`. |
+| `diagnostics.py` | Rich CLI diagnostics for the Pi 5 (GPIO, sensors, LEDs, buzzer, system info). |
+| `capture_image.py`, `video_server.py` | Convenience entry points for camera testing and re-exporting the video module. |
+| `requirements.txt`, `go.mod`, `package.json` | Dependency manifests for Python, Go, and (empty) npm tooling. |
 
-Large third-party dependencies (libcamera, mojo tooling) live under `libcamera/` and
-`rust_module/` to support advanced camera paths. They are only needed on the Pi.
+## Services and entry points
 
-## Requirements
+### Movement (`movement/movement_ws_server.py`)
 
-Install these tools on the machine that will run the backend:
+- Exposes a JSON WebSocket API that matches `ui/src/control_definitions.ts`.
+- Handles motor commands (`move-up`, `move-left`, `stop`, timed moves), servo
+  adjustments, buzzer toggles, and status queries.
+- Integrates the autonomy controller so modes can take over motor control.
+- Environment variables:
+  - `PORT_MOVEMENT` (default `8081`)
+  - `MOVEMENT_PATH` (`/` by default)
+  - `ORIGIN_ALLOW` (comma separated allow-list)
+  - `ORIGIN_ALLOW_NO_HEADER` (allow CLI clients without an `Origin` header)
+  - `ROBOT_SIM=1` to run with NOOP motor/servo/buzzer drivers on a dev machine
 
-- Go 1.22+
-- Python 3.10+ (3.11 recommended) with `pip`
-- `libcamera`/`picamera2`, `lgpio`, and other Pi-specific packages when running on hardware
-- (Optional) ROS 2 Humble or later for the autonomy hooks
+Run it with:
 
-When developing locally without hardware you can enable the mock GPIO implementation by
-setting `USE_RPI=false` in the environment.
+```bash
+cd movement
+python movement_ws_server.py
+```
+
+### Ultrasonic distance (`sensors/main_ultrasonic.go`)
+
+- Go WebSocket server that interfaces with the HC-SR04 via `periph.io`.
+- Emits JSON envelopes with distance in centimetres, metres, inches, and feet.
+- Sends a welcome message and responds to `{ "type": "ping" }` with `{ "type": "pong" }`.
+- Key environment variables: `PORT_ULTRASONIC`, `ULTRA_PATH`, `ULTRA_MEASURE_INTERVAL`,
+  `ULTRA_WRITE_TIMEOUT`, `ULTRA_LOG_EVERY`, `ULTRA_LOG_DELTA_CM`, `ORIGIN_ALLOW`.
+
+Run:
+
+```bash
+go run sensors/main_ultrasonic.go
+```
+
+### Line tracker (`sensors/line_tracking_ws_server.py`)
+
+- Publishes IR line sensor states over WebSockets.
+- Configurable via `LINE_TRACKER_HOST`, `LINE_TRACKER_PORT`, `LINE_TRACKER_PATH`,
+  `RATE_HZ`, and per-sensor inversion flags. Set `FORCE_SIM=1` to run without GPIO.
+
+### Lighting (`controllers/lighting/main_lighting.go` + `controllers/lighting/led_control.py`)
+
+- WebSocket server written in Go that forwards lighting commands to the privileged
+  `run_led.sh` wrapper, which in turn executes the Python LED controller.
+- Supports colour hex strings or integers, brightness, and pattern/mode selection.
+- Responds to heartbeat `{ "type": "ping" }` frames with `{ "type": "pong" }`.
+- Ensure `RUN_LED` inside the Go file points at the correct absolute path and that the
+  wrapper can run with the required permissions (often via `sudo`).
+
+### Video streaming (`video/video_server.py`)
+
+- Flask + OpenCV MJPEG server used by the UI and gateway.
+- Adds startup retry/backoff, optional stall watchdog, and placeholder frames when
+  no camera is attached (`PLACEHOLDER_WHEN_NO_CAMERA=1`).
+- Reads configuration from `.env`:
+  - `VIDEO_PORT`, `BIND_HOST`
+  - `CAMERA_BACKEND` (`auto`, `picamera2`, `v4l2`), `CAMERA_WIDTH`, `CAMERA_HEIGHT`
+  - `STARTUP_RETRY_SEC`, `RESTART_ON_STALL`, `STALE_MS`, `WATCHDOG_PERIOD_MS`
+  - `ORIGIN_ALLOW`, `PUBLIC_BASE_URL(_ALT)` for logging, `CERT_PATH`, `KEY_PATH`
+- Registers the control blueprint (`servers/control_api.py`) so `/snapshot` can
+  capture or save still frames.
+
+Start it with:
+
+```bash
+python video/video_server.py
+```
+
+### REST API (`main_api.py`)
+
+- Minimal FastAPI application that includes routers from `api/`.
+- `/lighting` endpoints currently shell out to the Python LED controller.
+- `/autonomy/*` endpoints map onto the asynchronous controller in `autonomy/` and
+  return structured status envelopes. See `api/autonomy_routes.py` for request bodies.
+
+Run via Uvicorn:
+
+```bash
+uvicorn main_api:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Gateway proxy (`servers/gateway_api.py`)
+
+- All-in-one FastAPI service that surfaces `/ws/movement`, `/ws/lighting`, `/ws/ultrasonic`,
+  `/ws/line`, `/video_feed`, `/health`, and `/api/net/*` endpoints expected by the UI.
+- Proxies WebSocket traffic to downstream services when `DS_MOVE`, `DS_LIGHT`,
+  `DS_ULTRA`, or `DS_LINE` are set (falls back to echo/mock behaviour otherwise).
+- `VIDEO_UPSTREAM` configures the upstream MJPEG stream that `/video_feed` should proxy.
+- Additional env hooks let you customise status responses: `LINK_TYPE`, `SSID`, etc.
+
+Launch with:
+
+```bash
+uvicorn servers.gateway_api:app --host 0.0.0.0 --port 7070
+```
+
+### Combined server (`main_combined.go`)
+
+`go run main_combined.go` starts the Go server core, launches the Python video server,
+and kicks off ROS nodes through `commands.StartROSNodes()`. Update
+`commands/ros_integration.go` to point at your actual ROS package or use the
+`scripts/start_robot.sh` helper which performs a similar orchestration with SSH.
 
 ## Environment configuration
 
-Copy the template and adjust it for your deployment:
+Copy `.env.example` to `.env` and adjust to match your deployment:
 
-```bash
-cp .env.example .env
-```
+- **Addressing & ports**: `PI_IP`, `TAILSCALE_IP_PI`, `BIND_HOST`, `PORT_MOVEMENT`,
+  `PORT_ULTRASONIC`, `PORT_LIGHTING`, `PORT_LINE_TRACKER`, `PORT_LOCATION`, `VIDEO_PORT`.
+- **TLS / origins**: `CERT_PATH`, `KEY_PATH`, `ORIGIN_ALLOW`, `PUBLIC_BASE_URL`,
+  `PUBLIC_BASE_URL_ALT`.
+- **Hardware toggles**: `USE_RPI`, `USE_JETSON_NANO`, `CAMERA_BACKEND`,
+  `PLACEHOLDER_WHEN_NO_CAMERA`, `AUTO_PLACEHOLDER_AFTER_MISSES`.
+- **Movement tweaks**: `MOVEMENT_PATH`, `ROBOT_SIM`, `ORIGIN_ALLOW_NO_HEADER`.
+- **Ultrasonic**: `ULTRA_PATH`, `ULTRA_MEASURE_INTERVAL`, `ULTRA_WRITE_TIMEOUT`,
+  `ULTRA_LOG_EVERY`, `ULTRA_LOG_DELTA_CM`.
+- **Video watchdog**: `STARTUP_RETRY_SEC`, `RESTART_ON_STALL`, `STALE_MS`,
+  `WATCHDOG_PERIOD_MS`.
+- **Gateway proxy**: `DS_MOVE`, `DS_LIGHT`, `DS_ULTRA`, `DS_LINE`, `VIDEO_UPSTREAM`,
+  `LINK_TYPE`, `SSID`, `TAILSCALE_IP_PI` (for mock responses).
 
-Key variables from `.env`:
+Environment variables are loaded via `python-dotenv` where applicable, so editing the
+`.env` file and restarting the service is usually sufficient.
 
-| Variable | Purpose |
-| --- | --- |
-| `PI_IP` | Address the Go server binds to (also used by helpers to reach the Pi). |
-| `BIND_HOST` | Hostname for FastAPI and video services (`0.0.0.0` by default). |
-| `PORT_*` | Individual WebSocket service ports (movement, ultrasonic, lighting, etc.). |
-| `VIDEO_PORT` | Port for the MJPEG stream. |
-| `CERT_PATH` / `KEY_PATH` | TLS certificate/key used when enabling HTTPS/WSS. |
-| `USE_RPI`, `USE_JETSON_NANO` | Toggle hardware-specific drivers. |
-| `CAMERA_BACKEND` | Choose between `picamera2`, `v4l2`, or `auto`. |
-| `ORIGIN_ALLOW` | Comma-separated list of allowed frontend origins for CORS. |
+## Setup & dependencies
 
-See the template for Tailscale-specific values and additional tuning knobs.
-
-## Installation
-
-1. Install Go dependencies
+1. Install Go modules:
    ```bash
    go mod download
    ```
-2. Create a virtual environment for Python components
+2. Create/activate a Python virtual environment:
    ```bash
-   python -m venv .venv
-   source .venv/bin/activate
+   python -m venv venv
+   source venv/bin/activate
+   pip install --upgrade pip
    pip install -r requirements.txt
    ```
-3. (Optional) Install ROS packages and camera libraries on the Pi following your distro's
-   documentation.
+3. Install system libraries on the Pi before running the video server:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y python3-picamera2 python3-libcamera rpicam-apps \
+       v4l-utils python3-lgpio
+   ```
 
-## Running the services
-
-Choose the mode that suits your workflow:
-
-- **Go WebSocket server only**
-  ```bash
-  go run main.go
-  ```
-- **Go server + Python video + ROS bootstrap**
-  ```bash
-  go run main_combined.go
-  ```
-- **FastAPI gateway** (exposes REST endpoints and proxies WebSockets)
-  ```bash
-  python main_api.py
-  ```
-- **Standalone video streamer**
-  ```bash
-  python video/video_server.py
-  ```
-
-When running locally without hardware, export `USE_RPI=false` to switch GPIO access to the
-mock implementation (`gpio/mock_gpio.go`).
+The root `Makefile` exposes `make venv`, `make backend-install`, `make run-movement`,
+`make run-video`, and `make check` targets that wrap the above commands with
+profile-aware environment loading.
 
 ## Testing
 
-Activate your virtual environment first (`source .venv/bin/activate`) when running Python
-commands.
+Activate your virtual environment when running Python tests.
 
-- Go unit tests
-  ```bash
-  go test ./...
-  ```
-- Python unit/integration suites
-  ```bash
-  export PYTHONPATH=$(pwd)
-  pytest tests/unit
-  pytest tests/integration
-  pytest tests/e2e
-  ```
-- FastAPI checks (optional)
-  ```bash
-  pytest tests/api
-  ```
+```bash
+# Go unit tests
+go test ./...
 
-Continuous integration executes these suites on pull requests.
+# Python unit tests
+pytest tests/unit
+
+# Integration / API / end-to-end suites
+pytest tests/integration
+pytest tests/api
+pytest tests/e2e
+```
+
+The `tests/utils` package contains reusable fixtures and helpers. Use
+`update_test_imports.py` or `organize_tests.sh` if you restructure test packages to
+keep imports tidy.
+
+## Diagnostics & field tools
+
+- `diagnostics.py` exercises GPIO peripherals (ultrasonic, IR tracker, buzzer, LEDs)
+  and captures system info. Run it with `python diagnostics.py --log` to save a report.
+- `scripts/check_endpoints.sh` lives at the repo root and reads this directory's `.env`
+  to validate movement, lighting, ultrasonic, and video endpoints for the active profile.
+- `scripts/start_robot.sh` orchestrates ROS launch + backend services based on
+  environment variables from `.env`.
 
 ## Hardware notes
 
-The backend is optimised for the Raspberry Pi 5. Because the Pi 5 replaces `RPi.GPIO` with
-`libgpiod`, ensure the `lgpio` Python package is installed and grant the GPIO group access
-before running the services:
-
-```bash
-sudo chown root:gpio /dev/gpiochip0
-sudo chmod g+rw /dev/gpiochip0
-```
-
-With permissions in place the rest of the code behaves the same as it did on a Pi 4 while
-benefiting from the Pi 5 performance uplift.
-
-## Troubleshooting
-
-- **WebSocket refuses connection**: Confirm the frontend origin is listed in `ORIGIN_ALLOW`
-  and that the IP/port in `.env` matches the machine running the Go server.
-- **Video feed is blank**: Check `CAMERA_BACKEND` and verify the upstream `libcamera`
-  pipeline is installed. Run `python video/video_server.py` manually to confirm.
-- **Running without hardware**: Set `USE_RPI=false` and use the mock PCA9685 and GPIO
-  modules for development.
+- Grant GPIO access on the Pi 5 before running the servers:
+  ```bash
+  sudo chown root:gpio /dev/gpiochip0
+  sudo chmod g+rw /dev/gpiochip0
+  ```
+- The lighting controller expects `run_led.sh` to run with elevated privileges so it
+  can interact with the LED strip. Audit and adjust that script before deploying.
+- `controllers/buzzer.py` and related servo helpers initialise hardware on import;
+  catch exceptions and fall back to simulation mode (`ROBOT_SIM=1`) when developing on
+  a laptop.
 
 ## License
 
