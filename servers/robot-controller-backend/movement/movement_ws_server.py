@@ -197,8 +197,8 @@ DEFAULT_SPEED_STEP   = 200
 DEFAULT_SERVO_STEP   = 5
 
 current_speed             = 1200
-current_horizontal_angle  = 90
-current_vertical_angle    = 90
+current_horizontal_angle  = 75   # Updated to match current position
+current_vertical_angle    = 20   # Updated to match current position
 
 # Serialize motor operations
 motor_lock = asyncio.Lock()
@@ -666,8 +666,10 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                                                vertical=current_vertical_angle))
 
                 elif cmd == "reset-servo":
-                    current_horizontal_angle = 90
-                    current_vertical_angle = 90
+                    # Use current positions as the new "center" positions
+                    # Horizontal: 75° (was 90°), Vertical: 20° (was 90°)
+                    current_horizontal_angle = 75
+                    current_vertical_angle = 20
                     servo.setServoPwm("horizontal", current_horizontal_angle)
                     servo.setServoPwm("vertical", current_vertical_angle)
                     await send_json(ws, ok("reset-servo",
