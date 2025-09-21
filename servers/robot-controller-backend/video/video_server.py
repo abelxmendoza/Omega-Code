@@ -52,6 +52,15 @@ except ImportError:
     from motion_detection import MotionDetector
     from object_tracking import ObjectTracker
 
+# Mock camera fallback
+try:
+    from .mock_camera_server import MockCamera
+except ImportError:
+    try:
+        from mock_camera_server import MockCamera
+    except ImportError:
+        MockCamera = None
+
 load_dotenv(find_dotenv())
 
 BIND_HOST = os.getenv("BIND_HOST", "0.0.0.0")
@@ -159,7 +168,20 @@ def _create_camera() -> bool:
         logging.info("Initialization successful.")
         return True
     except Exception as e:
-        logging.warning(f"Camera initialization failed ({e}). Running without camera.")
+        logging.warning(f"Camera initialization failed ({e}). Trying mock camera fallback...")
+        
+        # Try mock camera as fallback
+        if MockCamera is not None:
+            try:
+                camera = MockCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
+                camera.start()
+                motion_detector = MotionDetector()
+                tracker = ObjectTracker()
+                logging.info("Mock camera fallback successful.")
+                return True
+            except Exception as mock_e:
+                logging.warning(f"Mock camera fallback also failed ({mock_e}). Running without camera.")
+        
         camera = None
         return False
 
@@ -367,7 +389,11 @@ def _watchdog_tick():
     if RESTART_ON_STALL and not camera_connected():
         logging.warning("Camera stalled > %dms – recreating…", STALE_MS)
         try:
-            camera.stop()  # type: ignore[union-attr]
+            # Handle both regular Camera and MockCamera cleanup
+            if hasattr(camera, 'stop'):
+                camera.stop()  # type: ignore[union-attr]
+            elif hasattr(camera, 'cleanup'):
+                camera.cleanup()  # type: ignore[union-attr]
         except Exception:
             pass
         camera = None
