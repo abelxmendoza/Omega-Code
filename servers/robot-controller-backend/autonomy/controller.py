@@ -45,7 +45,7 @@ def _canonical_name(name: str) -> str:
     return _MODE_ALIASES.get(cleaned, cleaned)
 
 
-@dataclass(slots=True)
+@dataclass
 class _ActiveSession:
     mode: str
     handler: AutonomyModeHandler
