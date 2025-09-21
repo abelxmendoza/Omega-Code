@@ -36,6 +36,7 @@ PORT = int(os.getenv("LINE_TRACKER_PORT", "8090"))
 PATH = os.getenv("LINE_TRACKER_PATH", "/line-tracker").rstrip("/") or "/line-tracker"
 
 FORCE_SIM = os.getenv("FORCE_SIM", "0") == "1"
+DEBUG_MODE = os.getenv("DEBUG_MODE", "1") == "1"
 
 # ---------- GPIO backends ----------
 ON_PI = False
@@ -45,7 +46,8 @@ _lgpio_h = None
 RGPIO = None  # set when imported
 
 def _log(*args):
-    print("[LineTracker]", *args, file=sys.stdout, flush=True)
+    if DEBUG_MODE:
+        print("[LineTracker]", *args, file=sys.stdout, flush=True)
 
 def _try_import_gpio():
     global ON_PI, USE_LGPIO, USE_RPIGPIO, RGPIO
@@ -75,19 +77,30 @@ def _setup_gpio():
     """Attempt to initialize GPIO. If it fails, fall back to simulation."""
     global _lgpio_h
     if FORCE_SIM:
+        _log("FORCE_SIM=1 → skipping GPIO setup")
         return
     try:
         if USE_LGPIO:
+            _log("Attempting lgpio initialization...")
             _lgpio_h = lgpio.gpiochip_open(0)
-            for pin in SENSOR_PINS.values():
-                lgpio.gpio_claim_input(_lgpio_h, pin)
-            _log("lgpio initialized.")
+            for name, pin in SENSOR_PINS.items():
+                try:
+                    lgpio.gpio_claim_input(_lgpio_h, pin)
+                    _log(f"lgpio claimed pin {pin} ({name})")
+                except Exception as e:
+                    _log(f"Failed to claim pin {pin} ({name}): {e}")
+            _log("lgpio initialized successfully.")
         elif USE_RPIGPIO:
+            _log("Attempting RPi.GPIO initialization...")
             RGPIO.setwarnings(False)
             RGPIO.setmode(RGPIO.BCM)
-            for pin in SENSOR_PINS.values():
-                RGPIO.setup(pin, RGPIO.IN)
-            _log("RPi.GPIO initialized.")
+            for name, pin in SENSOR_PINS.items():
+                try:
+                    RGPIO.setup(pin, RGPIO.IN)
+                    _log(f"RPi.GPIO setup pin {pin} ({name})")
+                except Exception as e:
+                    _log(f"Failed to setup pin {pin} ({name}): {e}")
+            _log("RPi.GPIO initialized successfully.")
         else:
             _log("No GPIO backend available → simulation mode.")
     except Exception as e:
@@ -116,23 +129,42 @@ def _cleanup_gpio():
 def _gpio_read(pin: int) -> int:
     if USE_LGPIO and _lgpio_h is not None:
         try:
-            return 1 if lgpio.gpio_read(_lgpio_h, pin) else 0
-        except Exception:
+            value = lgpio.gpio_read(_lgpio_h, pin)
+            return 1 if value else 0
+        except Exception as e:
+            _log(f"lgpio read error on pin {pin}: {e}")
             return 0
     if USE_RPIGPIO:
         try:
-            return int(RGPIO.input(pin))
-        except Exception:
+            value = RGPIO.input(pin)
+            return int(value)
+        except Exception as e:
+            _log(f"RPi.GPIO read error on pin {pin}: {e}")
             return 0
     # Simulation for local dev: deterministic blinking
+    _log(f"Using simulation mode for pin {pin}")
     t = int(time.time() * 2)  # 2 Hz flip
     return 1 if (pin + t) % 2 == 0 else 0
 
 def read_sensors() -> dict:
-    raw = {name: _gpio_read(pin) for name, pin in SENSOR_PINS.items()}
-    # Apply inversion (some IR boards output 0 on black line)
-    inv = {k: (1 - v) if INVERT[k] else v for k, v in raw.items()}
-    return inv
+    try:
+        raw = {}
+        for name, pin in SENSOR_PINS.items():
+            try:
+                value = _gpio_read(pin)
+                raw[name] = value
+                _log(f"Pin {pin} ({name}): {value}")
+            except Exception as e:
+                _log(f"Error reading pin {pin} ({name}): {e}")
+                raw[name] = 0  # Default to 0 on error
+        
+        # Apply inversion (some IR boards output 0 on black line)
+        inv = {k: (1 - v) if INVERT[k] else v for k, v in raw.items()}
+        _log(f"Raw readings: {raw}, Inverted: {inv}")
+        return inv
+    except Exception as e:
+        _log(f"Error in read_sensors(): {e}")
+        return {"left": 0, "center": 0, "right": 0}
 
 import websockets
 from websockets.server import WebSocketServerProtocol
