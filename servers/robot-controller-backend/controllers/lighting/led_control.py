@@ -23,7 +23,74 @@ class LedController:
     """
     Controller class for WS2812/WS2811 LED strips using rpi_ws281x.
     """
+    def __init__(self):
+        """
+        Initializes the LED strip with specified configuration.
+        """
+        self.ORDER = "RGB"  # Default color order
+        try:
+          self.strip = PixelStrip(
+            LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA,
+             LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL
+              )
+
+
+                LED_COUNT,
+                LED_PIN,
+                LED_FREQ_HZ,
+                LED_DMA,
+                LED_INVERT,
+                LED_BRIGHTNESS,
+                LED_CHANNEL,
+            )
+            strip.begin()  # Initialize the LED strip
+            self.strip = strip
+        except Exception as e:
+            print(f"Warning: Failed to initialize LED strip: {e}")
+
+            try:
+                del strip
+            except UnboundLocalError:
+                pass
+
+            self.strip = StubPixelStrip(
+                LED_COUNT,
+                LED_PIN,
+                LED_FREQ_HZ,
+                LED_DMA,
+                LED_INVERT,
+                LED_BRIGHTNESS,
+                LED_CHANNEL,
+            )
+            print("Using stub LED strip; no hardware output will occur")
+
+    def _convert_color(self, order, R_G_B):
+        """
+        Converts RGB color values based on the configured order.
+
+        Args:
+            order (str): Color order ('RGB', 'GRB', etc.).
+            R_G_B (int): 24-bit RGB color value.
+
+        Returns:
+            int: Adjusted color value for the LED strip.
+        """
+        try:
+            B = R_G_B & 255
+            G = (R_G_B >> 8) & 255
+            R = (R_G_B >> 16) & 255
+            order_map = ["GRB", "GBR", "RGB", "RBG", "BRG", "BGR"]
+            color_map = [Color(G, R, B), Color(G, B, R), Color(R, G, B), Color(R, B, G), Color(B, R, G), Color(B, G, R)]
+            if order in order_map:
+                return color_map[order_map.index(order)]
+            else:
+                raise ValueError(f"Invalid order: {order}")
+        except Exception as e:
+            raise RuntimeError(f"Color conversion error: {e}")
+
+    def _safe_execute(self, func, *args, **kwargs):
     def __init__(self, num_pixels=16, pin=18, brightness=255):
+  master
         """
         Initialize the LED strip.
 
