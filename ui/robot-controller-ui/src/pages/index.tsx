@@ -25,6 +25,7 @@ import CommandLog from '../components/CommandLog';
 import SensorDashboard from '../components/sensors/SensorDashboard';
 import CarControlPanel from '../components/control/CarControlPanel';
 import CameraControlPanel from '../components/control/CameraControlPanel';
+import ServoTelemetryPanel from '../components/control/ServoTelemetryPanel';
 import AutonomyPanel from '../components/control/AutonomyModal';
 import { useCommand } from '../context/CommandContext';
 import { COMMAND } from '../control_definitions';
@@ -367,8 +368,9 @@ export default function Home() {
             />
           </div>
 
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 flex flex-col items-center">
             <CameraControlPanel />
+            <ServoTelemetryPanel />
           </div>
         </div>
 

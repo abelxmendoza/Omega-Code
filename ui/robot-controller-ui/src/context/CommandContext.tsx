@@ -19,6 +19,17 @@ import { connectMovementWs } from '@/utils/connectMovementWs';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected';
 
+type ServoTelemetrySource = 'status' | 'ack';
+
+interface ServoTelemetry {
+  horizontal: number | null;
+  vertical: number | null;
+  min: number | null;
+  max: number | null;
+  updatedAt: number | null;
+  source: ServoTelemetrySource | null;
+}
+
 // Define the structure of a command entry with a timestamp
 interface CommandEntry {
   command: string;
@@ -36,10 +47,39 @@ interface CommandContextType {
   status: ServerStatus;
   latencyMs: number | null; // null if unknown/degraded
   wsUrl?: string;
+
+  servoTelemetry: ServoTelemetry;
+  requestStatus: (reason?: string) => void;
 }
 
 // Create the CommandContext with an undefined default value
 const CommandContext = createContext<CommandContextType | undefined>(undefined);
+
+const H_SERVO_ACTIONS = new Set([
+  'servo-horizontal',
+  'camera-servo-left',
+  'camera-servo-right',
+  'set-servo-position',
+  'reset-servo',
+]);
+
+const V_SERVO_ACTIONS = new Set([
+  'servo-vertical',
+  'camera-servo-up',
+  'camera-servo-down',
+  'set-servo-position',
+  'reset-servo',
+]);
+
+const isNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const pickNumber = (...values: unknown[]): number | undefined => {
+  for (const value of values) {
+    if (isNumber(value)) return value;
+  }
+  return undefined;
+};
 
 /*
 # Hook: useCommand
@@ -62,6 +102,14 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [status, setStatus] = useState<ServerStatus>('disconnected');
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [wsUrl, setWsUrl] = useState<string | undefined>(undefined);
+  const [servoTelemetry, setServoTelemetry] = useState<ServoTelemetry>({
+    horizontal: null,
+    vertical: null,
+    min: null,
+    max: null,
+    updatedAt: null,
+    source: null,
+  });
 
   const ws = useRef<WebSocket | null>(null);
 
@@ -77,23 +125,23 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
   /**
    * Logs a command with the current timestamp.
    */
-  const addCommand = (command: string) => {
+  const addCommand = React.useCallback((command: string) => {
     const timestamp = Date.now();
     setCommands((prev) => [{ command, timestamp }, ...prev]);
     console.log(`[Command Log] ${command}`);
-  };
+  }, []);
 
   /**
    * Removes the most recent command from the log.
    */
-  const popCommand = () => {
+  const popCommand = React.useCallback(() => {
     setCommands((prev) => (prev.length > 0 ? prev.slice(1) : prev));
-  };
+  }, []);
 
   /**
    * Sends a command via WebSocket, or logs it as offline if the WebSocket is closed.
    */
-  const sendCommand = (command: string, data?: Record<string, any>) => {
+  const sendCommand = React.useCallback((command: string, data?: Record<string, any>) => {
     const payload = JSON.stringify({ command, ...data });
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(payload);
@@ -102,10 +150,81 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
       console.warn(`[WebSocket] Not open. Command logged offline: ${command}`);
       addCommand(`Offline Sent: ${command}`);
     }
-  };
+  }, [addCommand]);
+
+  const applyServoTelemetry = React.useCallback(
+    (raw: any, source: ServoTelemetrySource) => {
+      if (!raw) return;
+
+      const servo = raw?.servo && typeof raw.servo === 'object' ? raw.servo : raw;
+      const action = typeof raw?.action === 'string' ? raw.action : null;
+
+      let horizontal = pickNumber(servo?.horizontal, raw?.horizontal);
+      let vertical = pickNumber(servo?.vertical, raw?.vertical);
+      const min = pickNumber(
+        servo?.min,
+        raw?.min,
+        servo?.range?.min,
+        raw?.servoMin,
+        raw?.range?.min,
+      );
+      const max = pickNumber(
+        servo?.max,
+        raw?.max,
+        servo?.range?.max,
+        raw?.servoMax,
+        raw?.range?.max,
+      );
+
+      if (isNumber(raw?.angle)) {
+        if (horizontal === undefined && action && H_SERVO_ACTIONS.has(action)) {
+          horizontal = raw.angle;
+        }
+        if (vertical === undefined && action && V_SERVO_ACTIONS.has(action)) {
+          vertical = raw.angle;
+        }
+      }
+
+      if (
+        horizontal === undefined &&
+        vertical === undefined &&
+        min === undefined &&
+        max === undefined
+      ) {
+        return;
+      }
+
+      setServoTelemetry((prev) => ({
+        horizontal: horizontal ?? prev.horizontal,
+        vertical: vertical ?? prev.vertical,
+        min: min ?? prev.min,
+        max: max ?? prev.max,
+        updatedAt: Date.now(),
+        source,
+      }));
+    },
+    [setServoTelemetry],
+  );
+
+  const requestStatus = React.useCallback(
+    (reason?: string) => {
+      const suffix = reason ? ` (${reason})` : '';
+      if (ws.current?.readyState === WebSocket.OPEN) {
+        try {
+          ws.current.send(JSON.stringify({ command: 'status' }));
+          addCommand(`Sent: status${suffix}`);
+        } catch (error) {
+          addCommand(`Failed to send status${suffix}: ${String(error)}`);
+        }
+      } else {
+        addCommand(`Failed to send status${suffix}: WebSocket is not open`);
+      }
+    },
+    [addCommand],
+  );
 
   // ---- Heartbeat helpers (JSON ping/pong) ----
-  const cleanupHeartbeat = () => {
+  const cleanupHeartbeat = React.useCallback(() => {
     if (hbTimer.current) {
       clearInterval(hbTimer.current);
       hbTimer.current = null;
@@ -115,9 +234,9 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
       pongTimeout.current = null;
     }
     pingSentAt.current = null;
-  };
+  }, []);
 
-  const startHeartbeat = () => {
+  const startHeartbeat = React.useCallback(() => {
     cleanupHeartbeat();
     hbTimer.current = setInterval(() => {
       const sock = ws.current;
@@ -136,7 +255,7 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         setStatus('disconnected');
       }
     }, 10000);
-  };
+  }, [cleanupHeartbeat]);
 
   // ---- Connection lifecycle ----
   useEffect(() => {
@@ -151,6 +270,7 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         setLatencyMs(null);
         addCommand('WebSocket connected');
         startHeartbeat();
+        requestStatus('auto');
       };
 
       wsInstance.onmessage = (event) => {
@@ -167,6 +287,28 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
             }
             setLatencyMs(Math.max(0, Math.round(end - start)));
             pingSentAt.current = null;
+            return;
+          }
+
+          if (data?.type === 'status') {
+            addCommand('Received: status snapshot');
+            applyServoTelemetry(data, 'status');
+            return;
+          }
+
+          if (data?.type === 'ack') {
+            const action = typeof data?.action === 'string' ? data.action : null;
+            if (action) {
+              if (data?.status === 'error') {
+                const detail = data?.error ? ` (${data.error})` : '';
+                addCommand(`Ack error: ${action}${detail}`);
+              } else {
+                addCommand(`Ack: ${action}`);
+              }
+            }
+            if (data?.status === 'ok') {
+              applyServoTelemetry(data, 'ack');
+            }
             return;
           }
 
@@ -228,11 +370,21 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         addCommand('WebSocket connection closed during cleanup');
       }
     };
-  }, []);
+  }, [addCommand, applyServoTelemetry, cleanupHeartbeat, requestStatus, startHeartbeat]);
 
   return (
     <CommandContext.Provider
-      value={{ sendCommand, commands, addCommand, popCommand, status, latencyMs, wsUrl }}
+      value={{
+        sendCommand,
+        commands,
+        addCommand,
+        popCommand,
+        status,
+        latencyMs,
+        wsUrl,
+        servoTelemetry,
+        requestStatus,
+      }}
     >
       {children}
     </CommandContext.Provider>
