@@ -41,10 +41,8 @@ describe('Status', () => {
   it('renders 75% and shows a blue-ish bar when connected', () => {
     render(<Status status="Connected" battery={75} />);
 
-    // Percent label exists (robust to whitespace/newlines)
-    expect(
-      screen.getByText((_, el) => el?.textContent?.match(/\b75\s*%\b/) != null)
-    ).toBeInTheDocument();
+    // Check for the percentage text directly
+    expect(screen.getByText('75%')).toBeInTheDocument();
 
     // Allow Tailwind variants like bg-blue-500 OR bg-sky-500
     const bar = barForPercent(75);
@@ -60,9 +58,7 @@ describe('Status', () => {
   it('renders 15% and shows a red bar when battery is low', () => {
     render(<Status status="Connected" battery={15} />);
 
-    expect(
-      screen.getByText((_, el) => el?.textContent?.match(/\b15\s*%\b/) != null)
-    ).toBeInTheDocument();
+    expect(screen.getByText('15%')).toBeInTheDocument();
 
     const bar = barForPercent(15);
     expect(bar.className).toMatch(/bg-red-500/);
@@ -71,9 +67,7 @@ describe('Status', () => {
   it('renders 0% when disconnected (icon/title optional)', () => {
     render(<Status status="Disconnected" battery={0} />);
 
-    expect(
-      screen.getByText((_, el) => el?.textContent?.match(/\b0\s*%\b/) != null)
-    ).toBeInTheDocument();
+    expect(screen.getByText('0%')).toBeInTheDocument();
 
     // Optional: if your SVG includes <title>Not ready</title>, assert it; otherwise this is a no-op
     const maybeTitle = screen.queryByTitle(/not ready/i);

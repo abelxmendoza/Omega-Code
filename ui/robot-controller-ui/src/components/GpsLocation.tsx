@@ -33,6 +33,7 @@ export default function GpsLocation({
 }) {
   return (
     <div className={`w-full h-full ${className}`}>
+      <h2 className="text-white font-bold mb-4">GPS Location</h2>
       <MapComponent
         interactive={interactive}
         wsUrl={wsUrl}

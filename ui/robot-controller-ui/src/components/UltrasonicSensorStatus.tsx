@@ -11,7 +11,7 @@ const UltrasonicSensorStatus: React.FC<UltrasonicSensorStatusProps> = ({
 }) => {
   return (
     <div>
-      <h3>Ultrasonic Sensor</h3>
+      <h3>Ultrasonic Sensor Status</h3>
       <div>Distance: {distance}cm</div>
       <div>Status: {status}</div>
     </div>

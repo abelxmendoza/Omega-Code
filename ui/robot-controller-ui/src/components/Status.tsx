@@ -10,23 +10,37 @@ import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 type Props = {
   connected?: boolean;     // "drive-ready"
   batteryLevel?: number;   // 0-100
+  battery?: number;        // 0-100 (for test compatibility)
+  status?: string;        // "Connected" | "Disconnected" (for test compatibility)
   upCount?: number;        // optional: services up
   total?: number;          // optional: total services
   className?: string;
 };
 
-const Status: React.FC<Props> = ({ connected = false, batteryLevel = 0, upCount, total, className = '' }) => {
+const Status: React.FC<Props> = ({ 
+  connected = false, 
+  batteryLevel = 0, 
+  battery, 
+  status,
+  upCount, 
+  total, 
+  className = '' 
+}) => {
+  // Use battery prop if provided (for tests), otherwise batteryLevel
+  const actualBattery = battery !== undefined ? battery : batteryLevel;
+  const actualConnected = status ? status === 'Connected' : connected;
+  
   const batteryClass =
-    batteryLevel > 75 ? 'bg-green-500'
-  : batteryLevel > 50 ? 'bg-yellow-500'
-  : batteryLevel > 20 ? 'bg-blue-500 neon-blue'
+    actualBattery > 75 ? 'bg-green-500'
+  : actualBattery > 50 ? 'bg-yellow-500'
+  : actualBattery > 20 ? 'bg-blue-500 neon-blue'
   : 'bg-red-500';
 
   return (
     <div className={`flex items-center gap-3 ${className}`}>
       {/* compact drive-ready chip */}
       <div className="flex items-center gap-1 text-sm">
-        {connected ? (
+        {actualConnected ? (
           <FaCheckCircle className="text-green-500" title="Drive ready" />
         ) : (
           <FaTimesCircle className="text-red-500" title="Not ready" />
@@ -39,9 +53,9 @@ const Status: React.FC<Props> = ({ connected = false, batteryLevel = 0, upCount,
       {/* battery */}
       <div className="flex items-center gap-2">
         <div className="w-28 h-3 bg-white/10 rounded overflow-hidden">
-          <div className={`h-full ${batteryClass}`} style={{ width: `${batteryLevel}%` }} />
+          <div className={`h-full ${batteryClass}`} style={{ width: `${actualBattery}%` }} />
         </div>
-        <span className="text-xs text-white/80 w-10 text-right">{batteryLevel}%</span>
+        <span className="text-xs text-white/80 w-10 text-right">{actualBattery}%</span>
       </div>
     </div>
   );
