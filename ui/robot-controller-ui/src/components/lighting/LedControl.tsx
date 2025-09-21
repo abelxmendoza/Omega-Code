@@ -37,8 +37,14 @@ const LedControl: React.FC<LedControlProps> = ({ sendCommand }) => {
     setMode(event.target.value as LightingMode);
 
   // Pattern change handler
-  const handlePatternChange = (event: React.ChangeEvent<HTMLSelectElement>) =>
-    setPattern(event.target.value as LightingPattern);
+  const handlePatternChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextPattern = event.target.value as LightingPattern;
+    setPattern(nextPattern);
+
+    if (nextPattern === 'music' && interval > 250) {
+      setInterval(120);
+    }
+  };
 
   // Interval change handler
   const handleIntervalChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -120,6 +126,12 @@ const LedControl: React.FC<LedControlProps> = ({ sendCommand }) => {
               </option>
             ))}
           </select>
+          {pattern === 'music' && (
+            <p className="mt-2 text-sm text-green-200">
+              Music mode listens to the default microphone when available and animates the
+              LEDs to the beat. Lower interval values make the effect more responsive.
+            </p>
+          )}
         </div>
 
         {/* Interval Input (only for dynamic patterns) */}

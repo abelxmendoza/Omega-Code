@@ -12,6 +12,8 @@ talks to the backend via WebSockets, REST APIs, and the gateway proxy.
 - Live MJPEG video feed with placeholder frames and health polling.
 - Lighting composer with colour selection, pattern/mode controls, and brightness
   sliders.
+- Music-reactive lighting mode that listens for microphone audio (with a graceful
+  fallback when no input device is present).
 - Sensor dashboards for ultrasonic distance, line tracker state, and GPS data.
 - Autonomy modal for starting/stopping modes exposed by the backend controller.
 - Header service bar showing link health and gateway profile, backed by REST/WS checks.

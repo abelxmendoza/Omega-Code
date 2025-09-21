@@ -8,7 +8,15 @@ Receives lighting control commands and routes them to the appropriate LED patter
 based on UI input or WebSocket messages.
 """
 
-from controllers.lighting.patterns import color_wipe, dual_color, fade, blink, chase, rainbow
+from controllers.lighting.patterns import (
+    blink,
+    chase,
+    color_wipe,
+    dual_color,
+    fade,
+    music_visualizer,
+    rainbow,
+)
 from rpi_ws281x import Color
 
 def hex_to_rgb(hex_color: str):
@@ -33,12 +41,17 @@ def apply_lighting_mode(payload: dict, led_controller):
     interval = payload.get("interval", 1000)
     color_hex = payload.get("color", "#ffffff")
     brightness = payload.get("brightness", 1.0)  # optional, float 0.0–1.0
+    try:
+        brightness = max(0.0, min(1.0, float(brightness)))
+    except (TypeError, ValueError):
+        brightness = 1.0
 
     color1 = hex_to_rgb(color_hex)
-    # brightness is not used in patterns yet, but can be applied if needed
+    color1_scaled = tuple(int(channel * brightness) for channel in color1)
 
     # Placeholder for dual color (future UI support)
     color2 = (0, 0, 0)
+    color2_scaled = tuple(int(channel * brightness) for channel in color2)
     # If UI provides a second color: color2 = hex_to_rgb(payload['color2'])
 
     strip = led_controller.strip
@@ -46,18 +59,28 @@ def apply_lighting_mode(payload: dict, led_controller):
     try:
         if pattern == "static":
             if mode == "dual":
-                dual_color(strip, Color(*color1), Color(*color2))
+                dual_color(strip, Color(*color1_scaled), Color(*color2_scaled))
             else:
-                color_wipe(strip, Color(*color1))
+                color_wipe(strip, Color(*color1_scaled))
         elif pattern == "fade":
-            fade(strip, color1, color2, delay=interval / 1000.0)
+            fade(strip, color1_scaled, color2_scaled, delay=interval / 1000.0)
         elif pattern == "blink":
-            blink(strip, Color(*color1), Color(*color2), delay=interval / 1000.0)
+            blink(strip, Color(*color1_scaled), Color(*color2_scaled), delay=interval / 1000.0)
         elif pattern == "chase":
-            chase(strip, Color(*color1), Color(*color2), delay=interval / 1000.0)
+            chase(strip, Color(*color1_scaled), Color(*color2_scaled), delay=interval / 1000.0)
         elif pattern == "rainbow" or mode == "rainbow":
             # Accept both "rainbow" as pattern or mode
             rainbow(strip, wait_ms=interval)
+        elif pattern in {"music", "music-reactive"}:
+            update_ms = interval if interval and interval > 0 else 80
+            duration = max(8.0, update_ms / 1000.0 * 80)
+            music_visualizer(
+                strip,
+                base_color=color1,
+                brightness=brightness,
+                update_ms=int(update_ms),
+                duration_s=duration,
+            )
         else:
             print(f"⚠️ Unknown pattern: {pattern}")
     except Exception as e:

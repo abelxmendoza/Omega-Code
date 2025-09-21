@@ -14,7 +14,7 @@ import { SketchPicker } from 'react-color';
 import { connectLightingWs } from '../../utils/connectLightingWs';
 
 const LIGHTING_MODES = ['single', 'rainbow'] as const;
-const LIGHTING_PATTERNS = ['static', 'pulse', 'blink'] as const;
+const LIGHTING_PATTERNS = ['static', 'pulse', 'blink', 'music'] as const;
 
 type LightingMode = (typeof LIGHTING_MODES)[number];
 type LightingPattern = (typeof LIGHTING_PATTERNS)[number];
@@ -204,8 +204,14 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   const handleColor1Change = (color: ColorResult) => setColor1(color.hex);
   const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) =>
     setMode(e.target.value as LightingMode);
-  const handlePatternChange = (e: React.ChangeEvent<HTMLSelectElement>) =>
-    setPattern(e.target.value as LightingPattern);
+  const handlePatternChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextPattern = e.target.value as LightingPattern;
+    setPattern(nextPattern);
+
+    if (nextPattern === 'music' && intervalMs > 250) {
+      setIntervalMs(120);
+    }
+  };
   const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(e.target.value);
     setIntervalMs(Number.isFinite(value) ? Math.max(100, Math.floor(value)) : 100);
@@ -289,6 +295,11 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       : serverStatus === 'connecting'
       ? 'Connecting…'
       : 'Disconnected';
+
+  const intervalConfig =
+    pattern === 'music'
+      ? { min: 50, step: 10 }
+      : { min: 100, step: 50 };
 
   if (!isOpen) return null;
 
@@ -391,6 +402,12 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
                 </option>
               ))}
             </select>
+            {pattern === 'music' && (
+              <p className="mt-2 text-sm text-green-200">
+                Music mode listens to the default microphone when available and generates a
+                beat-reactive light show. Reduce the interval for faster reaction times.
+              </p>
+            )}
           </div>
 
           {/* Interval Input */}
@@ -405,8 +422,8 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
                 value={intervalMs}
                 onChange={handleIntervalChange}
                 className="w-full bg-gray-800 text-white p-2 rounded mt-1"
-                min={100}
-                step={50}
+                min={intervalConfig.min}
+                step={intervalConfig.step}
               />
             </div>
           )}
