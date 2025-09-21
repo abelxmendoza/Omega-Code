@@ -29,14 +29,16 @@ def health():
 
 @app.get("/video_feed")
 def video_feed():
-    # Simple placeholder stream to keep UI happy until your video server is wired in.
-    # When ready, replace this with a proper proxy to VIDEO_UPSTREAM.
-    async def gen():
-        boundary = b"--frame\r\n"
-        while True:
-            yield boundary + b"Content-Type: text/plain\r\n\r\nkeepalive\r\n"
-            await asyncio.sleep(1.0)
-    return StreamingResponse(gen(), media_type="multipart/x-mixed-replace; boundary=frame")
+    # Proxy video feed from the actual video server
+    import httpx
+    
+    async def proxy_video():
+        async with httpx.AsyncClient() as client:
+            async with client.stream("GET", VIDEO_UPSTREAM) as response:
+                async for chunk in response.aiter_bytes():
+                    yield chunk
+    
+    return StreamingResponse(proxy_video(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 # ---------- Network endpoints used by the Header + Wizard ----------
 @app.get("/api/net/summary")
