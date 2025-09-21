@@ -14,7 +14,7 @@ import { SketchPicker } from 'react-color';
 import { connectLightingWs } from '../../utils/connectLightingWs';
 
 const LIGHTING_MODES = ['single', 'rainbow'] as const;
-const LIGHTING_PATTERNS = ['static', 'pulse', 'blink'] as const;
+const LIGHTING_PATTERNS = ['static', 'pulse', 'blink', 'lightshow'] as const;
 
 type LightingMode = (typeof LIGHTING_MODES)[number];
 type LightingPattern = (typeof LIGHTING_PATTERNS)[number];

@@ -19,6 +19,27 @@ import sys
 import time
 from rpi_ws281x import Adafruit_NeoPixel, Color, WS2811_STRIP_GRB
 
+
+class StubPixelStrip:
+    """Minimal stand-in used when the hardware strip cannot be initialized."""
+
+    def __init__(self, num_pixels=16):
+        self._num_pixels = num_pixels
+        self._pixels = [0] * num_pixels
+
+    def begin(self):  # pragma: no cover - trivial stub
+        return None
+
+    def numPixels(self):
+        return self._num_pixels
+
+    def setPixelColor(self, index, color):
+        if 0 <= index < self._num_pixels:
+            self._pixels[index] = color
+
+    def show(self):  # pragma: no cover - trivial stub
+        return None
+
 class LedController:
     """
     Controller class for WS2812/WS2811 LED strips using rpi_ws281x.
@@ -99,17 +120,21 @@ class LedController:
             pin (int): GPIO pin (default: 18).
             brightness (int): Brightness (0–255).
         """
-        self.strip = Adafruit_NeoPixel(
-            num_pixels,
-            pin,
-            800000,      # Frequency (Hz)
-            10,          # DMA channel
-            False,       # Invert signal
-            brightness,
-            0,
-            WS2811_STRIP_GRB
-        )
-        self.strip.begin()
+        try:
+            self.strip = Adafruit_NeoPixel(
+                num_pixels,
+                pin,
+                800000,      # Frequency (Hz)
+                10,          # DMA channel
+                False,       # Invert signal
+                brightness,
+                0,
+                WS2811_STRIP_GRB
+            )
+            self.strip.begin()
+        except Exception as exc:
+            print(f"⚠️ Falling back to StubPixelStrip due to init error: {exc}")
+            self.strip = StubPixelStrip(num_pixels)
         self.num_pixels = num_pixels
         self.is_on = False
 
@@ -154,6 +179,23 @@ class LedController:
             self.strip.setPixelColor(i, Color(r, g, b))
         self.strip.show()
 
+    @staticmethod
+    def _int_to_rgb(color):
+        return (
+            (color >> 16) & 255,
+            (color >> 8) & 255,
+            color & 255,
+        )
+
+    @staticmethod
+    def _scale_rgb(rgb, scale, brightness):
+        r, g, b = rgb
+        return (
+            max(0, min(255, int(r * scale * brightness))),
+            max(0, min(255, int(g * scale * brightness))),
+            max(0, min(255, int(b * scale * brightness))),
+        )
+
     def rainbow(self, wait_ms=20, brightness=1.0):
         for j in range(256):
             for i in range(self.num_pixels):
@@ -164,6 +206,37 @@ class LedController:
                 self.strip.setPixelColor(i, Color(r, g, b))
             self.strip.show()
             time.sleep(wait_ms / 1000.0)
+        self.is_on = True
+
+    def lightshow(self, color, interval=100, brightness=1.0, cycles=3):
+        base_rgb = self._int_to_rgb(color)
+        palette_rgb = [
+            self._scale_rgb(base_rgb, 1.0, brightness),
+            self._scale_rgb(base_rgb, 0.6, brightness),
+            self._scale_rgb(base_rgb, 0.25, brightness),
+            self._scale_rgb((255, 255, 255), 0.5, brightness),
+        ]
+        palette = [Color(*rgb) for rgb in palette_rgb]
+        sparkle = Color(*self._scale_rgb((255, 255, 255), 1.0, brightness))
+
+        delay = max(interval / 1000.0, 0.02)
+        sparkle_delay = max(delay / 2.0, 0.01)
+        total_cycles = max(1, cycles)
+
+        for cycle in range(total_cycles):
+            for offset in range(self.num_pixels):
+                for i in range(self.num_pixels):
+                    self.strip.setPixelColor(i, palette[(i + offset + cycle) % len(palette)])
+                self.strip.show()
+                time.sleep(delay)
+
+            for offset in range(self.num_pixels):
+                for i in range(self.num_pixels):
+                    self.strip.setPixelColor(i, palette[(i + offset + cycle) % len(palette)])
+                self.strip.setPixelColor((offset * 2) % self.num_pixels, sparkle)
+                self.strip.show()
+                time.sleep(sparkle_delay)
+
         self.is_on = True
 
     def set_led(self, color, mode="single", pattern="static", interval=500, brightness=1.0):
@@ -189,6 +262,8 @@ class LedController:
 
             if mode == "rainbow" or pattern == "rainbow":
                 self.rainbow(interval, brightness)
+            elif pattern == "lightshow" or mode == "lightshow":
+                self.lightshow(color, interval=interval, brightness=brightness)
             elif pattern == "static":
                 self.color_wipe(Color(r, g, b), wait_ms=10)
             elif pattern == "blink":
@@ -230,6 +305,9 @@ class LedController:
     def get_status(self):
         return "ON" if self.is_on else "OFF"
 
+
+# Backwards compatible aliases expected by older modules/tests
+LedControl = LedController
 
 if __name__ == "__main__":
     # CLI usage: python3 led_control.py <hexcolor> <mode> <pattern> <interval> <brightness>

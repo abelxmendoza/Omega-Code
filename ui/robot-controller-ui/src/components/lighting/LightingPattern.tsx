@@ -3,7 +3,7 @@
 /*
 # Summary:
 Provides a selection interface for various lighting patterns.
-Users can choose from "Static," "Blink," "Fade," "Chase," and "Rainbow" patterns.
+Users can choose from "Static," "Blink," "Fade," "Chase," "Rainbow," and "Lightshow" patterns.
 The selected pattern is passed to the parent component via the `onSelectPattern` callback.
 */
 
@@ -30,7 +30,7 @@ const LightingPattern: React.FC<LightingPatternProps> = ({ onSelectPattern }) =>
   };
 
   // List of available patterns
-  const patterns = ['static', 'blink', 'fade', 'chase', 'rainbow'];
+  const patterns = ['static', 'blink', 'fade', 'chase', 'rainbow', 'lightshow'];
 
   return (
     <div className="flex flex-wrap justify-around items-center bg-gray-900 p-4 rounded-lg shadow-md">
