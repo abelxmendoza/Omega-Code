@@ -210,14 +210,14 @@ export default function CameraControlPanel() {
       <div className="mt-3">
         <button
           onClick={() => {
-            // Center pan to 90° (middle of 0°-180° range)
-            sendJson(SERVO_H, { angle: 90 });
-            // Center tilt to 0° (middle of -45° to +45° range)
-            sendJson(SERVO_V, { angle: 0 });
+            // Center pan to 70° (your specified center position)
+            sendJson(SERVO_H, { angle: 70 });
+            // Center tilt to 20° (your specified center position)
+            sendJson(SERVO_V, { angle: 20 });
           }}
           className="px-3 py-2 rounded-md bg-sky-600 hover:bg-sky-500 text-white font-semibold"
-          title="Center camera to Pan: 90°, Tilt: 0° (C / Home)"
-          aria-label="Center camera to Pan: 90°, Tilt: 0° (C / Home)"
+          title="Center camera to Pan: 70°, Tilt: 20° (C / Home)"
+          aria-label="Center camera to Pan: 70°, Tilt: 20° (C / Home)"
         >
           Center
         </button>
