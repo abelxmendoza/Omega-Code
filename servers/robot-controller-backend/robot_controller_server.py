@@ -7,12 +7,11 @@ from enum import Enum
 import websockets
 from websockets.server import WebSocketServerProtocol
 
-# Import hardware modules
-from hardware.hardware_manager import hardware_manager, HardwareManager
-from hardware.motor_control import motor_system, MotorType, DCMotorConfig, ServoMotorConfig
-from hardware.sensor_drivers import sensor_manager, SensorType, UltrasonicConfig, TemperatureConfig, LightConfig
-from hardware.camera_drivers import camera_manager, CameraType, CameraConfig
-from hardware.led_control import led_manager, LEDStripType, LEDStripConfig, LEDPattern, LEDColor
+# Import AI modules
+from ai.navigation_system import ai_navigation, NavigationMode
+from ai.computer_vision import cv_ml
+from ai.predictive_analytics import predictive_analytics
+from ai.autonomous_engine import autonomous_engine, DecisionContext
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -80,86 +79,45 @@ class RobotController:
         await self._cleanup_hardware()
     
     async def _initialize_hardware(self):
-        """Initialize all hardware components"""
+        """Initialize all hardware and AI components"""
         try:
-            logger.info("Initializing hardware components...")
+            logger.info("Initializing hardware and AI components...")
             
-            # Initialize hardware manager
-            await hardware_manager.initialize("mock")  # Use mock for testing
+            # Initialize AI systems first
+            ai_nav_ok = await ai_navigation.initialize()
+            cv_ml_ok = await cv_ml.initialize()
+            analytics_ok = await predictive_analytics.initialize()
+            engine_ok = await autonomous_engine.initialize()
             
-            # Initialize motor system
-            await motor_system.initialize()
+            if not all([ai_nav_ok, cv_ml_ok, analytics_ok, engine_ok]):
+                logger.warning("Some AI components failed to initialize")
             
-            # Add motors
-            left_motor_config = DCMotorConfig(
-                enable_pin=18, in1_pin=23, in2_pin=24
-            )
-            right_motor_config = DCMotorConfig(
-                enable_pin=19, in1_pin=25, in2_pin=8
-            )
+            # Start AI systems
+            await ai_navigation.start()
+            await cv_ml.start_processing()
+            await predictive_analytics.start_analysis()
+            await autonomous_engine.start_decision_making()
             
-            await motor_system.add_motor("left_motor", MotorType.DC_MOTOR, left_motor_config)
-            await motor_system.add_motor("right_motor", MotorType.DC_MOTOR, right_motor_config)
-            
-            # Add camera servo
-            camera_servo_config = ServoMotorConfig(control_pin=21)
-            await motor_system.add_motor("camera_servo", MotorType.SERVO_MOTOR, camera_servo_config)
-            
-            # Initialize sensor manager
-            await sensor_manager.initialize()
-            
-            # Add sensors
-            ultrasonic_config = UltrasonicConfig(trigger_pin=20, echo_pin=21)
-            temperature_config = TemperatureConfig(data_pin=22)
-            light_config = LightConfig(analog_pin=23)
-            
-            await sensor_manager.add_sensor("ultrasonic", SensorType.ULTRASONIC, ultrasonic_config)
-            await sensor_manager.add_sensor("temperature", SensorType.TEMPERATURE, temperature_config)
-            await sensor_manager.add_sensor("light", SensorType.LIGHT, light_config)
-            
-            # Initialize camera manager
-            await camera_manager.initialize()
-            
-            # Add camera
-            camera_config = CameraConfig(
-                camera_type=CameraType.USB_CAMERA,
-                device_id=0,
-                resolution=(640, 480),
-                fps=30
-            )
-            await camera_manager.add_camera("main_camera", camera_config)
-            
-            # Initialize LED manager
-            await led_manager.initialize()
-            
-            # Add LED strip
-            led_config = LEDStripConfig(
-                strip_type=LEDStripType.WS2812B,
-                pin=18,
-                num_leds=50
-            )
-            await led_manager.add_strip("main_leds", led_config)
-            
-            logger.info("Hardware initialization completed")
+            logger.info("AI systems initialized and started")
             
         except Exception as e:
-            logger.error(f"Hardware initialization failed: {e}")
+            logger.error(f"AI initialization failed: {e}")
     
     async def _cleanup_hardware(self):
-        """Cleanup all hardware components"""
+        """Cleanup all hardware and AI components"""
         try:
-            logger.info("Cleaning up hardware components...")
+            logger.info("Cleaning up hardware and AI components...")
             
-            await hardware_manager.cleanup()
-            await motor_system.cleanup()
-            await sensor_manager.cleanup()
-            await camera_manager.cleanup()
-            await led_manager.cleanup()
+            # Stop AI systems
+            await ai_navigation.stop()
+            await cv_ml.stop_processing()
+            await predictive_analytics.stop_analysis()
+            await autonomous_engine.stop_decision_making()
             
-            logger.info("Hardware cleanup completed")
+            logger.info("AI systems stopped and cleaned up")
             
         except Exception as e:
-            logger.error(f"Hardware cleanup failed: {e}")
+            logger.error(f"AI cleanup failed: {e}")
         
     async def add_client(self, websocket: WebSocketServerProtocol):
         """Add a new WebSocket client"""
@@ -175,78 +133,71 @@ class RobotController:
         logger.info(f"Client disconnected. Total clients: {len(self.clients)}")
         
     async def handle_command(self, command: str, data: Dict[str, Any] = None):
-        """Handle robot commands with real hardware integration"""
+        """Handle robot commands with AI-powered decision making"""
         try:
             cmd = RobotCommand(command)
             logger.info(f"Executing command: {cmd.value}")
             
-            # Execute commands using real hardware
+            # Create decision context for AI
+            context = DecisionContext(
+                timestamp=time.time(),
+                sensor_data=self.state.sensors,
+                navigation_state={
+                    'position_x': 0, 'position_y': 0, 'heading': 0,
+                    'velocity': self.state.speed, 'obstacle_count': 0
+                },
+                system_state={
+                    'battery_level': self.state.battery_level,
+                    'cpu_usage': 50, 'memory_usage': 60, 'uptime': 0
+                },
+                predictions={},  # Would be populated by predictive analytics
+                user_commands=[command],
+                environment_context={}
+            )
+            
+            # Get AI decisions
+            ai_decisions = await autonomous_engine.make_decision(context)
+            
+            # Execute user command with AI oversight
             if cmd == RobotCommand.FORWARD:
                 self.state.direction = "forward"
-                await motor_system.move_forward(self.state.speed)
+                # Check AI decisions for safety
+                if not any(d.action.value == "emergency_stop" for d in ai_decisions):
+                    await ai_navigation.set_mode(NavigationMode.AUTONOMOUS)
             elif cmd == RobotCommand.BACKWARD:
                 self.state.direction = "backward"
-                await motor_system.move_backward(self.state.speed)
             elif cmd == RobotCommand.LEFT:
                 self.state.direction = "left"
-                await motor_system.turn_left(self.state.speed)
             elif cmd == RobotCommand.RIGHT:
                 self.state.direction = "right"
-                await motor_system.turn_right(self.state.speed)
             elif cmd == RobotCommand.STOP:
                 self.state.direction = "stop"
-                await motor_system.stop_all()
+                await ai_navigation.set_mode(NavigationMode.MANUAL)
             elif cmd == RobotCommand.SPEED_UP:
                 self.state.speed = min(100, self.state.speed + 10)
-                # Update motor speeds
-                for motor_id in ["left_motor", "right_motor"]:
-                    await motor_system.motors[motor_id].set_speed(self.state.speed)
             elif cmd == RobotCommand.SPEED_DOWN:
                 self.state.speed = max(0, self.state.speed - 10)
-                # Update motor speeds
-                for motor_id in ["left_motor", "right_motor"]:
-                    await motor_system.motors[motor_id].set_speed(self.state.speed)
             elif cmd == RobotCommand.CAMERA_UP:
                 self.state.camera_tilt = min(45, self.state.camera_tilt + 5)
-                await motor_system.motors["camera_servo"].set_angle(self.state.camera_tilt)
             elif cmd == RobotCommand.CAMERA_DOWN:
                 self.state.camera_tilt = max(-45, self.state.camera_tilt - 5)
-                await motor_system.motors["camera_servo"].set_angle(self.state.camera_tilt)
             elif cmd == RobotCommand.CAMERA_LEFT:
                 self.state.camera_pan = min(90, self.state.camera_pan + 5)
-                # Would need second servo for pan
             elif cmd == RobotCommand.CAMERA_RIGHT:
                 self.state.camera_pan = max(-90, self.state.camera_pan - 5)
-                # Would need second servo for pan
                 
-            # Handle LED commands with real hardware
+            # Handle LED commands
             if data:
                 if "led_color" in data:
                     self.state.led_color = data["led_color"]
-                    # Convert hex color to RGB
-                    hex_color = data["led_color"].lstrip('#')
-                    r = int(hex_color[0:2], 16)
-                    g = int(hex_color[2:4], 16)
-                    b = int(hex_color[4:6], 16)
-                    led_color = LEDColor(r, g, b)
-                    await led_manager.set_strip_color("main_leds", led_color)
-                    
                 if "led_brightness" in data:
                     self.state.led_brightness = data["led_brightness"]
-                    await led_manager.set_strip_brightness("main_leds", self.state.led_brightness)
-                    
                 if "led_pattern" in data:
                     self.state.led_pattern = data["led_pattern"]
-                    pattern_map = {
-                        "static": LEDPattern.STATIC,
-                        "pulse": LEDPattern.PULSE,
-                        "blink": LEDPattern.BLINK,
-                        "rainbow": LEDPattern.RAINBOW,
-                        "chase": LEDPattern.CHASE,
-                        "breathing": LEDPattern.BREATHING
-                    }
-                    if data["led_pattern"] in pattern_map:
-                        await led_manager.set_strip_pattern("main_leds", pattern_map[data["led_pattern"]])
+                    
+            # Execute AI decisions
+            for decision in ai_decisions:
+                await self._execute_ai_decision(decision)
                     
             # Broadcast state update to all clients
             await self._broadcast_state_update()
@@ -255,6 +206,28 @@ class RobotController:
             logger.error(f"Invalid command: {command}")
         except Exception as e:
             logger.error(f"Error executing command {command}: {e}")
+    
+    async def _execute_ai_decision(self, decision):
+        """Execute AI decision"""
+        try:
+            logger.info(f"Executing AI decision: {decision.action.value} - {decision.reasoning}")
+            
+            # Execute decision based on action type
+            if decision.action.value == "emergency_stop":
+                self.state.direction = "stop"
+                await ai_navigation.set_mode(NavigationMode.EMERGENCY)
+            elif decision.action.value == "change_speed":
+                new_speed = decision.parameters.get('speed', self.state.speed)
+                self.state.speed = max(0, min(100, new_speed))
+            elif decision.action.value == "turn_left":
+                self.state.direction = "left"
+            elif decision.action.value == "turn_right":
+                self.state.direction = "right"
+            elif decision.action.value == "send_alert":
+                logger.warning(f"AI Alert: {decision.reasoning}")
+            
+        except Exception as e:
+            logger.error(f"Error executing AI decision: {e}")
             
     async def _execute_movement(self, direction: str):
         """Execute robot movement (simulated)"""
