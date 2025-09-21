@@ -317,10 +317,11 @@ async def do_move(fn_name: str, speed: int):
     async with motor_lock:
         fn = getattr(motor, fn_name, None)
         if not callable(fn):
+            # Use gentle turns instead of sharp pivots
             if fn_name == "left":
-                fn = getattr(motor, "pivot_left", None)
+                fn = getattr(motor, "left", None)
             elif fn_name == "right":
-                fn = getattr(motor, "pivot_right", None)
+                fn = getattr(motor, "right", None)
         if not callable(fn):
             raise RuntimeError(f"motor missing method: {fn_name}")
         _call_motor(fn, speed)
