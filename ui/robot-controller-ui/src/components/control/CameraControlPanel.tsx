@@ -94,7 +94,7 @@ export default function CameraControlPanel() {
     if (repeatRef.current) clearInterval(repeatRef.current);
     repeatRef.current = null;
     activeDirRef.current = null;
-    // Don't call setPressed in cleanup to avoid infinite loops
+    setPressed({ up: false, down: false, left: false, right: false });
   }, []);
 
   // --- Keyboard support ---
