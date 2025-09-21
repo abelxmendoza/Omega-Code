@@ -1,86 +1,27 @@
-# File: /Omega-Code/servers/robot-controller-backend/controllers/lighting/led_control.py
-
 """
-LED Control Script
+LED Control Module for WS2812/WS2811 Strips (NeoPixels)
 
-This script provides control for an LED strip using the rpi_ws281x library.
-It allows setting static colors, dynamic lighting patterns, and advanced effects.
+This module provides a Python class for controlling addressable RGB LED strips
+using the rpi_ws281x library. It supports color wipe animations, color patterns,
+on/off state, and can be extended for dual-color and brightness control.
 
-Key functionalities:
-1. Initialize and configure the LED strip.
-2. Set colors, modes, patterns, and intervals for dynamic control.
-3. Execute predefined effects with error handling for robust operation.
+Main Features:
+- Initialize and configure the LED strip
+- Perform color wipe and basic animations
+- On/Off toggle functionality with persistent state
+- Full global brightness support for all patterns
+
+File Location:
+~/Omega-Code/servers/robot-controller-backend/controllers/lighting/led_control.py
 """
-
 
 import sys
 import time
+from rpi_ws281x import Adafruit_NeoPixel, Color, WS2811_STRIP_GRB
 
-__all__ = ["LedControl", "StubPixelStrip"]
-
-
-class StubPixelStrip:
-    """Fallback LED strip that performs no hardware operations."""
-
-    def __init__(self, num, pin, freq_hz, dma, invert, brightness, channel):
-        self._num = num
-        self.is_stub = True
-
-    def begin(self):
-        pass
-
-    def numPixels(self):
-        return self._num
-
-    def setPixelColor(self, i, color):
-        pass
-
-    def show(self):
-        pass
-
-
-try:
-    from rpi_ws281x import PixelStrip, Color
-except Exception:  # pragma: no cover - handle missing library gracefully
-    try:
-        from rpi_ws281x import Adafruit_NeoPixel as PixelStrip, Color
-    except Exception:
-
-
-        PixelStrip = StubPixelStrip
-        # Provide a minimal stub for environments without rpi_ws281x
-        class PixelStrip:
-            def __init__(self, num, pin, freq_hz, dma, invert, brightness, channel):
-                self._num = num
-
-            def begin(self):
-                pass
-
-            def numPixels(self):
-                return self._num
-
-            def setPixelColor(self, i, color):
-                pass
-
-            def show(self):
-                pass
-
-
-        def Color(r, g, b):
-            return (r << 16) | (g << 8) | b
-
-# LED strip configuration constants
-LED_COUNT = 8            # Number of LED pixels
-LED_PIN = 18             # GPIO pin connected to the pixels (supports PWM)
-LED_FREQ_HZ = 800000     # Signal frequency (800kHz for WS281x LEDs)
-LED_DMA = 10             # DMA channel to use for signal generation
-LED_BRIGHTNESS = 255     # Brightness level (0-255)
-LED_INVERT = False       # Invert signal if using NPN transistor level shifter
-LED_CHANNEL = 0          # Channel number (usually 0 or 1)
-
-class LedControl:
+class LedController:
     """
-    Manages LED operations, including static and dynamic effects.
+    Controller class for WS2812/WS2811 LED strips using rpi_ws281x.
     """
     def __init__(self):
         """
@@ -148,74 +89,52 @@ class LedControl:
             raise RuntimeError(f"Color conversion error: {e}")
 
     def _safe_execute(self, func, *args, **kwargs):
+    def __init__(self, num_pixels=16, pin=18, brightness=255):
+  master
         """
-        Safely executes a pattern function and handles any errors.
+        Initialize the LED strip.
 
         Args:
-            func (callable): The function to execute.
+            num_pixels (int): Number of LEDs.
+            pin (int): GPIO pin (default: 18).
+            brightness (int): Brightness (0–255).
         """
-        try:
-            func(*args, **kwargs)
-        except Exception as e:
-            print(f"Error executing pattern: {e}")
+        self.strip = Adafruit_NeoPixel(
+            num_pixels,
+            pin,
+            800000,      # Frequency (Hz)
+            10,          # DMA channel
+            False,       # Invert signal
+            brightness,
+            0,
+            WS2811_STRIP_GRB
+        )
+        self.strip.begin()
+        self.num_pixels = num_pixels
+        self.is_on = False
 
     def color_wipe(self, color, wait_ms=50):
-        """
-        Fills the strip with a single color, one LED at a time.
-
-        Args:
-            color (int): 24-bit RGB color value.
-            wait_ms (int): Delay between lighting each LED.
-        """
-        color = self._convert_color(self.ORDER, color)
-        for i in range(self.strip.numPixels()):
+        for i in range(self.num_pixels):
             self.strip.setPixelColor(i, color)
-            self.strip.show()
-            time.sleep(wait_ms / 1000.0)
+        self.strip.show()
+        self.is_on = True
 
-    def theater_chase(self, color, wait_ms=50, iterations=10):
-        """
-        Creates a theater chase effect with the specified color.
+    def clear_strip(self):
+        for i in range(self.num_pixels):
+            self.strip.setPixelColor(i, Color(0, 0, 0))
+        self.strip.show()
+        self.is_on = False
 
-        Args:
-            color (int): 24-bit RGB color value.
-            wait_ms (int): Delay between animation frames.
-            iterations (int): Number of animation cycles.
-        """
-        color = self._convert_color(self.ORDER, color)
-        for j in range(iterations):
-            for q in range(3):
-                for i in range(0, self.strip.numPixels(), 3):
-                    self.strip.setPixelColor(i + q, color)
-                self.strip.show()
-                time.sleep(wait_ms / 1000.0)
-                for i in range(0, self.strip.numPixels(), 3):
-                    self.strip.setPixelColor(i + q, 0)
-
-    def rainbow(self, wait_ms=20, iterations=1):
-        """
-        Displays a rainbow effect across the LED strip.
-
-        Args:
-            wait_ms (int): Delay between animation frames.
-            iterations (int): Number of animation cycles.
-        """
-        for j in range(256 * iterations):
-            for i in range(self.strip.numPixels()):
-                self.strip.setPixelColor(i, self._wheel((i + j) & 255))
-            self.strip.show()
-            time.sleep(wait_ms / 1000.0)
+    def test_colors(self, wait_ms=500):
+        self.color_wipe(Color(255, 0, 0), wait_ms)
+        time.sleep(1)
+        self.color_wipe(Color(0, 255, 0), wait_ms)
+        time.sleep(1)
+        self.color_wipe(Color(0, 0, 255), wait_ms)
+        time.sleep(1)
+        self.clear_strip()
 
     def _wheel(self, pos):
-        """
-        Generates rainbow colors for a given position.
-
-        Args:
-            pos (int): Position in the color wheel (0-255).
-
-        Returns:
-            int: 24-bit RGB color value.
-        """
         if pos < 0 or pos > 255:
             return Color(0, 0, 0)
         elif pos < 85:
@@ -227,31 +146,110 @@ class LedControl:
             pos -= 170
             return Color(0, pos * 3, 255 - pos * 3)
 
-    def set_led(self, color, mode, pattern, interval):
+    def _apply_brightness(self, base_color, brightness):
+        r = int(((base_color >> 16) & 255) * brightness)
+        g = int(((base_color >> 8) & 255) * brightness)
+        b = int((base_color & 255) * brightness)
+        for i in range(self.num_pixels):
+            self.strip.setPixelColor(i, Color(r, g, b))
+        self.strip.show()
+
+    def rainbow(self, wait_ms=20, brightness=1.0):
+        for j in range(256):
+            for i in range(self.num_pixels):
+                base_color = self._wheel((i + j) & 255)
+                r = int(((base_color >> 16) & 255) * brightness)
+                g = int(((base_color >> 8) & 255) * brightness)
+                b = int((base_color & 255) * brightness)
+                self.strip.setPixelColor(i, Color(r, g, b))
+            self.strip.show()
+            time.sleep(wait_ms / 1000.0)
+        self.is_on = True
+
+    def set_led(self, color, mode="single", pattern="static", interval=500, brightness=1.0):
         """
-        Configures LED color and pattern.
+        Set LED strip color/pattern/mode/brightness.
 
         Args:
-            color (int): 24-bit RGB color value.
-            mode (str): Mode ('single', 'multi', etc.).
-            pattern (str): Pattern type.
-            interval (int): Delay for dynamic patterns.
+            color (int): 24-bit RGB integer.
+            mode (str): Lighting mode.
+            pattern (str): Animation pattern.
+            interval (int): Timing for dynamic patterns (ms).
+            brightness (float): 0.0–1.0, global brightness.
         """
         try:
-            if mode == "single":
-                self.color_wipe(color)
-            elif mode == "multi":
-                self.theater_chase(color, wait_ms=interval)
-            elif mode == "two":
-                self.rainbow(wait_ms=interval)
+            if pattern == "off":
+                self.clear_strip()
+                return
+
+            # Always apply requested pattern!
+            r = int(((color >> 16) & 255) * brightness)
+            g = int(((color >> 8) & 255) * brightness)
+            b = int((color & 255) * brightness)
+
+            if mode == "rainbow" or pattern == "rainbow":
+                self.rainbow(interval, brightness)
+            elif pattern == "static":
+                self.color_wipe(Color(r, g, b), wait_ms=10)
+            elif pattern == "blink":
+                for _ in range(5):
+                    self.color_wipe(Color(r, g, b), wait_ms=10)
+                    time.sleep(interval / 1000)
+                    self.clear_strip()
+                    time.sleep(interval / 1000)
+                self.is_on = True
+            elif pattern == "pulse":
+                for _ in range(5):
+                    # Fade in
+                    for i in range(0, 256, 5):
+                        step_brightness = brightness * (i / 255.0)
+                        self._apply_brightness(color, step_brightness)
+                        time.sleep(interval / 1000 / 50)
+                    # Fade out
+                    for i in range(255, 0, -5):
+                        step_brightness = brightness * (i / 255.0)
+                        self._apply_brightness(color, step_brightness)
+                        time.sleep(interval / 1000 / 50)
+                self.is_on = True
             else:
-                print(f"Invalid mode: {mode}")
+                print(f"Unknown pattern: {pattern}")
+
+            self.is_on = True
+
         except Exception as e:
-            print(f"Failed to set LED: {e}")
+            print(f"LED error: {e}")
+
+    def toggle_light(self):
+        if self.is_on:
+            self.clear_strip()
+            print("LEDs turned OFF")
+        else:
+            self.color_wipe(Color(255, 255, 255), wait_ms=20)
+            print("LEDs turned ON")
+
+    def get_status(self):
+        return "ON" if self.is_on else "OFF"
+
 
 if __name__ == "__main__":
-    if len(sys.argv) != 5:
-        print("Usage: python3 led_control.py <color> <mode> <pattern> <interval>")
+    # CLI usage: python3 led_control.py <hexcolor> <mode> <pattern> <interval> <brightness>
+    #           python3 led_control.py off
+    #           python3 led_control.py toggle
+    if len(sys.argv) == 2 and sys.argv[1] == "off":
+        led = LedController()
+        led.clear_strip()
+        print("LEDs turned OFF")
+        sys.exit(0)
+
+    if len(sys.argv) == 2 and sys.argv[1] == "toggle":
+        led = LedController()
+        led.toggle_light()
+        sys.exit(0)
+
+    if len(sys.argv) not in (5, 6):
+        print("Usage: python3 led_control.py <hexcolor> <mode> <pattern> <interval> <brightness>")
+        print("   or: python3 led_control.py off")
+        print("   or: python3 led_control.py toggle")
         sys.exit(1)
 
     try:
@@ -259,8 +257,9 @@ if __name__ == "__main__":
         mode = sys.argv[2]
         pattern = sys.argv[3]
         interval = int(sys.argv[4])
+        brightness = float(sys.argv[5]) if len(sys.argv) == 6 else 1.0
 
-        led_control = LedControl()
-        led_control.set_led(color, mode, pattern, interval)
+        led_control = LedController()
+        led_control.set_led(color, mode, pattern, interval, brightness)
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Startup error: {e}")

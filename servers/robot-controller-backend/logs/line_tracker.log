@@ -1,0 +1,19 @@
+[LineTracker] lgpio import failed: ModuleNotFoundError("No module named 'lgpio'") → trying RPi.GPIO
+[LineTracker] Using RPi.GPIO backend.
+[LineTracker] RPi.GPIO initialized.
+[LineTracker] Starting Line Tracker WebSocket Server on ws://0.0.0.0:8090/line-tracker
+[LineTracker] [CONNECTED] client: ('100.71.94.12', 61151) path='/line-tracker'
+[LineTracker] [DISCONNECTED] client: ('100.71.94.12', 61151)
+[LineTracker] [CONNECTED] client: ('100.71.94.12', 61405) path='/line-tracker'
+[LineTracker] [DISCONNECTED] client: ('100.71.94.12', 61405)
+[LineTracker] [CONNECTED] client: ('100.71.94.12', 62142) path='/line-tracker'
+[LineTracker] [CONNECTED] client: ('100.71.94.12', 62478) path='/line-tracker'
+[LineTracker] [DISCONNECTED] client: ('100.71.94.12', 62142)
+[LineTracker] [DISCONNECTED] client: ('100.71.94.12', 62478)
+[LineTracker] [CONNECTED] client: ('100.71.94.12', 62493) path='/line-tracker'
+[LineTracker] [DISCONNECTED] client: ('100.71.94.12', 62493)
+[LineTracker] [CONNECTED] client: ('100.71.94.12', 62517) path='/line-tracker'
+[LineTracker] [DISCONNECTED] client: ('100.71.94.12', 62517)
+[LineTracker] [CONNECTED] client: ('100.71.94.12', 63526) path='/line-tracker'
+[LineTracker] [DISCONNECTED] client: ('100.71.94.12', 63526)
+[LineTracker] [CONNECTED] client: ('100.71.94.12', 63608) path='/line-tracker'

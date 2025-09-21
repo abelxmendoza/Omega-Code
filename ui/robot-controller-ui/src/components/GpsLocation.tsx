@@ -1,15 +1,47 @@
+/*
+# File: /src/components/GpsLocation.tsx
+# Summary:
+Next.js-friendly wrapper around MapComponent (Leaflet) with SSR disabled.
+Pass `dummy` to simulate movement when you don't have a GPS server yet.
+*/
+
 import dynamic from 'next/dynamic';
 import React from 'react';
 
-// Dynamically import the component that uses Leaflet
 const MapComponent = dynamic(() => import('./MapComponent'), { ssr: false });
 
-const GpsLocation = () => {
+type LatLng = [number, number];
+
+export default function GpsLocation({
+  className = '',
+  interactive = true,
+  wsUrl,
+  initialCenter = [37.7749, -122.4194] as LatLng,
+  initialZoom = 15,
+  showAccuracy = false,
+  dummy = false,
+  showTrail = true,
+}: {
+  className?: string;
+  interactive?: boolean;
+  wsUrl?: string;
+  initialCenter?: LatLng;
+  initialZoom?: number;
+  showAccuracy?: boolean;
+  dummy?: boolean;
+  showTrail?: boolean;
+}) {
   return (
-    <div className="w-full h-full">
-      <MapComponent />
+    <div className={`w-full h-full ${className}`}>
+      <MapComponent
+        interactive={interactive}
+        wsUrl={wsUrl}
+        initialCenter={initialCenter}
+        initialZoom={initialZoom}
+        showAccuracy={showAccuracy}
+        dummy={dummy}
+        showTrail={showTrail}
+      />
     </div>
   );
-};
-
-export default GpsLocation;
+}

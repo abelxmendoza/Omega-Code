@@ -1,0 +1,4 @@
+[LineTracker] lgpio import failed: ModuleNotFoundError("No module named 'lgpio'") → trying RPi.GPIO
+[LineTracker] Using RPi.GPIO backend.
+[LineTracker] RPi.GPIO initialized.
+[LineTracker] Starting Line Tracker WebSocket Server on ws://0.0.0.0:8090/line-tracker

@@ -1,14 +1,17 @@
 /*
-# File: sr./components/sensors/UltrasonicSensorStatus.tsx
+# File: src/components/sensors/UltrasonicSensorStatus.tsx
 
 # Summary:
-This component displays the ultrasonic sensor distance in **centimeters (cm)** along with other units:
+This React component displays the ultrasonic sensor's distance readings in multiple units:
+- **centimeters (cm)**
 - **meters (m)**
 - **inches (in)**
 - **feet (ft)**
 
-- Establishes a WebSocket connection to the server.
-- Updates the distance dynamically as it receives data from the WebSocket.
+Functionality:
+- Connects to a WebSocket server to receive real-time sensor data.
+- Dynamically updates the displayed values as new data arrives.
+- Cleans up the WebSocket connection on component unmount.
 */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -31,7 +34,7 @@ const UltrasonicSensorStatus: React.FC = () => {
 
   useEffect(() => {
     // Establish WebSocket connection
-    ws.current = new WebSocket('ws://192.168.1.134:8080/ultrasonic'); // Update IP as needed
+    ws.current = new WebSocket(process.env.NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC as string);
 
     ws.current.onopen = () => {
       console.log('WebSocket connection established');
@@ -52,7 +55,6 @@ const UltrasonicSensorStatus: React.FC = () => {
       console.error('WebSocket error:', error);
     };
 
-    // Cleanup on unmount
     return () => {
       if (ws.current) {
         ws.current.close();
@@ -72,3 +74,4 @@ const UltrasonicSensorStatus: React.FC = () => {
 };
 
 export default UltrasonicSensorStatus;
+

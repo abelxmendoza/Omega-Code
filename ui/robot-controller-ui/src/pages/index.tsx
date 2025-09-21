@@ -1,187 +1,399 @@
 /*
 # File: /src/pages/index.tsx
 # Summary:
-Main entry point for the robot controller application.
-Provides a UI for robot control, real-time command logging, and sensor data visualization.
-Manages WebSocket communication for command sending and response handling.
+#   Main entry for the robot controller UI.
+#   - Client-only CameraFrame (avoids SSR crashes)
+#   - Robot controls, logs, sensors, lighting modal
+#   - Profile-based endpoint selection (lan | tailscale | local)
+#   - WebSocket keep-alive + exponential backoff reconnect
+#   - Hotkeys (P/O/Space/I)
+#   - Camera wired through same-origin proxy (/api/video-proxy) to avoid mixed content/CORS
+#
+#   Notes:
+#   • Camera health ping inside CameraFrame derives /health from the src. Since we feed the proxy,
+#     the health latency badge may show “— ms” (that’s expected). The image onload/onerror still
+#     drives status reliably, and the stream avoids CORS issues via the proxy.
+#   • When NEXT_PUBLIC_MOCK_WS=1 is set, the page does NOT open a real WebSocket connection.
+#     UI still functions using the mock autonomy wire and local logs.
 */
 
 import Head from 'next/head';
-import React, { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import SpeedControl from '../components/control/SpeedControl';
 import CommandLog from '../components/CommandLog';
 import SensorDashboard from '../components/sensors/SensorDashboard';
 import CarControlPanel from '../components/control/CarControlPanel';
 import CameraControlPanel from '../components/control/CameraControlPanel';
+import AutonomyPanel from '../components/control/AutonomyModal';
 import { useCommand } from '../context/CommandContext';
 import { COMMAND } from '../control_definitions';
 import Header from '../components/Header';
-import VideoFeed from '../components/VideoFeed';
 import LedModal from '../components/lighting/LedModal';
 import { v4 as uuidv4 } from 'uuid';
 
-const Home: React.FC = () => {
-  // Access methods from CommandContext for sending commands and logging
-  const { sendCommand, addCommand } = useCommand();
+// Autonomy API client (WS/HTTP/mock wires)
+import {
+  makeAutonomyApi,
+  createWsWire,
+  mockWire,
+} from '@/utils/autonomyApi';
 
-  // State for managing the visibility of the LED configuration modal
+const DEBUG = !!process.env.NEXT_PUBLIC_WS_DEBUG;
+const MOCK_WS = process.env.NEXT_PUBLIC_MOCK_WS === '1';
+
+/* ------------------ Client-only camera (avoids SSR issues) ------------------ */
+const CameraFrame = dynamic(() => import('../components/CameraFrame'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-[720px] max-w-[42vw]">
+      <div
+        className="relative bg-gray-900 rounded-lg shadow-md border border-white/10 overflow-hidden"
+        style={{ paddingTop: '56.25%' }}
+      >
+        <div className="absolute inset-0 flex items-center justify-center text-white/70 text-sm">
+          Loading camera…
+        </div>
+      </div>
+    </div>
+  ),
+});
+
+/* ----------------------------- helpers/env ----------------------------- */
+
+/** Active network profile (lan | tailscale | local). */
+const getActiveProfile = (): 'lan' | 'tailscale' | 'local' => {
+  const p = (process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local').toLowerCase();
+  return (['lan', 'tailscale', 'local'].includes(p) ? p : 'local') as any;
+};
+
+/** Read env var by profile, with LOCAL fallback. Example base: 'NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT'. */
+const getEnvByProfile = (base: string, profile?: string): string => {
+  const p = (profile || getActiveProfile()).toUpperCase();
+  return (
+    process.env[`${base}_${p}`] ||
+    process.env[`${base}_LOCAL`] ||
+    ''
+  );
+};
+
+/** Optional host fallback like omega1-1.hartley-ghost.ts.net (useful if you ever need direct URLs). */
+const getRobotHostFallback = (): string => {
+  const prof = getActiveProfile().toUpperCase();
+  return (
+    process.env[`NEXT_PUBLIC_ROBOT_HOST_${prof}`] ||
+    process.env['NEXT_PUBLIC_ROBOT_HOST_LOCAL'] ||
+    ''
+  );
+};
+
+/** Honor NEXT_PUBLIC_WS_FORCE_INSECURE=1 to keep ws:// even on https pages. */
+const coerceWsScheme = (rawUrl: string): string => {
+  if (!rawUrl) return rawUrl;
+  try {
+    const u = new URL(rawUrl, typeof window !== 'undefined' ? window.location.href : 'http://localhost');
+    const forceInsecure = !!process.env.NEXT_PUBLIC_WS_FORCE_INSECURE;
+    if (forceInsecure) {
+      if (u.protocol === 'wss:') u.protocol = 'ws:';
+      return u.toString();
+    }
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && u.protocol === 'ws:') {
+      u.protocol = 'wss:';
+    }
+    return u.toString();
+  } catch {
+    return rawUrl;
+  }
+};
+
+/** Exponential backoff helper (ms). */
+const nextBackoff = (prev: number) => Math.min(10_000, Math.max(500, Math.floor(prev * 1.6)));
+
+/* ---------------------- resolved endpoints (by profile) ---------------------- */
+
+/** Movement control WS resolved from env (lan|tailscale|local). */
+const movementWsResolved = getEnvByProfile('NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT');
+
+/* --------------------------------- Page --------------------------------- */
+
+export default function Home() {
+  const { addCommand } = useCommand();
+
   const [isLedModalOpen, setIsLedModalOpen] = useState(false);
 
-  // WebSocket instance reference for direct communication
-  const ws = useRef<WebSocket | null>(null);
+  /* -------- Camera proxy URL (built on client so we can read page query) -------- */
+  const cameraProxyUrl = useMemo(() => {
+    const prof = getActiveProfile();
+    const qs = new URLSearchParams();
+    qs.set('profile', prof);
 
-  /*
-  # Function: connectWebSocket
-  Establishes a WebSocket connection and manages lifecycle events such as connection, message handling, errors, and reconnection.
-  */
-  const connectWebSocket = () => {
-    ws.current = new WebSocket('wss://100.82.88.25:8080/ws');
-
-    ws.current.onopen = () => {
-      console.log('WebSocket connection established');
-      addCommand('WebSocket connection established');
-
-      // Keep the WebSocket connection alive with periodic pings
-      const interval = setInterval(() => {
-        if (ws.current?.readyState === WebSocket.OPEN) {
-          ws.current.send(JSON.stringify({ type: 'keep-alive' }));
-        }
-      }, 25000); // 25-second ping interval
-
-      // Handle WebSocket closure and attempt reconnection
-      ws.current.onclose = () => {
-        clearInterval(interval);
-        console.warn('WebSocket connection closed. Reconnecting...');
-        addCommand('WebSocket connection closed. Reconnecting...');
-        setTimeout(connectWebSocket, 1000); // Reconnect after 1 second
-      };
-
-      // Log WebSocket errors
-      ws.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        addCommand(`WebSocket error: ${error}`);
-      };
-    };
-
-    // Handle incoming WebSocket messages
-    ws.current.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (message.command) {
-          addCommand(`Received: ${message.command}`);
-        }
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
-        addCommand('Error parsing WebSocket message');
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      const override = url.searchParams.get('video');
+      const qProf = url.searchParams.get('profile');
+      if (override) qs.set('video', override);
+      if (qProf && ['lan', 'tailscale', 'local'].includes(qProf)) {
+        qs.set('profile', qProf);
       }
-    };
-  };
+    }
 
-  // Initialize WebSocket connection when the component mounts
-  useEffect(() => {
-    connectWebSocket();
-    return () => {
-      ws.current?.close(); // Clean up WebSocket connection on unmount
-    };
+    const u = `/api/video-proxy?${qs.toString()}`;
+    if (DEBUG) console.log('[netProfile] camera proxy url:', u);
+    return u;
   }, []);
 
-  /*
-  # Function: sendCommandWithLog
-  Sends a command to the WebSocket server, adds a unique ID for tracking, and logs the command.
-  - command: The command string to send.
-  - angle: Optional angle value for commands requiring it.
-  */
-  const sendCommandWithLog = (command: string, angle: number = 0) => {
-    const requestId = uuidv4(); // Generate a unique request ID
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      const payload = { command, angle, request_id: requestId };
-      ws.current.send(JSON.stringify(payload));
-      addCommand(`Sent: ${command} (ID: ${requestId})`);
-    } else {
-      console.error('WebSocket is not open');
-      addCommand('Failed to send command: WebSocket is not open');
-    }
-  };
+  /* --------------------------- WebSocket connect --------------------------- */
+  const ws = useRef<WebSocket | null>(null);
+  const keepAliveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backoffRef = useRef<number>(800);
+  const closingRef = useRef<boolean>(false);
 
-  /*
-  # Effect: Keyboard Shortcuts
-  Adds keyboard event listeners for sending predefined commands.
-  */
+  const connectWebSocket = useCallback(() => {
+    const rawUrl = movementWsResolved;
+    if (!rawUrl) {
+      addCommand('WS URL missing: set NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_* in your .env.local');
+      return;
+    }
+    const url = coerceWsScheme(rawUrl);
+
+    try {
+      if (DEBUG) console.log('[WS] connecting →', url);
+      ws.current = new WebSocket(url);
+
+      ws.current.onopen = () => {
+        addCommand('WebSocket connection established');
+        if (DEBUG) console.log('[WS] open');
+        backoffRef.current = 800;
+
+        if (keepAliveTimer.current) clearInterval(keepAliveTimer.current);
+        keepAliveTimer.current = setInterval(() => {
+          try {
+            if (ws.current?.readyState === WebSocket.OPEN) {
+              ws.current.send(JSON.stringify({ type: 'keep-alive', ts: Date.now() }));
+            }
+          } catch {
+            /* swallow */
+          }
+        }, 25_000);
+      };
+
+      ws.current.onclose = (ev) => {
+        if (DEBUG) console.log('[WS] close', ev?.reason || '');
+        if (keepAliveTimer.current) { clearInterval(keepAliveTimer.current); keepAliveTimer.current = null; }
+        if (closingRef.current) return; // user-initiated close during unmount
+
+        addCommand('WebSocket connection closed. Reconnecting…');
+        if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null; }
+        const delay = backoffRef.current;
+        reconnectTimer.current = setTimeout(() => {
+          backoffRef.current = nextBackoff(backoffRef.current);
+          connectWebSocket();
+        }, delay);
+      };
+
+      ws.current.onerror = (error) => {
+        if (DEBUG) console.warn('[WS] error', error);
+        addCommand('WebSocket error (see console)');
+        // onclose handler will schedule reconnect if needed
+      };
+
+      ws.current.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message?.command) addCommand(`Received: ${message.command}`);
+        } catch {
+          addCommand('WS message parse error');
+        }
+      };
+    } catch (err) {
+      addCommand(`WebSocket connect failed: ${String(err)}`);
+      const delay = backoffRef.current;
+      reconnectTimer.current = setTimeout(() => {
+        backoffRef.current = nextBackoff(backoffRef.current);
+        connectWebSocket();
+      }, delay);
+    }
+  }, [addCommand]);
+
+  // Only open a real socket if mocks are OFF.
+  useEffect(() => {
+    if (MOCK_WS) {
+      if (DEBUG) console.log('[WS] MOCK_WS=1 → skipping real WebSocket connect');
+      addCommand('Mock WS mode: UI will not open real sockets.');
+      return; // no connect
+    }
+
+    connectWebSocket();
+    return () => {
+      // graceful shutdown
+      closingRef.current = true;
+      if (keepAliveTimer.current) { clearInterval(keepAliveTimer.current); keepAliveTimer.current = null; }
+      if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null; }
+      try { ws.current?.close(); } catch {}
+      ws.current = null;
+    };
+  }, [connectWebSocket, addCommand]);
+
+  /* ---------------- Autonomy API (WS wire, with mock toggle) --------------- */
+  const autonomyApi = useMemo(() => {
+    try {
+      if (MOCK_WS || !movementWsResolved) {
+        addCommand('Autonomy API using MOCK wire.');
+        return makeAutonomyApi(mockWire);
+      }
+      const wire = createWsWire(() => coerceWsScheme(movementWsResolved), { timeoutMs: 3000 });
+      return makeAutonomyApi(wire);
+    } catch (e) {
+      addCommand(`Autonomy API fallback to MOCK (${String(e)})`);
+      return makeAutonomyApi(mockWire);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movementWsResolved]);
+
+  /* ---------------------- Send command helper with logs --------------------- */
+  const sendCommandWithLog = useCallback(
+    (command: string, angle: number = 0) => {
+      const requestId = uuidv4();
+
+      // In mock mode, don't send—just log.
+      if (MOCK_WS) {
+        addCommand(`[MOCK] Sent: ${command} (ID: ${requestId})`);
+        return;
+      }
+
+      if (ws.current?.readyState === WebSocket.OPEN) {
+        try {
+          ws.current.send(JSON.stringify({ command, angle, request_id: requestId }));
+          addCommand(`Sent: ${command} (ID: ${requestId})`);
+        } catch (e) {
+          addCommand(`Failed to send command: ${String(e)}`);
+        }
+      } else {
+        addCommand('Failed to send command: WebSocket is not open');
+      }
+    },
+    [addCommand]
+  );
+
+  /* --------------------------------- Hotkeys -------------------------------- */
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       switch (event.key.toLowerCase()) {
-        case 'p': // Increase speed
-          sendCommandWithLog(COMMAND.INCREASE_SPEED);
-          break;
-        case 'o': // Decrease speed
-          sendCommandWithLog(COMMAND.DECREASE_SPEED);
-          break;
-        case ' ': // Activate buzzer
-          sendCommandWithLog(COMMAND.CMD_BUZZER);
-          break;
-        case 'i': // Open LED modal
-          setIsLedModalOpen(true);
-          break;
-        default:
-          break;
+        case 'p': event.preventDefault(); return sendCommandWithLog(COMMAND.INCREASE_SPEED);
+        case 'o': event.preventDefault(); return sendCommandWithLog(COMMAND.DECREASE_SPEED);
+        case ' ': event.preventDefault(); return sendCommandWithLog(COMMAND.CMD_BUZZER);
+        case 'i': event.preventDefault(); return setIsLedModalOpen(true);
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown); // Clean up on component unmount
-    };
-  }, []);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [sendCommandWithLog]);
+
+  /* ---------------------------------- UI ---------------------------------- */
+  const isConnected =
+    MOCK_WS || (ws.current?.readyState === WebSocket.OPEN);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Meta Information */}
       <Head>
         <title>Robot Controller</title>
         <meta name="description" content="Control your robot" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      {/* Header: Display connection status and battery level */}
-      <Header isConnected={true} batteryLevel={75} />
+      {/* Header computes live service dots internally; passing battery for now */}
+      <Header batteryLevel={75} />
 
       <main className="p-4 space-y-4">
-        {/* Top Control Panel */}
         <div className="flex justify-center items-center space-x-8">
           <div className="flex-shrink-0">
-            <CarControlPanel sendCommand={sendCommandWithLog} />
+            <CarControlPanel />
+
+            {/* Autonomy panel under the car controller */}
+            <AutonomyPanel
+              connected={isConnected}
+              batteryPct={75}
+              onStart={async (mode, params) => {
+                try {
+                  await autonomyApi.start(mode, params);
+                  addCommand(`Sent: autonomy-start (${mode})`);
+                  autonomyApi.maybeSuggestLights(Boolean((params as any)?.headlights));
+                } catch (e) {
+                  addCommand(`autonomy-start failed: ${String(e)}`);
+                }
+              }}
+              onStop={async () => {
+                try {
+                  await autonomyApi.stop();
+                  addCommand('Sent: autonomy-stop');
+                } catch (e) {
+                  addCommand(`autonomy-stop failed: ${String(e)}`);
+                }
+              }}
+              onDock={async () => {
+                try {
+                  await autonomyApi.dock();
+                  addCommand('Sent: autonomy-dock');
+                } catch (e) {
+                  addCommand(`autonomy-dock failed: ${String(e)}`);
+                }
+              }}
+              onSetWaypoint={async (label, lat, lon) => {
+                try {
+                  await autonomyApi.setWaypoint(label, lat, lon);
+                  addCommand(`Sent: set-waypoint "${label}" (${lat}, ${lon})`);
+                } catch (e) {
+                  addCommand(`set-waypoint failed: ${String(e)}`);
+                }
+              }}
+              onUpdate={async (params) => {
+                try {
+                  await autonomyApi.update(params);
+                  addCommand('Sent: autonomy-update (params)');
+                } catch (e) {
+                  addCommand(`autonomy-update failed: ${String(e)}`);
+                }
+              }}
+            />
           </div>
-          <VideoFeed />
+
+          {/* Framed camera (via proxy to avoid mixed content/CORS) */}
           <div className="flex-shrink-0">
-            <CameraControlPanel sendCommand={sendCommandWithLog} />
+            <CameraFrame
+              src={cameraProxyUrl}
+              title="Front Camera"
+              className="w-[720px] max-w-[42vw]"
+            />
+          </div>
+
+          <div className="flex-shrink-0">
+            <CameraControlPanel />
           </div>
         </div>
 
-        {/* Sensor Dashboard and Speed Control */}
         <div className="flex justify-center items-center space-x-6 mt-6">
           <div className="w-1/3">
             <SensorDashboard />
           </div>
           <div className="w-1/4">
-            <SpeedControl
-              sendCommand={sendCommandWithLog}
-              onOpenLedModal={() => setIsLedModalOpen(true)}
-            />
+            <SpeedControl />
+            {/* Optional: visible LED modal trigger */}
+            {/* <Button onClick={() => setIsLedModalOpen(true)}>LEDs…</Button> */}
           </div>
         </div>
 
-        {/* Command Log */}
-        <div className="flex flex-col items-center space-y-4 mt-4">
+        <div className="flex flex-col items-center space-y-6 mt-6">
           <CommandLog />
         </div>
       </main>
 
-      {/* LED Configuration Modal */}
       {isLedModalOpen && (
-        <LedModal isOpen={isLedModalOpen} onClose={() => setIsLedModalOpen(false)} />
+        <LedModal
+          isOpen={isLedModalOpen}
+          onClose={() => setIsLedModalOpen(false)}
+        />
       )}
     </div>
   );
-};
-
-export default Home;
+}

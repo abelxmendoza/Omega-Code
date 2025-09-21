@@ -1,7 +1,10 @@
 #!/bin/bash
 
-# Define the base directory
-BASE_DIR="/Users/abel_elreaper/Desktop/Omega-Code/servers/robot-controller-backend/tests"
+# Determine project root. Allow override via OMEGA_CODE_ROOT
+ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
+
+# Define the base directory for tests
+BASE_DIR="$ROOT_DIR/servers/robot-controller-backend/tests"
 
 # Create directories
 mkdir -p $BASE_DIR/unit

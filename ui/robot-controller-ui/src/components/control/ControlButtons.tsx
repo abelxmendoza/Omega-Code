@@ -1,41 +1,82 @@
-// File: /Omega-Code/ui/robot-controller-u./components/control/ControlButtons.tsx
-
 /*
-This component provides three control buttons: Start, Stop, and Apply Settings.
-Each button triggers a corresponding callback function passed down from the parent component.
-These buttons are used to control various aspects of the robot's operation.
+# File: /Omega-Code/ui/robot-controller-ui/src/components/control/ControlButtons.tsx
+# Summary:
+Start / Stop / Apply row with sane defaults + accessibility.
+- If callbacks aren’t provided, it uses CommandContext defaults:
+  • Start → send {command:"status"} (harmless probe)
+  • Stop  → send {command:"move-stop"} (emergency halt)
+  • Apply → no-op (can be wired by parent)
 */
 
 import React from 'react';
+import { useCommand } from '@/context/CommandContext';
+import { COMMAND } from '@/control_definitions';
 
-const ControlButtons: React.FC<{ onStart: () => void, onStop: () => void, onApply: () => void }> = ({ onStart, onStop, onApply }) => {
+type Props = {
+  onStart?: () => void;
+  onStop?: () => void;
+  onApply?: () => void;
+  disabled?: boolean;
+  busy?: boolean; // optional spinner state from parent
+};
+
+export default function ControlButtons({
+  onStart,
+  onStop,
+  onApply,
+  disabled = false,
+  busy = false,
+}: Props) {
+  const { sendCommand, addCommand } = useCommand();
+
+  const safeSend = React.useCallback((cmd: string) => {
+    try {
+      sendCommand(cmd);
+      addCommand(`Sent: ${cmd}`);
+    } catch (e) {
+      addCommand(`Send failed: ${String(e)}`);
+    }
+  }, [sendCommand, addCommand]);
+
+  const doStart = onStart ?? (() => safeSend('status'));
+  const doStop  = onStop  ?? (() => safeSend(COMMAND.MOVE_STOP || 'move-stop'));
+  const doApply = onApply ?? (() => { /* parent can supply; keep as no-op */ });
+
+  const common =
+    'px-4 py-2 rounded text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed';
+
   return (
-    <div className="flex space-x-4">
-      {/* Start button */}
-      <button 
-        className="bg-green-500 text-white p-2 rounded" 
-        onClick={onStart}
+    <div className="flex space-x-3 items-center">
+      <button
+        className={`${common} bg-emerald-600 hover:bg-emerald-500`}
+        onClick={doStart}
+        disabled={disabled || busy}
+        aria-busy={busy}
+        aria-label="Start / Status probe"
+        title="Start / Status"
       >
-        Start
+        {busy ? 'Working…' : 'Start'}
       </button>
-      
-      {/* Stop button */}
-      <button 
-        className="bg-red-500 text-white p-2 rounded" 
-        onClick={onStop}
+
+      <button
+        className={`${common} bg-rose-600 hover:bg-rose-500`}
+        onClick={doStop}
+        disabled={disabled}
+        aria-label="Emergency Stop"
+        title="Stop motors"
       >
         Stop
       </button>
-      
-      {/* Apply Settings button */}
-      <button 
-        className="bg-blue-500 text-white p-2 rounded" 
-        onClick={onApply}
+
+      <button
+        className={`${common} bg-sky-600 hover:bg-sky-500`}
+        onClick={doApply}
+        disabled={disabled || busy}
+        aria-label="Apply Settings"
+        title="Apply settings"
       >
-        Apply Settings
+        Apply
       </button>
     </div>
   );
-};
-
-export default ControlButtons;
+}

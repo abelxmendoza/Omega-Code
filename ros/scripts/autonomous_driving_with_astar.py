@@ -30,7 +30,12 @@ from std_msgs.msg import Int32MultiArray
 from cv_bridge import CvBridge
 import tensorflow as tf
 import numpy as np
-import cv2
+import warnings
+try:
+    import cv2  # type: ignore
+except ImportError:  # pragma: no cover
+    cv2 = None  # type: ignore
+    warnings.warn("OpenCV not installed. Image processing disabled.", ImportWarning)
 import heapq
 
 # Load the pre-trained model
@@ -111,6 +116,9 @@ class AutonomousDriving:
                      [0, 0, 0, 0, 0]]
 
     def image_callback(self, data):
+        if cv2 is None:
+            rospy.logwarn("OpenCV not available, skipping image processing")
+            return
         self.latest_image = bridge.imgmsg_to_cv2(data, "bgr8")
         self.control_robot()
 

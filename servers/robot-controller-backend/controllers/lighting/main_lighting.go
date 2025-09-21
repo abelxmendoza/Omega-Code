@@ -1,81 +1,198 @@
 // File: /Omega-Code/servers/robot-controller-backend/controllers/lighting/main_lighting.go
 
 /*
-Lighting Controller
+Lighting WebSocket Controller for LED Strips (NeoPixels)
 
-This Go application provides a WebSocket server for controlling an LED strip.
-It processes lighting commands (color, mode, pattern, interval) sent from clients and executes them via Python scripts.
+This Go application provides a WebSocket server for real-time control of addressable RGB LED strips.
+It receives JSON lighting commands from frontend clients, then launches a privileged wrapper script
+(run_led.sh → sudo + venv python led_control.py) to apply color/mode/pattern/interval/brightness.
 
-Features:
-- Handles WebSocket connections for real-time control.
-- Executes Python scripts to configure LED behavior.
+Key points in this version:
+- Uses a wrapper (RUN_LED) so the Go process itself does not need sudo.
+- WS heartbeat supported: {"type":"ping","ts"} → {"type":"pong","ts"}.
+- Brightness is optional (*float64); default to 1.0 only when omitted (nil). 0.0 allowed and respected.
+- Short timeout on each invocation to avoid hanging processes.
 */
 
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os/exec"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-// LightingCommand represents the structure of a lighting command
+// Path to your privileged wrapper that runs the Python script via sudo.
+// Make sure this exists and is executable:
+//   /home/omega1/Omega-Code/servers/robot-controller-backend/controllers/lighting/run_led.sh
+const RUN_LED = "/home/omega1/Omega-Code/servers/robot-controller-backend/controllers/lighting/run_led.sh"
+
+// LightingCommand supports both string and int color fields for compatibility.
+// Brightness is a *float64 so we can tell if it was omitted (nil) vs provided (including 0).
 type LightingCommand struct {
-	Color    int    `json:"color"`    // 24-bit RGB color value
-	Mode     string `json:"mode"`     // Lighting mode (e.g., single, multi)
-	Pattern  string `json:"pattern"`  // Lighting pattern (e.g., static, blink)
-	Interval int    `json:"interval"` // Interval for dynamic patterns
+	Color      interface{} `json:"color"`                // Hex string "#rrggbb" or 24-bit int
+	Mode       string      `json:"mode"`                 // "single", "multi", "rainbow", etc.
+	Pattern    string      `json:"pattern"`              // "static", "blink", "fade", "off", etc.
+	Interval   int         `json:"interval"`             // ms (animation speed)
+	Brightness *float64    `json:"brightness,omitempty"` // [0,1]; nil => default 1.0
 }
 
-// WebSocket upgrader configuration
+// WebSocket upgrader with permissive CORS
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for simplicity
-	},
+	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// handleLighting processes incoming WebSocket messages for lighting control
+// hexColorString converts any supported color input to a 6-digit hex string (no leading '#').
+func hexColorString(color interface{}) (string, error) {
+	switch c := color.(type) {
+	case float64: // JSON numbers arrive as float64
+		return fmt.Sprintf("%06x", int(c)), nil
+	case string:
+		hex := strings.TrimPrefix(strings.TrimPrefix(c, "#"), "0x")
+		if len(hex) != 6 || !regexp.MustCompile(`^[0-9a-fA-F]{6}$`).MatchString(hex) {
+			return "", fmt.Errorf("invalid hex color: %s", c)
+		}
+		return strings.ToLower(hex), nil
+	default:
+		return "", fmt.Errorf("unsupported color type: %T", c)
+	}
+}
+
+// clampFloat limits v to [min, max]
+func clampFloat(v, min, max float64) float64 {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
+// handleLighting manages a single WebSocket connection for LED control
 func handleLighting(ws *websocket.Conn) {
-	defer ws.Close()
+	defer func() {
+		log.Println("[DISCONNECTED] Lighting client connection closed")
+		ws.Close()
+	}()
 	log.Println("Lighting WebSocket connection established")
 
+	// Send connection confirmation to the frontend
+	_ = ws.WriteJSON(map[string]interface{}{
+		"status":  "connected",
+		"service": "lighting",
+		"message": "Lighting WebSocket connection established",
+		"ts":      time.Now().UnixMilli(),
+	})
+
 	for {
-		var command LightingCommand
-		err := ws.ReadJSON(&command)
+		_, msg, err := ws.ReadMessage()
 		if err != nil {
-			log.Printf("Error reading WebSocket message: %v\n", err)
+			log.Printf("WebSocket read error: %v", err)
 			break
 		}
 
-		log.Printf("Received Command: %+v\n", command)
+		// Peek for heartbeat pings without assuming the payload is a LightingCommand
+		var envelope map[string]json.RawMessage
+		if err := json.Unmarshal(msg, &envelope); err == nil {
+			if tRaw, ok := envelope["type"]; ok {
+				var typ string
+				_ = json.Unmarshal(tRaw, &typ)
+				if typ == "ping" {
+					var ts any
+					_ = json.Unmarshal(envelope["ts"], &ts) // echo whatever came in
+					_ = ws.WriteJSON(map[string]interface{}{"type": "pong", "ts": ts})
+					continue // Skip normal command handling
+				}
+			}
+		}
 
-		// Build the Python script command
-		pythonCmd := fmt.Sprintf("python3 led_control.py %06x %s %s %d",
-			command.Color, command.Mode, command.Pattern, command.Interval)
+		// Handle lighting command
+		var command LightingCommand
+		if err := json.Unmarshal(msg, &command); err != nil {
+			log.Printf("JSON unmarshal error: %v", err)
+			continue
+		}
+		log.Printf("Received Lighting Command: %+v", command)
 
-		// Execute the Python script
-		log.Printf("Executing: %s\n", pythonCmd)
-		cmd := exec.Command("bash", "-c", pythonCmd)
-		output, err := cmd.CombinedOutput()
+		hexColor, err := hexColorString(command.Color)
 		if err != nil {
-			log.Printf("Command execution failed: %v\n", err)
+			log.Printf("Color parsing error: %v", err)
+			continue
+		}
+
+		// Brightness: default to 1.0 only when omitted; otherwise clamp to [0,1]
+		brightness := 1.0
+		if command.Brightness != nil {
+			brightness = clampFloat(*command.Brightness, 0.0, 1.0)
+		}
+
+		// Interval: guard against negatives
+		if command.Interval < 0 {
+			command.Interval = 0
+		}
+
+		// Build an arg list for the wrapper (no shell needed)
+		args := []string{
+			hexColor,
+			command.Mode,
+			command.Pattern,
+			strconv.Itoa(command.Interval),
+			fmt.Sprintf("%.3f", brightness),
+		}
+
+		log.Printf("Executing: %s %v", RUN_LED, args)
+
+		// Run the wrapper with a short timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		cmd := exec.CommandContext(ctx, RUN_LED, args...)
+		output, err := cmd.CombinedOutput()
+		cancel()
+
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("Command timed out after 5s")
+		}
+		if err != nil {
+			log.Printf("Command execution failed: %v", err)
+			log.Printf("Output: %s", string(output))
+			// Optionally notify client of failure
+			_ = ws.WriteJSON(map[string]any{
+				"type":   "lighting_result",
+				"ok":     false,
+				"error":  err.Error(),
+				"output": string(output),
+				"ts":     time.Now().UnixMilli(),
+			})
 		} else {
-			log.Printf("Command output: %s\n", string(output))
+			log.Printf("Command output: %s", string(output))
+			_ = ws.WriteJSON(map[string]any{
+				"type":   "lighting_result",
+				"ok":     true,
+				"output": string(output),
+				"ts":     time.Now().UnixMilli(),
+			})
 		}
 	}
 }
 
+// main function starts the lighting WebSocket server on port 8082
 func main() {
 	http.HandleFunc("/lighting", func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			log.Printf("WebSocket upgrade failed: %v\n", err)
+			log.Printf("WebSocket upgrade failed: %v", err)
 			return
 		}
+		log.Printf("[CONNECTED] Lighting client: %s", r.RemoteAddr)
 		handleLighting(conn)
 	})
 

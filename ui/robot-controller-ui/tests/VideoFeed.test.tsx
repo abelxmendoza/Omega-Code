@@ -1,15 +1,13 @@
+// tests/VideoFeed.test.tsx
 import React from 'react';
-import { render } from '@testing-library/react';
-import VideoFeed from '../src/components/VideoFeed';
-import { act } from 'react-dom/test-utils';
+import { render, screen } from '@testing-library/react';
+import '@testing-library/jest-dom';
+import VideoFeed from '@/components/VideoFeed'; // use your "@/"" alias
 
 describe('VideoFeed', () => {
-  it('renders VideoFeed component', () => {
-    const { getByAltText } = render(<VideoFeed />);
-    expect(getByAltText('Video Feed')).toBeInTheDocument();
-  });
-
-  act(() => {
-    // fire events that update state
+  it('renders the live video image', () => {
+    render(<VideoFeed />);
+    // Component renders: alt="Live video feed"
+    expect(screen.getByAltText(/live video feed/i)).toBeInTheDocument();
   });
 });
