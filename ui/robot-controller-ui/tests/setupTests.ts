@@ -24,11 +24,16 @@ const mockWebSocket = {
   CLOSED: WebSocket.CLOSED,
 };
 
-(global as any).WebSocket = jest.fn(() => mockWebSocket);
-(global as any).WebSocket.CONNECTING = WebSocket.CONNECTING;
-(global as any).WebSocket.OPEN = WebSocket.OPEN;
-(global as any).WebSocket.CLOSING = WebSocket.CLOSING;
-(global as any).WebSocket.CLOSED = WebSocket.CLOSED;
+const WebSocketMock = jest.fn(() => mockWebSocket);
+WebSocketMock.CONNECTING = WebSocket.CONNECTING;
+WebSocketMock.OPEN = WebSocket.OPEN;
+WebSocketMock.CLOSING = WebSocket.CLOSING;
+WebSocketMock.CLOSED = WebSocket.CLOSED;
+
+(global as any).WebSocket = WebSocketMock;
+(global as any).WebSocket.mock = {
+  instances: [mockWebSocket]
+};
 
 // If some components rely on createObjectURL (e.g., camera blobs), provide stubs:
 if (typeof URL !== 'undefined') {
