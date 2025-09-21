@@ -6,7 +6,7 @@ describe('IntervalTiming', () => {
   it('renders IntervalTiming component and sets interval', () => {
     const onSetInterval = jest.fn();
     const { getByLabelText } = render(<IntervalTiming onSetInterval={onSetInterval} />);
-    fireEvent.change(getByLabelText('Interval (ms):'), { target: { value: 1000 } });
-    expect(onSetInterval).toHaveBeenCalledWith(1000);
+    fireEvent.change(getByLabelText('Interval (ms):'), { target: { value: '2000' } });
+    expect(onSetInterval).toHaveBeenCalledWith(2000);
   });
 });

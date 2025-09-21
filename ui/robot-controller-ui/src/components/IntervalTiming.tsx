@@ -3,19 +3,27 @@ import React from 'react';
 interface IntervalTimingProps {
   interval?: number;
   onIntervalChange?: (interval: number) => void;
+  onSetInterval?: (interval: number) => void; // For test compatibility
 }
 
 const IntervalTiming: React.FC<IntervalTimingProps> = ({ 
   interval = 1000, 
-  onIntervalChange 
+  onIntervalChange,
+  onSetInterval
 }) => {
+  const handleChange = (value: number) => {
+    onIntervalChange?.(value);
+    onSetInterval?.(value); // Support both prop names
+  };
+
   return (
     <div>
-      <label>Interval (ms):</label>
+      <label htmlFor="interval-input">Interval (ms):</label>
       <input
+        id="interval-input"
         type="number"
         value={interval}
-        onChange={(e) => onIntervalChange?.(Number(e.target.value))}
+        onChange={(e) => handleChange(Number(e.target.value))}
       />
     </div>
   );

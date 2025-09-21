@@ -11,6 +11,25 @@ beforeEach(() => server.use(...handlers)) // reset defaults each test
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
+// WebSocket Mock
+const mockWebSocket = {
+  addEventListener: jest.fn(),
+  removeEventListener: jest.fn(),
+  send: jest.fn(),
+  close: jest.fn(),
+  readyState: WebSocket.CONNECTING,
+  CONNECTING: WebSocket.CONNECTING,
+  OPEN: WebSocket.OPEN,
+  CLOSING: WebSocket.CLOSING,
+  CLOSED: WebSocket.CLOSED,
+};
+
+(global as any).WebSocket = jest.fn(() => mockWebSocket);
+(global as any).WebSocket.CONNECTING = WebSocket.CONNECTING;
+(global as any).WebSocket.OPEN = WebSocket.OPEN;
+(global as any).WebSocket.CLOSING = WebSocket.CLOSING;
+(global as any).WebSocket.CLOSED = WebSocket.CLOSED;
+
 // If some components rely on createObjectURL (e.g., camera blobs), provide stubs:
 if (typeof URL !== 'undefined') {
   const U: any = URL

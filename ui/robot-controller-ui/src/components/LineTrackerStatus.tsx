@@ -11,7 +11,7 @@ const LineTrackerStatus: React.FC<LineTrackerStatusProps> = ({
 }) => {
   return (
     <div>
-      <h3>Line Tracker Status</h3>
+      <h3>Line Tracking Status</h3>
       <div>Status: {status}</div>
       <button onClick={onToggle}>Toggle</button>
     </div>
