@@ -15,6 +15,7 @@ from controllers.lighting.patterns import (
     dual_color,
     fade,
     music_visualizer,
+    lightshow,
     rainbow,
 )
 from rpi_ws281x import Color
@@ -67,7 +68,13 @@ def apply_lighting_mode(payload: dict, led_controller):
         elif pattern == "blink":
             blink(strip, Color(*color1_scaled), Color(*color2_scaled), delay=interval / 1000.0)
         elif pattern == "chase":
+
             chase(strip, Color(*color1_scaled), Color(*color2_scaled), delay=interval / 1000.0)
+
+            chase(strip, Color(*color1), Color(*color2), delay=interval / 1000.0)
+        elif pattern == "lightshow" or mode == "lightshow":
+            lightshow(strip, color1, interval_ms=interval, brightness=brightness)
+     master
         elif pattern == "rainbow" or mode == "rainbow":
             # Accept both "rainbow" as pattern or mode
             rainbow(strip, wait_ms=interval)

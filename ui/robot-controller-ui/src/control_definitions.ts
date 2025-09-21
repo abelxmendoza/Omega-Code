@@ -86,6 +86,7 @@ export const LIGHTING_PATTERNS = [
   'chase',    // chasing effect
   'rainbow',  // spectrum sweep
   'music',    // audio reactive pulse
+  'lightshow', // multi-stage animated showpiece
 ] as const;
 
 // Lighting Mode Constants

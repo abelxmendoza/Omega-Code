@@ -20,6 +20,16 @@ from typing import Sequence, Tuple
 import numpy as np
 from rpi_ws281x import Color
 
+
+def _scale_rgb(rgb, scale, brightness):
+    """Scale an (r,g,b) tuple by a factor and brightness clamp to 0..255."""
+    r, g, b = rgb
+    return (
+        max(0, min(255, int(r * scale * brightness))),
+        max(0, min(255, int(g * scale * brightness))),
+        max(0, min(255, int(b * scale * brightness))),
+    )
+
 def color_wipe(strip, color):
     """
     Fill all LEDs with a single solid color.
@@ -128,6 +138,7 @@ def rainbow(strip, wait_ms=20, iterations=1):
             strip.setPixelColor(i, wheel((i + j) & 255))
         strip.show()
         sleep(wait_ms / 1000.0)
+
 
 # --- Advanced patterns -----------------------------------------------------
 
@@ -253,5 +264,54 @@ def music_visualizer(
         strip.show()
         offset = (offset + 1) % num_pixels
         time.sleep(update_sec)
+
+def lightshow(strip, base_rgb, interval_ms=100, brightness=1.0, cycles=3):
+    """Create a multi-stage lightshow using the provided base color.
+
+    The effect blends rotating color bands derived from ``base_rgb`` with
+    white sparkles to create a lively showcase without requiring random
+    numbers (making it deterministic for testing).
+
+    Args:
+        strip: NeoPixel strip instance.
+        base_rgb: Tuple of the primary color from the UI payload.
+        interval_ms: Base interval from the payload in milliseconds.
+        brightness: Float multiplier (0–1) applied to all palette colors.
+        cycles: Number of rotations through the effect.
+    """
+
+    if not isinstance(base_rgb, tuple) or len(base_rgb) != 3:
+        raise ValueError("base_rgb must be an (r, g, b) tuple")
+
+    # Build a palette that mixes the requested color with softer accents.
+    palette = [
+        Color(*_scale_rgb(base_rgb, 1.0, brightness)),
+        Color(*_scale_rgb(base_rgb, 0.6, brightness)),
+        Color(*_scale_rgb(base_rgb, 0.25, brightness)),
+        Color(*_scale_rgb((255, 255, 255), 0.5, brightness)),
+    ]
+
+    sparkle = Color(*_scale_rgb((255, 255, 255), 1.0, brightness))
+    delay = max(interval_ms / 1000.0, 0.02)
+    sparkle_delay = max(delay / 2.0, 0.01)
+    num_pixels = strip.numPixels()
+    total_cycles = max(1, cycles)
+
+    for cycle in range(total_cycles):
+        # Rotating bands derived from the palette
+        for offset in range(num_pixels):
+            for i in range(num_pixels):
+                strip.setPixelColor(i, palette[(i + offset + cycle) % len(palette)])
+            strip.show()
+            sleep(delay)
+
+        # Sparkle sweep to add extra movement/highlights
+        for offset in range(num_pixels):
+            for i in range(num_pixels):
+                strip.setPixelColor(i, palette[(i + offset + cycle) % len(palette)])
+            strip.setPixelColor((offset * 2) % num_pixels, sparkle)
+            strip.show()
+            sleep(sparkle_delay)
+
 
 # Lighting patterns for NeoPixels

@@ -3,7 +3,7 @@
 /*
 # Summary:
 Provides a selection interface for various lighting patterns.
-Users can choose from "Static," "Blink," "Fade," "Chase," and "Rainbow" patterns.
+Users can choose from "Static," "Blink," "Fade," "Chase," "Rainbow," and "Lightshow" patterns.
 The selected pattern is passed to the parent component via the `onSelectPattern` callback.
 */
 

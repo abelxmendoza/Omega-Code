@@ -38,6 +38,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv, find_dotenv
 
 # Local
+from video.aruco_detection import ArucoDetector
 from video.camera import Camera
 from video.face_recognition import FaceRecognizer
 from video.motion_detection import MotionDetector
@@ -72,6 +73,8 @@ FACE_RECOGNITION_ENABLED = os.getenv("FACE_RECOGNITION", "1").lower() in ("1", "
 FACE_RECOGNITION_THRESHOLD = float(os.getenv("FACE_RECOGNITION_THRESHOLD", "0.6"))
 KNOWN_FACES_DIR = os.getenv("KNOWN_FACES_DIR") or None
 
+ARUCO_DETECTION_ENABLED = os.getenv("ARUCO_DETECTION", "1").lower() in ("1", "true", "yes", "on")
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
@@ -88,6 +91,7 @@ camera: Optional[Camera] = None
 motion_detector: Optional[MotionDetector] = None
 tracker: Optional[ObjectTracker] = None
 face_recognizer: Optional[FaceRecognizer] = None
+aruco_detector: Optional[ArucoDetector] = None
 tracking_enabled = False
 _last_init_attempt = 0.0
 
@@ -102,6 +106,20 @@ if FACE_RECOGNITION_ENABLED:
     except Exception as exc:  # pragma: no cover - defensive guard for runtime issues
         face_recognizer = None
         logging.warning("Face recognition initialisation failed: %s", exc)
+
+if ARUCO_DETECTION_ENABLED:
+    try:
+        aruco_detector = ArucoDetector()
+        if aruco_detector and aruco_detector.active:
+            logging.info(
+                "ArUco detection enabled using %s.",
+                aruco_detector.dictionary_name,
+            )
+        elif aruco_detector and not aruco_detector.active:
+            logging.info("ArUco detection configured but inactive (cv2 contrib module missing or dictionary invalid).")
+    except Exception as exc:  # pragma: no cover - defensive guard for runtime issues
+        aruco_detector = None
+        logging.warning("ArUco detection initialisation failed: %s", exc)
 
 
 
@@ -209,6 +227,9 @@ def generate_frames():
         if FACE_RECOGNITION_ENABLED and face_recognizer and face_recognizer.active:
             frame, _ = face_recognizer.annotate(frame)
 
+        if ARUCO_DETECTION_ENABLED and aruco_detector and aruco_detector.active:
+            frame, _ = aruco_detector.annotate(frame)
+
         # Encode JPEG
         import cv2 as _cv2  # type: ignore
         ok, buf = _cv2.imencode(".jpg", frame)
@@ -274,6 +295,12 @@ def health():
         "configured": FACE_RECOGNITION_ENABLED,
         "active": bool(face_recognizer and face_recognizer.active),
         "known_faces": int(face_recognizer.known_faces_count if face_recognizer else 0),
+    }
+    payload["aruco"] = {
+        "configured": ARUCO_DETECTION_ENABLED,
+        "active": bool(aruco_detector and aruco_detector.active),
+        "dictionary": aruco_detector.dictionary_name if aruco_detector else None,
+        "pose_estimation": bool(aruco_detector and aruco_detector.pose_estimation_enabled),
     }
     return jsonify(payload), (200 if connected else 503)
 

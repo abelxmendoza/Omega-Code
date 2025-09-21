@@ -91,7 +91,7 @@ mock==4.0.3
 numpy==1.26.4
 
 # Headless OpenCV (no GUI libs) — good for servers/containers
-opencv-python-headless==4.9.0.80
+opencv-contrib-python-headless==4.9.0.80
 
 ####################################
 # Optional: prod process manager   #

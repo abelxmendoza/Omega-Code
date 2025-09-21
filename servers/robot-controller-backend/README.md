@@ -92,6 +92,8 @@ go run sensors/main_ultrasonic.go
   - `CAMERA_BACKEND` (`auto`, `picamera2`, `v4l2`), `CAMERA_WIDTH`, `CAMERA_HEIGHT`
   - `STARTUP_RETRY_SEC`, `RESTART_ON_STALL`, `STALE_MS`, `WATCHDOG_PERIOD_MS`
   - `ORIGIN_ALLOW`, `PUBLIC_BASE_URL(_ALT)` for logging, `CERT_PATH`, `KEY_PATH`
+  - `FACE_RECOGNITION`, `KNOWN_FACES_DIR`, `FACE_RECOGNITION_THRESHOLD`
+  - `ARUCO_DETECTION`, `ARUCO_DICTIONARY`, `ARUCO_MARKER_LENGTH`, `ARUCO_CALIBRATION_FILE`, `ARUCO_DRAW_AXES`
 - Registers the control blueprint (`servers/control_api.py`) so `/snapshot` can
   capture or save still frames.
 
