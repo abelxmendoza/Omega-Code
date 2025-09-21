@@ -7,6 +7,7 @@ import SensorVisualization from '@/components/SensorVisualization';
 import SpeedControl from '@/components/SpeedControl';
 import Status from '@/components/Status';
 import ComponentWrapper from '@/components/ComponentWrapper';
+import AIVision from '@/components/AIVision';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useVoiceControl } from '@/hooks/useVoiceControl';
 
@@ -224,6 +225,26 @@ const DemoPage: React.FC = () => {
               showHistory={true}
             />
           </div>
+        </div>
+
+        {/* AI Computer Vision */}
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-white mb-4">AI Computer Vision</h2>
+          <ComponentWrapper>
+            <AIVision 
+              onObjectDetected={(objects) => {
+                console.log('Objects detected:', objects);
+              }}
+              onFaceRecognized={(faces) => {
+                console.log('Faces recognized:', faces);
+              }}
+              onMotionDetected={(motion) => {
+                console.log('Motion detected:', motion);
+              }}
+              enabled={true}
+              confidence={0.7}
+            />
+          </ComponentWrapper>
         </div>
 
         {/* Basic Sensor Dashboard */}
