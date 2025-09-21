@@ -1,100 +1,37 @@
-# File: /Omega-Code/servers/robot-controller-backend/requirements.txt
-#
-# Summary
-# -------
-# Python deps for the robot backend services (Flask HTTP, asyncio WebSockets,
-# sensors/actuators, and OpenCV for video). On Raspberry Pi OS Bookworm,
-# CSI cameras use libcamera/Picamera2 which should be installed via APT,
-# NOT pip.
-#
-# Install system deps first (ONE-TIME on the Pi):
-#   sudo apt-get update -y
-#   sudo apt-get install -y \
-#     python3-picamera2 rpicam-apps libcamera-apps \
-#     python3-libcamera v4l-utils
-#
-# Optional (Pi 5 GPIO):
-#   sudo apt-get install -y python3-lgpio
-#
-# Then install Python deps:
-#   cd /home/omega1/Omega-Code/servers/robot-controller-backend
-#   python -m venv venv && source venv/bin/activate
-#   pip install --upgrade pip
-#   pip install -r requirements.txt
-#
-# Notes:
-# - Do NOT add "picamera2" to pip deps (it’s shipped by Raspberry Pi via apt).
-# - NumPy is pinned to 1.26.x to keep OpenCV wheels happy on ARM (Python 3.11).
-# - If you switch to Python 3.12, you’ll need NumPy >= 2 and matching OpenCV.
+# Core dependencies
+websockets>=11.0.3
+asyncio-mqtt>=0.13.0
 
-############################
-# Core hardware libraries  #
-############################
+# Hardware control libraries
+RPi.GPIO>=0.7.1
+adafruit-circuitpython-neopixel>=6.4.1
+adafruit-circuitpython-dht>=3.4.0
+adafruit-circuitpython-hcsr04>=3.3.0
+adafruit-circuitpython-tsl2561>=3.2.0
 
-# RPi.GPIO for Pi 3/4 (skip on x86 dev machines automatically)
-RPi.GPIO==0.7.1a4 ; platform_system == "Linux" and (platform_machine == "armv7l" or platform_machine == "aarch64")
+# Camera libraries
+opencv-python>=4.8.0
+picamera2>=0.3.12
+Pillow>=10.0.0
 
-# Pi 5 typically uses lgpio via apt (uncomment below ONLY if you really need the PyPI package)
-# lgpio
+# Sensor libraries
+w1thermsensor>=2.0.0
+adafruit-circuitpython-mpu6050>=3.2.0
+adafruit-circuitpython-bno055>=3.2.0
 
-# LEDs (WS281x), I2C
-rpi_ws281x==4.3.4
-smbus2==0.4.1
-Adafruit-PCA9685==1.0.1
+# Serial communication
+pyserial>=3.5
 
-############################
-# Web servers / sockets    #
-############################
+# Data processing
+numpy>=1.24.0
+scipy>=1.11.0
 
-Flask==2.3.3
-Werkzeug==2.3.8
-flask-cors==4.0.1
+# Logging and monitoring
+structlog>=23.1.0
 
-fastapi==0.111.0
-uvicorn[standard]==0.30.1
-
-# Your movement/lighting/etc servers use "websockets" (asyncio)
-websockets>=12,<13
-
-# If you still use Flask-SocketIO anywhere (keep pinned with eventlet)
-Flask-SocketIO==5.3.4
-eventlet==0.33.3
-
-############################
-# Utilities                #
-############################
-
-python-dotenv==1.0.1
-requests==2.31.0
-rich==13.7.1
-
-############################
-# Audio reactive lighting  #
-############################
-
-# Captures microphone audio for the music-reactive LED pattern. Optional on dev machines.
-sounddevice==0.4.6
-
-############################
-# Testing                  #
-############################
-
-pytest==8.2.2
-pytest-mock==3.14.0
-mock==4.0.3
-
-####################################
-# Vision (OpenCV headless + NumPy) #
-####################################
-
-# Pin NumPy 1.x so OpenCV wheels import cleanly on ARM (Python 3.11)
-numpy==1.26.4
-
-# Headless OpenCV (no GUI libs) — good for servers/containers
-opencv-contrib-python-headless==4.9.0.80
-
-####################################
-# Optional: prod process manager   #
-####################################
-
-gunicorn==21.2.0
+# Development dependencies
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.7.0
+flake8>=6.0.0
+mypy>=1.5.0

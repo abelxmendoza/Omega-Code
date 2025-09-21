@@ -38,11 +38,11 @@ from flask_cors import CORS
 from dotenv import load_dotenv, find_dotenv
 
 # Local
-from video.aruco_detection import ArucoDetector
-from video.camera import Camera
-from video.face_recognition import FaceRecognizer
-from video.motion_detection import MotionDetector
-from video.object_tracking import ObjectTracker
+from .aruco_detection import ArucoDetector
+from .camera import Camera
+from .face_recognition import FaceRecognizer
+from .motion_detection import MotionDetector
+from .object_tracking import ObjectTracker
 
 load_dotenv(find_dotenv())
 
