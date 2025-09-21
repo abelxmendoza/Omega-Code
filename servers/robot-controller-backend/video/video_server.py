@@ -37,12 +37,20 @@ from flask import Flask, Response, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv, find_dotenv
 
-# Local
-from .aruco_detection import ArucoDetector
-from .camera import Camera
-from .face_recognition import FaceRecognizer
-from .motion_detection import MotionDetector
-from .object_tracking import ObjectTracker
+# Local imports - try relative first, then absolute
+try:
+    from .aruco_detection import ArucoDetector
+    from .camera import Camera
+    from .face_recognition import FaceRecognizer
+    from .motion_detection import MotionDetector
+    from .object_tracking import ObjectTracker
+except ImportError:
+    # Fallback to absolute imports when running as script
+    from aruco_detection import ArucoDetector
+    from camera import Camera
+    from face_recognition import FaceRecognizer
+    from motion_detection import MotionDetector
+    from object_tracking import ObjectTracker
 
 load_dotenv(find_dotenv())
 

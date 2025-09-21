@@ -1,23 +1,6 @@
 """
-📌 Video Processing Package
-
-This package contains:
-✅ Camera module
-✅ Motion detection
-✅ Object tracking
+Video processing package for robot controller
 """
 
-from .aruco_detection import ArucoDetection, ArucoDetector
-from .camera import Camera
-from .face_recognition import FaceRecognizer
-from .motion_detection import MotionDetector
-from .object_tracking import ObjectTracker
-
-__all__ = [
-    "ArucoDetection",
-    "ArucoDetector",
-    "Camera",
-    "FaceRecognizer",
-    "MotionDetector",
-    "ObjectTracker",
-]
+__version__ = "1.0.0"
+__author__ = "Omega Robot Controller Team"
