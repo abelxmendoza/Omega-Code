@@ -1,83 +1,125 @@
-/*
-# File: /src/hooks/useWebSocket.ts
-# Summary:
-A centralized and reusable WebSocket hook for managing WebSocket connections, sending commands, 
-and handling incoming messages efficiently.
-*/
+import { useState, useEffect, useRef, useCallback } from 'react';
 
-import { useEffect, useRef, useState } from 'react';
+interface WebSocketData {
+  sensors?: Record<string, any>;
+  status?: {
+    connected: boolean;
+    battery: number;
+  };
+  movement?: {
+    speed: number;
+    direction: string;
+  };
+  camera?: {
+    tilt: number;
+    pan: number;
+  };
+  led?: {
+    color: string;
+    brightness: number;
+    pattern: string;
+  };
+}
 
-/**
- * Custom hook for managing WebSocket connections.
- * 
- * @param wsUrl - The WebSocket server URL.
- * @param onMessage - Callback to process incoming messages.
- * @param onOpen - Optional callback executed when the WebSocket connection is successfully established.
- * @param onClose - Optional callback executed when the WebSocket connection is closed.
- * @returns An object containing the `sendCommand` function and the WebSocket connection status.
- */
-export const useWebSocket = (
-  wsUrl: string,
-  onMessage: (data: any) => void,
-  onOpen?: () => void,
-  onClose?: () => void
-) => {
-  const ws = useRef<WebSocket | null>(null); // Holds the WebSocket instance
-  const [isConnected, setIsConnected] = useState(false); // Tracks the connection status
+interface UseWebSocketOptions {
+  url?: string;
+  reconnectInterval?: number;
+  maxReconnectAttempts?: number;
+}
+
+export const useWebSocket = (options: UseWebSocketOptions = {}) => {
+  const {
+    url = process.env.NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT || 'ws://localhost:8080/ws',
+    reconnectInterval = 3000,
+    maxReconnectAttempts = 5
+  } = options;
+
+  const [data, setData] = useState<WebSocketData>({});
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const connect = useCallback(() => {
+    try {
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        setIsConnected(true);
+        setError(null);
+        setReconnectAttempts(0);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const newData = JSON.parse(event.data);
+          setData(prevData => ({ ...prevData, ...newData }));
+        } catch (err) {
+          console.error('Failed to parse WebSocket message:', err);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        setIsConnected(false);
+        
+        if (reconnectAttempts < maxReconnectAttempts) {
+          console.log(`Attempting to reconnect... (${reconnectAttempts + 1}/${maxReconnectAttempts})`);
+          reconnectTimeoutRef.current = setTimeout(() => {
+            setReconnectAttempts(prev => prev + 1);
+            connect();
+          }, reconnectInterval);
+        } else {
+          setError('Max reconnection attempts reached');
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+        setError('WebSocket connection error');
+      };
+
+    } catch (err) {
+      console.error('Failed to create WebSocket:', err);
+      setError('Failed to create WebSocket connection');
+    }
+  }, [url, reconnectInterval, maxReconnectAttempts, reconnectAttempts]);
+
+  const disconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setIsConnected(false);
+  }, []);
+
+  const sendMessage = useCallback((message: any) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(message));
+    } else {
+      console.warn('WebSocket is not connected');
+    }
+  }, []);
 
   useEffect(() => {
-    // Establish WebSocket connection
-    ws.current = new WebSocket(wsUrl);
+    connect();
+    return () => disconnect();
+  }, [connect, disconnect]);
 
-    ws.current.onopen = () => {
-      console.log('WebSocket connection established');
-      setIsConnected(true);
-      onOpen?.(); // Call optional onOpen callback
-    };
-
-    ws.current.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data); // Parse the incoming WebSocket message
-        onMessage(data); // Trigger the onMessage callback with parsed data
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
-      }
-    };
-
-    ws.current.onclose = () => {
-      console.log('WebSocket connection closed');
-      setIsConnected(false);
-      onClose?.(); // Call optional onClose callback
-    };
-
-    ws.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    // Clean up WebSocket connection on component unmount
-    return () => {
-      if (ws.current) {
-        ws.current.close();
-        console.log('WebSocket connection closed on cleanup');
-      }
-    };
-  }, [wsUrl, onMessage, onOpen, onClose]);
-
-  /**
-   * Sends a command through the WebSocket connection.
-   * 
-   * @param command - The command to send (e.g., "move-up").
-   * @param data - Optional additional payload to send with the command.
-   */
-  const sendCommand = (command: string, data?: Record<string, any>) => {
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      const payload = { command, ...data };
-      ws.current.send(JSON.stringify(payload)); // Send command with optional data
-      console.log('Command sent:', payload);
-    } else {
-      console.error('WebSocket is not open. Command not sent:', command);
-    }
+  return {
+    data,
+    isConnected,
+    error,
+    reconnectAttempts,
+    sendMessage,
+    connect,
+    disconnect
   };
-
-  return { sendCommand, isConnected }; // Expose `sendCommand` and connection status
 };

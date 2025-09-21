@@ -3,9 +3,12 @@ import CarControlPanel from '@/components/CarControlPanel';
 import CameraControlPanel from '@/components/CameraControlPanel';
 import LedControl from '@/components/LedControl';
 import SensorDashboard from '@/components/SensorDashboard';
+import SensorVisualization from '@/components/SensorVisualization';
 import SpeedControl from '@/components/SpeedControl';
 import Status from '@/components/Status';
 import ComponentWrapper from '@/components/ComponentWrapper';
+import { useWebSocket } from '@/hooks/useWebSocket';
+import { useVoiceControl } from '@/hooks/useVoiceControl';
 
 const DemoPage: React.FC = () => {
   const [carSpeed, setCarSpeed] = useState(50);
@@ -18,6 +21,23 @@ const DemoPage: React.FC = () => {
   const [ledInterval, setLedInterval] = useState(1000);
   const [connected, setConnected] = useState(true);
   const [batteryLevel, setBatteryLevel] = useState(85);
+
+  // WebSocket integration
+  const { data: wsData, isConnected: wsConnected, sendMessage } = useWebSocket();
+
+  // Voice control
+  const { 
+    isListening, 
+    isSupported: voiceSupported, 
+    transcript, 
+    error: voiceError,
+    toggleListening 
+  } = useVoiceControl({
+    onCommand: (command) => {
+      console.log('Voice command:', command);
+      handleCarCommand(command);
+    }
+  });
 
   const handleCarCommand = (command: string) => {
     console.log('Car command:', command);
@@ -46,26 +66,53 @@ const DemoPage: React.FC = () => {
           <ComponentWrapper title="System Status">
             <div className="flex flex-col sm:flex-row gap-4">
               <Status 
-                connected={connected} 
-                batteryLevel={batteryLevel}
+                connected={wsConnected || connected} 
+                batteryLevel={wsData.status?.battery || batteryLevel}
                 upCount={4}
                 total={4}
               />
               <div className="flex gap-2">
                 <button 
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition-all duration-200 hover:scale-105"
                   onClick={() => setConnected(!connected)}
                 >
                   Toggle Connection
                 </button>
                 <button 
-                  className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm"
+                  className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition-all duration-200 hover:scale-105"
                   onClick={() => setBatteryLevel(Math.random() * 100)}
                 >
                   Random Battery
                 </button>
+                {voiceSupported && (
+                  <button 
+                    className={`px-3 py-1 rounded text-sm transition-all duration-200 hover:scale-105 ${
+                      isListening 
+                        ? 'bg-red-600 hover:bg-red-700 text-white' 
+                        : 'bg-purple-600 hover:bg-purple-700 text-white'
+                    }`}
+                    onClick={toggleListening}
+                  >
+                    {isListening ? '🎤 Stop Voice' : '🎤 Voice Control'}
+                  </button>
+                )}
               </div>
             </div>
+            {isListening && (
+              <div className="mt-3 p-2 bg-purple-900/30 rounded text-purple-200 text-sm">
+                🎤 Listening... Say &quot;forward&quot;, &quot;backward&quot;, &quot;left&quot;, &quot;right&quot;, or &quot;stop&quot;
+              </div>
+            )}
+            {transcript && (
+              <div className="mt-2 p-2 bg-blue-900/30 rounded text-blue-200 text-sm">
+                📝 Heard: &quot;{transcript}&quot;
+              </div>
+            )}
+            {voiceError && (
+              <div className="mt-2 p-2 bg-red-900/30 rounded text-red-200 text-sm">
+                ❌ Voice Error: {voiceError}
+              </div>
+            )}
           </ComponentWrapper>
         </div>
 
@@ -116,7 +163,70 @@ const DemoPage: React.FC = () => {
           </ComponentWrapper>
         </div>
 
-        {/* Sensor Dashboard */}
+        {/* Advanced Sensor Visualizations */}
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-white mb-4">Advanced Sensor Visualizations</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <SensorVisualization
+              sensorId="ultrasonic"
+              data={{
+                value: 25,
+                unit: 'cm',
+                timestamp: Date.now(),
+                min: 0,
+                max: 200
+              }}
+              type="gauge"
+              color="#10b981"
+              size="medium"
+              showHistory={true}
+            />
+            <SensorVisualization
+              sensorId="temperature"
+              data={{
+                value: 22.5,
+                unit: '°C',
+                timestamp: Date.now(),
+                min: -10,
+                max: 50
+              }}
+              type="line"
+              color="#f59e0b"
+              size="medium"
+              showHistory={true}
+            />
+            <SensorVisualization
+              sensorId="humidity"
+              data={{
+                value: 45,
+                unit: '%',
+                timestamp: Date.now(),
+                min: 0,
+                max: 100
+              }}
+              type="radial"
+              color="#3b82f6"
+              size="medium"
+              showHistory={true}
+            />
+            <SensorVisualization
+              sensorId="light"
+              data={{
+                value: 850,
+                unit: 'lux',
+                timestamp: Date.now(),
+                min: 0,
+                max: 1000
+              }}
+              type="bar"
+              color="#8b5cf6"
+              size="medium"
+              showHistory={true}
+            />
+          </div>
+        </div>
+
+        {/* Basic Sensor Dashboard */}
         <ComponentWrapper>
           <SensorDashboard 
             sensors={mockSensors}
