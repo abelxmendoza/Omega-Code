@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 
 interface SpeedControlProps {
   speed?: number;
@@ -8,7 +8,7 @@ interface SpeedControlProps {
   max?: number;
 }
 
-const SpeedControl: React.FC<SpeedControlProps> = ({ 
+const SpeedControl: React.FC<SpeedControlProps> = memo(({ 
   speed = 50, 
   onSpeedChange,
   label = "Speed",
@@ -62,6 +62,8 @@ const SpeedControl: React.FC<SpeedControlProps> = ({
       </div>
     </div>
   );
-};
+});
+
+SpeedControl.displayName = 'SpeedControl';
 
 export default SpeedControl;

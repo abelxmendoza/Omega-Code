@@ -18,8 +18,10 @@ import '@testing-library/jest-dom';
 import Status from '@/components/Status';
 
 // Helper: matches "XX%" even if whitespace is split across nodes (e.g., "75\n %")
-const hasPercent = (n: number) =>
-  screen.getByText((_, el) => el?.textContent?.match(new RegExp(`\\b${n}\\s*%\\b`)) != null);
+const hasPercent = (n: number) => {
+  const element = screen.getByText(`${n}%`);
+  return element;
+};
 
 // Helper: returns the inner bar element located next to the percent text.
 // Expected structure:
@@ -32,8 +34,8 @@ const barForPercent = (n: number) => {
   const meter = percentSpan.previousElementSibling as HTMLElement | null;
   const inner = meter?.firstElementChild as HTMLElement | null;
   // Defensive checks: clearer error messages if the DOM shifts
-  expect(meter, 'Battery meter container not found before the percent label').toBeInTheDocument();
-  expect(inner, 'Inner battery fill div not found inside the meter container').toBeInTheDocument();
+  expect(meter).toBeInTheDocument();
+  expect(inner).toBeInTheDocument();
   return inner!;
 };
 

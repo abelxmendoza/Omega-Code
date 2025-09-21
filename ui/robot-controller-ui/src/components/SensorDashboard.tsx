@@ -13,7 +13,7 @@ const SensorDashboard: React.FC<SensorDashboardProps> = ({
     <div className="p-4 bg-gray-800 rounded-lg">
       <h3 className="text-white font-bold mb-4">Sensor Dashboard</h3>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {Object.entries(sensors).map(([key, value]) => (
           <div key={key} className="bg-gray-700 p-3 rounded">
             <div className="text-white font-semibold mb-2">{key}</div>

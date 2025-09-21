@@ -30,30 +30,30 @@ const CarControlPanel: React.FC<CarControlPanelProps> = ({
         </div>
 
         {/* Movement Controls */}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-2 gap-2">
           <button 
-            className="p-3 bg-green-600 hover:bg-green-700 text-white rounded font-semibold"
+            className="p-2 sm:p-3 bg-green-600 hover:bg-green-700 text-white rounded font-semibold text-sm sm:text-base"
             onClick={() => onCommand?.('forward')}
           >
-            ↑ Forward
+            <span className="hidden sm:inline">↑ </span>Forward
           </button>
           <button 
-            className="p-3 bg-red-600 hover:bg-red-700 text-white rounded font-semibold"
+            className="p-2 sm:p-3 bg-red-600 hover:bg-red-700 text-white rounded font-semibold text-sm sm:text-base"
             onClick={() => onCommand?.('backward')}
           >
-            ↓ Backward
+            <span className="hidden sm:inline">↓ </span>Backward
           </button>
           <button 
-            className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold"
+            className="p-2 sm:p-3 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold text-sm sm:text-base"
             onClick={() => onCommand?.('left')}
           >
-            ← Left
+            <span className="hidden sm:inline">← </span>Left
           </button>
           <button 
-            className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold"
+            className="p-2 sm:p-3 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold text-sm sm:text-base"
             onClick={() => onCommand?.('right')}
           >
-            Right →
+            Right<span className="hidden sm:inline"> →</span>
           </button>
         </div>
 

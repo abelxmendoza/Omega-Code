@@ -32,8 +32,8 @@ const Status: React.FC<Props> = ({
   
   const batteryClass =
     actualBattery > 75 ? 'bg-green-500'
-  : actualBattery > 50 ? 'bg-yellow-500'
-  : actualBattery > 20 ? 'bg-blue-500 neon-blue'
+  : actualBattery > 50 ? 'bg-blue-500'
+  : actualBattery > 20 ? 'bg-yellow-500'
   : 'bg-red-500';
 
   return (
