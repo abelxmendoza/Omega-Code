@@ -12,7 +12,12 @@ Usage:
 - All functions assume the caller passes a pre-initialized NeoPixel strip object as the first argument.
 """
 
+import math
+import time
 from time import sleep
+from typing import Sequence, Tuple
+
+import numpy as np
 from rpi_ws281x import Color
 
 
@@ -134,6 +139,132 @@ def rainbow(strip, wait_ms=20, iterations=1):
         strip.show()
         sleep(wait_ms / 1000.0)
 
+
+# --- Advanced patterns -----------------------------------------------------
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    """Clamp *value* to the inclusive range [minimum, maximum]."""
+
+    return max(minimum, min(maximum, value))
+
+
+def _mix_colors(color_a: Tuple[int, int, int], color_b: Tuple[int, int, int], ratio: float) -> Tuple[int, int, int]:
+    """Blend two RGB tuples using *ratio* (0.0 → A, 1.0 → B)."""
+
+    ratio = _clamp(ratio, 0.0, 1.0)
+    return (
+        int(color_a[0] * (1.0 - ratio) + color_b[0] * ratio),
+        int(color_a[1] * (1.0 - ratio) + color_b[1] * ratio),
+        int(color_a[2] * (1.0 - ratio) + color_b[2] * ratio),
+    )
+
+
+def _color_with_scale(color: Tuple[int, int, int], scale: float) -> Color:
+    """Return an rpi_ws281x Color from an RGB tuple scaled by *scale*."""
+
+    scale = _clamp(scale, 0.0, 1.0)
+    r = int(_clamp(color[0] * scale, 0, 255))
+    g = int(_clamp(color[1] * scale, 0, 255))
+    b = int(_clamp(color[2] * scale, 0, 255))
+    return Color(r, g, b)
+
+
+def music_visualizer(
+    strip,
+    base_color: Sequence[int] = (255, 255, 255),
+    brightness: float = 1.0,
+    update_ms: int = 80,
+    duration_s: float = 8.0,
+    sample_rate: int = 44100,
+) -> None:
+    """Animate LEDs so they "dance" in response to music captured from the microphone.
+
+    The function attempts to read short frames from the default input device using
+    :mod:`sounddevice`. When the dependency or an input device is unavailable it
+    gracefully falls back to a synthetic waveform so the pattern still produces a
+    dynamic animation instead of failing outright.
+
+    Args:
+        strip: Initialised NeoPixel strip.
+        base_color: RGB triple that defines the core hue for the animation.
+        brightness: Global brightness multiplier ``0.0`` – ``1.0``.
+        update_ms: Update cadence in milliseconds (controls responsiveness).
+        duration_s: Total duration of the animation in seconds.
+        sample_rate: Sample rate used when capturing audio.
+    """
+
+    try:  # Optional dependency; fall back to synthetic data when unavailable.
+        import sounddevice as sd  # type: ignore
+    except Exception:  # pragma: no cover - absence is fine on CI/containers
+        sd = None  # type: ignore[assignment]
+
+    brightness = _clamp(float(brightness), 0.0, 1.0)
+    update_sec = max(update_ms / 1000.0, 0.05)
+    duration = max(duration_s, update_sec)
+
+    num_pixels = getattr(strip, "numPixels", lambda: 0)()
+    if num_pixels <= 0:
+        return
+
+    base = tuple(int(_clamp(c, 0, 255)) for c in base_color)
+    complement = tuple(255 - c for c in base)
+    background = tuple(int(c * 0.05) for c in base)
+
+    palette = [_mix_colors(base, complement, i / max(num_pixels - 1, 1)) for i in range(num_pixels)]
+
+    smoothing = 0.65
+    level = 0.0
+    fallback_phase = 0.0
+    offset = 0
+
+    def capture_level() -> float:
+        nonlocal sd
+
+        if sd is None:
+            return -1.0
+
+        frames = max(int(sample_rate * update_sec), 256)
+        try:
+            audio = sd.rec(frames, samplerate=sample_rate, channels=1, dtype="float32")
+            sd.wait()
+        except Exception as exc:  # pragma: no cover - depends on runtime hardware
+            print(f"Music visualizer audio capture unavailable ({exc}); using synthetic waveform.")
+            sd = None  # type: ignore[assignment]
+            return -1.0
+
+        if not len(audio):
+            return 0.0
+
+        value = float(np.sqrt(np.mean(np.square(audio))))
+        if math.isnan(value):
+            value = 0.0
+        return _clamp(value * 8.0, 0.0, 1.0)
+
+    end_time = time.time() + duration
+    while time.time() < end_time:
+        amplitude = capture_level()
+        if amplitude < 0:
+            fallback_phase += update_sec * 2.0
+            amplitude = (math.sin(fallback_phase) + 1.0) / 2.0
+
+        level = smoothing * level + (1.0 - smoothing) * amplitude
+        active_pixels = max(1, int(level * num_pixels))
+        trail = max(1, int(num_pixels * 0.15))
+
+        for idx in range(num_pixels):
+            if idx < active_pixels:
+                color = palette[(idx + offset) % num_pixels]
+                strip.setPixelColor(idx, _color_with_scale(color, brightness))
+            elif idx < active_pixels + trail:
+                fade = 1.0 - ((idx - active_pixels) / max(trail, 1))
+                strip.setPixelColor(idx, _color_with_scale(base, brightness * 0.35 * fade))
+            else:
+                strip.setPixelColor(idx, _color_with_scale(background, brightness))
+
+        strip.show()
+        offset = (offset + 1) % num_pixels
+        time.sleep(update_sec)
+
 def lightshow(strip, base_rgb, interval_ms=100, brightness=1.0, cycles=3):
     """Create a multi-stage lightshow using the provided base color.
 
@@ -181,5 +312,6 @@ def lightshow(strip, base_rgb, interval_ms=100, brightness=1.0, cycles=3):
             strip.setPixelColor((offset * 2) % num_pixels, sparkle)
             strip.show()
             sleep(sparkle_delay)
+
 
 # Lighting patterns for NeoPixels

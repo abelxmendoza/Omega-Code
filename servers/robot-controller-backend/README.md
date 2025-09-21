@@ -74,6 +74,10 @@ go run sensors/main_ultrasonic.go
 - WebSocket server written in Go that forwards lighting commands to the privileged
   `run_led.sh` wrapper, which in turn executes the Python LED controller.
 - Supports colour hex strings or integers, brightness, and pattern/mode selection.
+- Includes a music-reactive pattern (`pattern: "music"`) that samples the default
+  microphone when `sounddevice` is installed. The controller automatically falls back
+  to a synthetic beat when audio input is unavailable so the animation still runs in
+  development containers.
 - Responds to heartbeat `{ "type": "ping" }` frames with `{ "type": "pong" }`.
 - Ensure `RUN_LED` inside the Go file points at the correct absolute path and that the
   wrapper can run with the required permissions (often via `sudo`).

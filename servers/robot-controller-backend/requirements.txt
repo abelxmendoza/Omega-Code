@@ -69,6 +69,13 @@ requests==2.31.0
 rich==13.7.1
 
 ############################
+# Audio reactive lighting  #
+############################
+
+# Captures microphone audio for the music-reactive LED pattern. Optional on dev machines.
+sounddevice==0.4.6
+
+############################
 # Testing                  #
 ############################
 

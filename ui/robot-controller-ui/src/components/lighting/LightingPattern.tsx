@@ -30,7 +30,7 @@ const LightingPattern: React.FC<LightingPatternProps> = ({ onSelectPattern }) =>
   };
 
   // List of available patterns
-  const patterns = ['static', 'blink', 'fade', 'chase', 'rainbow', 'lightshow'];
+  const patterns = ['static', 'blink', 'fade', 'chase', 'rainbow', 'music'];
 
   return (
     <div className="flex flex-wrap justify-around items-center bg-gray-900 p-4 rounded-lg shadow-md">

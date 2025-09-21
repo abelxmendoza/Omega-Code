@@ -19,6 +19,8 @@ import sys
 import time
 from rpi_ws281x import Adafruit_NeoPixel, Color, WS2811_STRIP_GRB
 
+from controllers.lighting.patterns import music_visualizer
+
 
 class StubPixelStrip:
     """Minimal stand-in used when the hardware strip cannot be initialized."""
@@ -256,9 +258,13 @@ class LedController:
                 return
 
             # Always apply requested pattern!
-            r = int(((color >> 16) & 255) * brightness)
-            g = int(((color >> 8) & 255) * brightness)
-            b = int((color & 255) * brightness)
+            raw_r = (color >> 16) & 255
+            raw_g = (color >> 8) & 255
+            raw_b = color & 255
+
+            r = int(raw_r * brightness)
+            g = int(raw_g * brightness)
+            b = int(raw_b * brightness)
 
             if mode == "rainbow" or pattern == "rainbow":
                 self.rainbow(interval, brightness)
@@ -285,6 +291,17 @@ class LedController:
                         step_brightness = brightness * (i / 255.0)
                         self._apply_brightness(color, step_brightness)
                         time.sleep(interval / 1000 / 50)
+                self.is_on = True
+            elif pattern in ("music", "music-reactive"):
+                update_ms = interval if isinstance(interval, (int, float)) and interval > 0 else 80
+                duration = max(8.0, update_ms / 1000.0 * 80)
+                music_visualizer(
+                    self.strip,
+                    base_color=(raw_r, raw_g, raw_b),
+                    brightness=brightness,
+                    update_ms=int(update_ms),
+                    duration_s=duration,
+                )
                 self.is_on = True
             else:
                 print(f"Unknown pattern: {pattern}")
