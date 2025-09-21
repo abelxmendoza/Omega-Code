@@ -8,7 +8,15 @@ Receives lighting control commands and routes them to the appropriate LED patter
 based on UI input or WebSocket messages.
 """
 
-from controllers.lighting.patterns import color_wipe, dual_color, fade, blink, chase, rainbow
+from controllers.lighting.patterns import (
+    blink,
+    chase,
+    color_wipe,
+    dual_color,
+    fade,
+    lightshow,
+    rainbow,
+)
 from rpi_ws281x import Color
 
 def hex_to_rgb(hex_color: str):
@@ -55,6 +63,8 @@ def apply_lighting_mode(payload: dict, led_controller):
             blink(strip, Color(*color1), Color(*color2), delay=interval / 1000.0)
         elif pattern == "chase":
             chase(strip, Color(*color1), Color(*color2), delay=interval / 1000.0)
+        elif pattern == "lightshow" or mode == "lightshow":
+            lightshow(strip, color1, interval_ms=interval, brightness=brightness)
         elif pattern == "rainbow" or mode == "rainbow":
             # Accept both "rainbow" as pattern or mode
             rainbow(strip, wait_ms=interval)

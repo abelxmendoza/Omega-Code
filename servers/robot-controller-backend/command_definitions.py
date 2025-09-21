@@ -42,7 +42,7 @@ class COMMAND:
     # Lighting Control Commands
     LIGHTING_SET_COLOR = "lighting-set-color"   # Command to set LED color
     LIGHTING_SET_MODE = "lighting-set-mode"     # Command to set lighting mode (single, multi, two)
-    LIGHTING_SET_PATTERN = "lighting-set-pattern" # Command to set lighting pattern (static, blink, fade)
+    LIGHTING_SET_PATTERN = "lighting-set-pattern" # Command to set lighting pattern (static, blink, fade, chase, rainbow, lightshow)
     LIGHTING_SET_INTERVAL = "lighting-set-interval" # Command to set interval for dynamic patterns
     LIGHTING_TOGGLE = "lighting-toggle"         # Command to toggle lighting on/off
 
