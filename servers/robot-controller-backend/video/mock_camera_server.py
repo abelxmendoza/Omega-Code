@@ -108,6 +108,16 @@ def status():
         'fps': 30
     })
 
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'camera_type': 'mock',
+        'uptime': 'running',
+        'timestamp': time.time()
+    })
+
 @app.route('/')
 def index():
     """Main page"""
