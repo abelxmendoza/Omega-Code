@@ -240,17 +240,22 @@ export default function Home() {
   const autonomyApi = useMemo(() => {
     try {
       if (MOCK_WS || !movementWsResolved) {
-        addCommand('Autonomy API using MOCK wire.');
         return makeAutonomyApi(mockWire);
       }
       const wire = createWsWire(() => coerceWsScheme(movementWsResolved), { timeoutMs: 3000 });
       return makeAutonomyApi(wire);
     } catch (e) {
-      addCommand(`Autonomy API fallback to MOCK (${String(e)})`);
       return makeAutonomyApi(mockWire);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movementWsResolved]);
+
+  // Log autonomy API status after render
+  useEffect(() => {
+    if (MOCK_WS || !movementWsResolved) {
+      addCommand('Autonomy API using MOCK wire.');
+    }
+  }, [addCommand]);
 
   /* ---------------------- Send command helper with logs --------------------- */
   const sendCommandWithLog = useCallback(

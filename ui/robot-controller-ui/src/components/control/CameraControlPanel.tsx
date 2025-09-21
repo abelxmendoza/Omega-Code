@@ -90,6 +90,13 @@ export default function CameraControlPanel() {
     setPressed({ up: false, down: false, left: false, right: false });
   }, []);
 
+  const stopRepeatSilent = React.useCallback(() => {
+    if (repeatRef.current) clearInterval(repeatRef.current);
+    repeatRef.current = null;
+    activeDirRef.current = null;
+    // Don't call setPressed in cleanup to avoid infinite loops
+  }, []);
+
   // --- Keyboard support ---
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -119,7 +126,7 @@ export default function CameraControlPanel() {
       if (dir && activeDirRef.current === dir) {
         e.preventDefault();
         e.stopPropagation();
-        stopRepeat();
+        stopRepeatSilent();
       }
     };
 
@@ -128,13 +135,13 @@ export default function CameraControlPanel() {
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      stopRepeat();
+      stopRepeatSilent();
     };
   }, [startRepeat, stopRepeat, sendJson]);
 
   // safety: stop on blur / visibility change
   React.useEffect(() => {
-    const bail = () => stopRepeat();
+    const bail = () => stopRepeatSilent();
     const onVis = () => { if (document.visibilityState !== 'visible') bail(); };
     window.addEventListener('blur', bail);
     document.addEventListener('visibilitychange', onVis);
@@ -142,7 +149,7 @@ export default function CameraControlPanel() {
       window.removeEventListener('blur', bail);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [stopRepeat]);
+  }, [stopRepeatSilent]);
 
   // Unified pointer bindings (mouse + touch + pen)
   const bindHold = (dir: Dir) => ({
@@ -151,9 +158,9 @@ export default function CameraControlPanel() {
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
       startRepeat(dir);
     },
-    onPointerUp: (e: React.PointerEvent) => { e.preventDefault(); stopRepeat(); },
-    onPointerCancel: (e: React.PointerEvent) => { e.preventDefault(); stopRepeat(); },
-    onPointerLeave: (e: React.PointerEvent) => { e.preventDefault(); stopRepeat(); },
+    onPointerUp: (e: React.PointerEvent) => { e.preventDefault(); stopRepeatSilent(); },
+    onPointerCancel: (e: React.PointerEvent) => { e.preventDefault(); stopRepeatSilent(); },
+    onPointerLeave: (e: React.PointerEvent) => { e.preventDefault(); stopRepeatSilent(); },
   });
 
   const btnClass = (dir: Dir) =>
