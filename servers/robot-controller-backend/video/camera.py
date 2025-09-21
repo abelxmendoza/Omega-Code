@@ -442,10 +442,21 @@ class Camera:
                     elif name == "v4l2":
                         attempts.append(("v4l2", try_v4l2))
             else:
+                # Try different camera devices for different platforms
                 if _PICAM2_OK:
                     attempts.append(("picamera2", try_picam))
+                
+                # Try multiple camera devices for V4L2
                 if cv2 is not None:
-                    attempts.append(("v4l2", try_v4l2))
+                    # Try common camera devices
+                    camera_devices = ["/dev/video0", "/dev/video1", "/dev/video2", 0, 1, 2]
+                    for device in camera_devices:
+                        def try_v4l2_device(dev=device):
+                            return _V4L2Backend(
+                                device=dev, width=self.width, height=self.height,
+                                target_fps=self.target_fps, fourcc=_env_str("CAMERA_FOURCC", "MJPG")
+                            )
+                        attempts.append((f"v4l2_{device}", try_v4l2_device))
 
         for name, ctor in attempts:
             try:
