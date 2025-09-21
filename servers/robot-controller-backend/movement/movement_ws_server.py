@@ -193,6 +193,17 @@ STRAIGHT_ASSIST = StraightDriveAssist(motor)
 
 SPEED_MIN, SPEED_MAX = 0, 4095
 SERVO_MIN, SERVO_MAX = 0, 180
+
+
+def _servo_state_payload(horizontal: int, vertical: int) -> dict:
+    return {
+        "servo": {
+            "horizontal": horizontal,
+            "vertical": vertical,
+            "min": SERVO_MIN,
+            "max": SERVO_MAX,
+        }
+    }
 DEFAULT_SPEED_STEP   = 200
 DEFAULT_SERVO_STEP   = 5
 
@@ -638,7 +649,11 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     except Exception as e:
                         elog("servo H failed:", repr(e))
                         raise
-                    await send_json(ws, ok("servo-horizontal", angle=current_horizontal_angle))
+                    await send_json(ws, ok(
+                        "servo-horizontal",
+                        angle=current_horizontal_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
 
                 elif cmd == "servo-vertical":
                     delta = int(data.get("angle", 0))
@@ -648,7 +663,11 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     except Exception as e:
                         elog("servo V failed:", repr(e))
                         raise
-                    await send_json(ws, ok("servo-vertical", angle=current_vertical_angle))
+                    await send_json(ws, ok(
+                        "servo-vertical",
+                        angle=current_vertical_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
 
                 elif cmd == "set-servo-position":
                     h = data.get("horizontal", None)
@@ -662,9 +681,12 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                         if v is not None:
                             current_vertical_angle = clamp(int(v), SERVO_MIN, SERVO_MAX)
                             servo.setServoPwm("vertical", current_vertical_angle)
-                        await send_json(ws, ok("set-servo-position",
-                                               horizontal=current_horizontal_angle,
-                                               vertical=current_vertical_angle))
+                        await send_json(ws, ok(
+                            "set-servo-position",
+                            horizontal=current_horizontal_angle,
+                            vertical=current_vertical_angle,
+                            **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                        ))
 
                 elif cmd == "reset-servo":
                     # Use current positions as the new "center" positions
@@ -673,30 +695,49 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     current_vertical_angle = 90
                     servo.setServoPwm("horizontal", current_horizontal_angle)
                     servo.setServoPwm("vertical", current_vertical_angle)
-                    await send_json(ws, ok("reset-servo",
-                                           horizontal=current_horizontal_angle,
-                                           vertical=current_vertical_angle))
+                    await send_json(ws, ok(
+                        "reset-servo",
+                        horizontal=current_horizontal_angle,
+                        vertical=current_vertical_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
 
                 # camera nudge aliases
                 elif cmd == "camera-servo-left":
                     current_horizontal_angle = clamp(current_horizontal_angle - DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
                     servo.setServoPwm("horizontal", current_horizontal_angle)
-                    await send_json(ws, ok("camera-servo-left", angle=current_horizontal_angle))
+                    await send_json(ws, ok(
+                        "camera-servo-left",
+                        angle=current_horizontal_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
 
                 elif cmd == "camera-servo-right":
                     current_horizontal_angle = clamp(current_horizontal_angle + DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
                     servo.setServoPwm("horizontal", current_horizontal_angle)
-                    await send_json(ws, ok("camera-servo-right", angle=current_horizontal_angle))
+                    await send_json(ws, ok(
+                        "camera-servo-right",
+                        angle=current_horizontal_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
 
                 elif cmd == "camera-servo-up":
                     current_vertical_angle = clamp(current_vertical_angle + DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
                     servo.setServoPwm("vertical", current_vertical_angle)
-                    await send_json(ws, ok("camera-servo-up", angle=current_vertical_angle))
+                    await send_json(ws, ok(
+                        "camera-servo-up",
+                        angle=current_vertical_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
 
                 elif cmd == "camera-servo-down":
                     current_vertical_angle = clamp(current_vertical_angle - DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
                     servo.setServoPwm("vertical", current_vertical_angle)
-                    await send_json(ws, ok("camera-servo-down", angle=current_vertical_angle))
+                    await send_json(ws, ok(
+                        "camera-servo-down",
+                        angle=current_vertical_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
 
                 # -------- STATUS --------
                 elif cmd == "status":
@@ -706,6 +747,8 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                         "servo": {
                             "horizontal": current_horizontal_angle,
                             "vertical": current_vertical_angle,
+                            "min": SERVO_MIN,
+                            "max": SERVO_MAX,
                         },
                         "buzzer": buzzer_on_state,
                         "autonomy": AUTONOMY.status(),
