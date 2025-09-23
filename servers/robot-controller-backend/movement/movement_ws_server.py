@@ -112,6 +112,17 @@ try:
 except Exception:  # pragma: no cover - fallback for script execution
     from motor_telemetry import MotorTelemetryController
 
+# Import optimization utilities
+try:
+    from ..utils.optimization.websocket_optimizer import WebSocketOptimizer, ConnectionPool
+    from ..utils.optimization.cache_manager import cached, cache_manager
+    from ..utils.optimization.async_processor import task_processor, TaskPriority
+    from ..utils.optimization.performance_monitor import performance_monitor, app_profiler
+    OPTIMIZATION_AVAILABLE = True
+except ImportError:
+    logger.warning("Optimization utilities not available")
+    OPTIMIZATION_AVAILABLE = False
+
 # Optional .env loader (backend root)
 try:
     from dotenv import load_dotenv
@@ -256,7 +267,14 @@ AUTONOMY = build_default_controller(context={
 })
 
 STRAIGHT_ASSIST = StraightDriveAssist(motor)
-MOTOR_TELEMETRY = MotorTelemetryController()
+# Initialize motor telemetry with caching
+if OPTIMIZATION_AVAILABLE:
+    @cached(ttl=1, key_prefix="motor_telemetry:")  # Cache for 1 second
+    def get_cached_motor_telemetry():
+        return MOTOR_TELEMETRY.get_telemetry()
+else:
+    def get_cached_motor_telemetry():
+        return MOTOR_TELEMETRY.get_telemetry()
 
 # ---------- server state ----------
 
@@ -291,6 +309,19 @@ buzzer_on_state = False
 
 # Timed move guard
 _last_move_op_id = 0
+
+# Initialize optimization systems
+if OPTIMIZATION_AVAILABLE:
+    websocket_optimizer = WebSocketOptimizer(batch_size=5, batch_timeout=0.02)
+    connection_pool = ConnectionPool(max_connections=50)
+    
+    # Start async task processor
+    asyncio.create_task(task_processor.start())
+    
+    # Start performance monitoring
+    asyncio.create_task(performance_monitor.start_monitoring(interval=10.0))
+    
+    logger.info("Optimization systems initialized")
 
 # Track connected clients to avoid stopping on non-last disconnects
 CLIENTS: Set[WebSocketServerProtocol] = set()
@@ -820,7 +851,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     await send_json(ws, {
                         "type": "status",
                         "speed": current_speed,
-                        "motors": MOTOR_TELEMETRY.get_telemetry(),
+                        "motors": get_cached_motor_telemetry(),
                         "servo": {
                             "horizontal": current_horizontal_angle,
                             "vertical": current_vertical_angle,

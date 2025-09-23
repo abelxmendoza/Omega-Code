@@ -8,9 +8,10 @@
 # - Color-coded motor cards for easy identification
 */
 
-import React, { useState } from 'react';
+import React, { useState, memo, useMemo } from 'react';
 import { useRobustWebSocket } from '@/utils/RobustWebSocket';
 import { handleWebSocketError, handleComponentError } from '@/utils/errorHandling';
+import { withOptimization, performanceMonitor } from '@/utils/optimization';
 import { envConfig } from '@/config/environment';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -38,8 +39,8 @@ interface MotorData {
   };
 }
 
-// Small connection status dot
-function StatusDot({ status, title }: { status: ServerStatus; title: string }) {
+// Optimized StatusDot component
+const StatusDot = memo(({ status, title }: { status: ServerStatus; title: string }) => {
   const color =
     status === 'connected' ? 'bg-emerald-500'
     : status === 'connecting' ? 'bg-slate-500'
@@ -53,9 +54,9 @@ function StatusDot({ status, title }: { status: ServerStatus; title: string }) {
       aria-label={title}
     />
   );
-}
+});
 
-const MotorTelemetryPanel: React.FC = () => {
+const MotorTelemetryPanel: React.FC = memo(() => {
   // Motor telemetry data
   const [motorData, setMotorData] = useState<MotorData>({
     frontLeft: { speed: 0, power: 0, pwm: 0 },
@@ -63,6 +64,85 @@ const MotorTelemetryPanel: React.FC = () => {
     rearLeft: { speed: 0, power: 0, pwm: 0 },
     rearRight: { speed: 0, power: 0, pwm: 0 }
   });
+
+  // Memoized motor cards for better performance
+  const motorCards = useMemo(() => [
+    // Front Left Motor
+    <div key="frontLeft" className="bg-gray-700 p-1.5 rounded">
+      <div className="text-xs font-medium text-blue-300 mb-1">Front Left</div>
+      <div className="space-y-1 text-xs">
+        <div className="flex justify-between">
+          <span className="text-gray-400">Speed:</span>
+          <span className="text-white font-mono">{motorData.frontLeft.speed.toFixed(1)} RPM</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Power:</span>
+          <span className="text-white font-mono">{motorData.frontLeft.power.toFixed(1)}W</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">PWM:</span>
+          <span className="text-white font-mono">{motorData.frontLeft.pwm}</span>
+        </div>
+      </div>
+    </div>,
+
+    // Front Right Motor
+    <div key="frontRight" className="bg-gray-700 p-1.5 rounded">
+      <div className="text-xs font-medium text-green-300 mb-1">Front Right</div>
+      <div className="space-y-1 text-xs">
+        <div className="flex justify-between">
+          <span className="text-gray-400">Speed:</span>
+          <span className="text-white font-mono">{motorData.frontRight.speed.toFixed(1)} RPM</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Power:</span>
+          <span className="text-white font-mono">{motorData.frontRight.power.toFixed(1)}W</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">PWM:</span>
+          <span className="text-white font-mono">{motorData.frontRight.pwm}</span>
+        </div>
+      </div>
+    </div>,
+
+    // Rear Left Motor
+    <div key="rearLeft" className="bg-gray-700 p-1.5 rounded">
+      <div className="text-xs font-medium text-purple-300 mb-1">Rear Left</div>
+      <div className="space-y-1 text-xs">
+        <div className="flex justify-between">
+          <span className="text-gray-400">Speed:</span>
+          <span className="text-white font-mono">{motorData.rearLeft.speed.toFixed(1)} RPM</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Power:</span>
+          <span className="text-white font-mono">{motorData.rearLeft.power.toFixed(1)}W</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">PWM:</span>
+          <span className="text-white font-mono">{motorData.rearLeft.pwm}</span>
+        </div>
+      </div>
+    </div>,
+
+    // Rear Right Motor
+    <div key="rearRight" className="bg-gray-700 p-1.5 rounded">
+      <div className="text-xs font-medium text-orange-300 mb-1">Rear Right</div>
+      <div className="space-y-1 text-xs">
+        <div className="flex justify-between">
+          <span className="text-gray-400">Speed:</span>
+          <span className="text-white font-mono">{motorData.rearRight.speed.toFixed(1)} RPM</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Power:</span>
+          <span className="text-white font-mono">{motorData.rearRight.power.toFixed(1)}W</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">PWM:</span>
+          <span className="text-white font-mono">{motorData.rearRight.pwm}</span>
+        </div>
+      </div>
+    </div>
+  ], [motorData]);
 
   // WebSocket connection for motor telemetry
   const motorTelemetryWs = useRobustWebSocket({
@@ -141,81 +221,7 @@ const MotorTelemetryPanel: React.FC = () => {
       {/* Motor Status Grid */}
       <div className="w-full mb-3">
         <div className="grid grid-cols-2 gap-1.5">
-          {/* Front Left Motor */}
-          <div className="bg-gray-700 p-1.5 rounded">
-            <div className="text-xs font-medium text-blue-300 mb-1">Front Left</div>
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Speed:</span>
-                <span className="text-white font-mono">{motorData.frontLeft.speed.toFixed(1)} RPM</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Power:</span>
-                <span className="text-white font-mono">{motorData.frontLeft.power.toFixed(1)}W</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">PWM:</span>
-                <span className="text-white font-mono">{motorData.frontLeft.pwm}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Front Right Motor */}
-          <div className="bg-gray-700 p-1.5 rounded">
-            <div className="text-xs font-medium text-green-300 mb-1">Front Right</div>
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Speed:</span>
-                <span className="text-white font-mono">{motorData.frontRight.speed.toFixed(1)} RPM</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Power:</span>
-                <span className="text-white font-mono">{motorData.frontRight.power.toFixed(1)}W</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">PWM:</span>
-                <span className="text-white font-mono">{motorData.frontRight.pwm}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Rear Left Motor */}
-          <div className="bg-gray-700 p-1.5 rounded">
-            <div className="text-xs font-medium text-purple-300 mb-1">Rear Left</div>
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Speed:</span>
-                <span className="text-white font-mono">{motorData.rearLeft.speed.toFixed(1)} RPM</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Power:</span>
-                <span className="text-white font-mono">{motorData.rearLeft.power.toFixed(1)}W</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">PWM:</span>
-                <span className="text-white font-mono">{motorData.rearLeft.pwm}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Rear Right Motor */}
-          <div className="bg-gray-700 p-1.5 rounded">
-            <div className="text-xs font-medium text-orange-300 mb-1">Rear Right</div>
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Speed:</span>
-                <span className="text-white font-mono">{motorData.rearRight.speed.toFixed(1)} RPM</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Power:</span>
-                <span className="text-white font-mono">{motorData.rearRight.power.toFixed(1)}W</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">PWM:</span>
-                <span className="text-white font-mono">{motorData.rearRight.pwm}</span>
-              </div>
-            </div>
-          </div>
+          {motorCards}
         </div>
         
         {/* Connection Status */}

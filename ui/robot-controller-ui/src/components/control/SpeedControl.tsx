@@ -8,15 +8,16 @@ Clean speed + LED + Horn (hold) control using CommandContext (single WS).
 - Disables controls when disconnected; shows connection dot + optional latency
 */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { COMMAND } from '@/control_definitions';
 import { useCommand } from '@/context/CommandContext';
 import LedModal from '@/components/lighting/LedModal';
+import { withOptimization, useDebouncedCallback } from '@/utils/optimization';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
-// Small connection status dot
-function StatusDot({ status, title }: { status: ServerStatus; title: string }) {
+// Optimized StatusDot component
+const StatusDot = memo(({ status, title }: { status: ServerStatus; title: string }) => {
   const color =
     status === 'connected' ? 'bg-emerald-500'
     : status === 'connecting' ? 'bg-slate-500'
@@ -30,7 +31,7 @@ function StatusDot({ status, title }: { status: ServerStatus; title: string }) {
       aria-label={title}
     />
   );
-}
+});
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const PWM_MAX = 4095; // keep in sync with the movement server
@@ -70,6 +71,13 @@ const SpeedControl: React.FC = () => {
       // CommandContext logs errors; keep UI responsive
     }
   }, [sendCommand]);
+
+  // Debounced speed change for slider
+  const debouncedSpeedChange = useDebouncedCallback(
+    sendSetSpeedPct,
+    100, // 100ms debounce
+    [sendCommand]
+  );
 
   const increaseSpeed = useCallback(() => {
     if (disabled) return;
