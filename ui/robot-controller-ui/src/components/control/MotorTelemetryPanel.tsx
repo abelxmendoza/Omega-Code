@@ -10,6 +10,7 @@
 
 import React, { useState } from 'react';
 import { useRobustWebSocket } from '@/utils/RobustWebSocket';
+import { handleWebSocketError, handleComponentError } from '@/utils/errorHandling';
 import { envConfig } from '@/config/environment';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -67,58 +68,62 @@ const MotorTelemetryPanel: React.FC = () => {
   const motorTelemetryWs = useRobustWebSocket({
     url: envConfig.wsUrls.movement[0] || 'ws://localhost:8081/',
     onMessage: (data) => {
-      // Parse motor telemetry data for 4 motors
-      if (data?.motors) {
-        setMotorData({
-          frontLeft: {
-            speed: data.motors.frontLeft?.speed || data.motors.fl?.speed || 0,
-            power: data.motors.frontLeft?.power || data.motors.fl?.power || 0,
-            pwm: data.motors.frontLeft?.pwm || data.motors.fl?.pwm || 0
-          },
-          frontRight: {
-            speed: data.motors.frontRight?.speed || data.motors.fr?.speed || 0,
-            power: data.motors.frontRight?.power || data.motors.fr?.power || 0,
-            pwm: data.motors.frontRight?.pwm || data.motors.fr?.pwm || 0
-          },
-          rearLeft: {
-            speed: data.motors.rearLeft?.speed || data.motors.rl?.speed || 0,
-            power: data.motors.rearLeft?.power || data.motors.rl?.power || 0,
-            pwm: data.motors.rearLeft?.pwm || data.motors.rl?.pwm || 0
-          },
-          rearRight: {
-            speed: data.motors.rearRight?.speed || data.motors.rr?.speed || 0,
-            power: data.motors.rearRight?.power || data.motors.rr?.power || 0,
-            pwm: data.motors.rearRight?.pwm || data.motors.rr?.pwm || 0
-          }
-        });
-      } else if (data?.frontLeftMotor || data?.frontRightMotor || data?.rearLeftMotor || data?.rearRightMotor) {
-        // Alternative data format
-        setMotorData({
-          frontLeft: {
-            speed: data.frontLeftMotor?.speed || 0,
-            power: data.frontLeftMotor?.power || 0,
-            pwm: data.frontLeftMotor?.pwm || 0
-          },
-          frontRight: {
-            speed: data.frontRightMotor?.speed || 0,
-            power: data.frontRightMotor?.power || 0,
-            pwm: data.frontRightMotor?.pwm || 0
-          },
-          rearLeft: {
-            speed: data.rearLeftMotor?.speed || 0,
-            power: data.rearLeftMotor?.power || 0,
-            pwm: data.rearLeftMotor?.pwm || 0
-          },
-          rearRight: {
-            speed: data.rearRightMotor?.speed || 0,
-            power: data.rearRightMotor?.power || 0,
-            pwm: data.rearRightMotor?.pwm || 0
-          }
-        });
+      try {
+        // Parse motor telemetry data for 4 motors
+        if (data?.motors) {
+          setMotorData({
+            frontLeft: {
+              speed: data.motors.frontLeft?.speed || data.motors.fl?.speed || 0,
+              power: data.motors.frontLeft?.power || data.motors.fl?.power || 0,
+              pwm: data.motors.frontLeft?.pwm || data.motors.fl?.pwm || 0
+            },
+            frontRight: {
+              speed: data.motors.frontRight?.speed || data.motors.fr?.speed || 0,
+              power: data.motors.frontRight?.power || data.motors.fr?.power || 0,
+              pwm: data.motors.frontRight?.pwm || data.motors.fr?.pwm || 0
+            },
+            rearLeft: {
+              speed: data.motors.rearLeft?.speed || data.motors.rl?.speed || 0,
+              power: data.motors.rearLeft?.power || data.motors.rl?.power || 0,
+              pwm: data.motors.rearLeft?.pwm || data.motors.rl?.pwm || 0
+            },
+            rearRight: {
+              speed: data.motors.rearRight?.speed || data.motors.rr?.speed || 0,
+              power: data.motors.rearRight?.power || data.motors.rr?.power || 0,
+              pwm: data.motors.rearRight?.pwm || data.motors.rr?.pwm || 0
+            }
+          });
+        } else if (data?.frontLeftMotor || data?.frontRightMotor || data?.rearLeftMotor || data?.rearRightMotor) {
+          // Alternative data format
+          setMotorData({
+            frontLeft: {
+              speed: data.frontLeftMotor?.speed || 0,
+              power: data.frontLeftMotor?.power || 0,
+              pwm: data.frontLeftMotor?.pwm || 0
+            },
+            frontRight: {
+              speed: data.frontRightMotor?.speed || 0,
+              power: data.frontRightMotor?.power || 0,
+              pwm: data.frontRightMotor?.pwm || 0
+            },
+            rearLeft: {
+              speed: data.rearLeftMotor?.speed || 0,
+              power: data.rearLeftMotor?.power || 0,
+              pwm: data.rearLeftMotor?.pwm || 0
+            },
+            rearRight: {
+              speed: data.rearRightMotor?.speed || 0,
+              power: data.rearRightMotor?.power || 0,
+              pwm: data.rearRightMotor?.pwm || 0
+            }
+          });
+        }
+      } catch (error) {
+        handleComponentError(error as Error, 'MotorTelemetryPanel', 'process-message');
       }
     },
     onError: (error) => {
-      console.error('Motor telemetry WebSocket error:', error);
+      handleWebSocketError(error, { component: 'MotorTelemetryPanel' });
     }
   });
 

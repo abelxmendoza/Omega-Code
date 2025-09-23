@@ -31,12 +31,74 @@ import json
 import time
 import asyncio
 import inspect
+import traceback
+import logging
 from typing import Optional, Set, Tuple
 
 # Add parent directory to path for autonomy module
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.append(ROOT)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('movement_ws_server.log')
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Error handling utilities
+class MovementError(Exception):
+    """Base exception for movement-related errors"""
+    pass
+
+class MotorError(MovementError):
+    """Motor control specific errors"""
+    pass
+
+class ServoError(MovementError):
+    """Servo control specific errors"""
+    pass
+
+class WebSocketError(MovementError):
+    """WebSocket communication errors"""
+    pass
+
+def log_error(error: Exception, context: str = "", websocket=None):
+    """Log error with context and optional WebSocket info"""
+    error_info = {
+        "error_type": type(error).__name__,
+        "error_message": str(error),
+        "context": context,
+        "timestamp": time.time(),
+        "traceback": traceback.format_exc()
+    }
+    
+    if websocket:
+        error_info["websocket_info"] = {
+            "remote_address": websocket.remote_address if hasattr(websocket, 'remote_address') else None,
+            "state": websocket.state.name if hasattr(websocket, 'state') else None
+        }
+    
+    logger.error(f"Movement WebSocket Error: {json.dumps(error_info, indent=2)}")
+    return error_info
+
+def safe_json_send(websocket, data: dict, context: str = ""):
+    """Safely send JSON data with error handling"""
+    try:
+        if websocket and websocket.state.name == "OPEN":
+            asyncio.create_task(websocket.send(json.dumps(data)))
+            return True
+        else:
+            logger.warning(f"Cannot send data - WebSocket not open. Context: {context}")
+            return False
+    except Exception as e:
+        log_error(e, f"Failed to send JSON data: {context}")
+        return False
 
 from autonomy import AutonomyError, build_default_controller
 
@@ -402,55 +464,62 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
         })
 
         async for message in ws:
-            # JSON heartbeat
-            if isinstance(message, str) and message.startswith('{"type":"ping"'):
+            try:
+                # JSON heartbeat
+                if isinstance(message, str) and message.startswith('{"type":"ping"'):
+                    try:
+                        obj = json.loads(message)
+                        await send_json(ws, {"type": "pong", "ts": obj.get("ts", _now_ms())})
+                    except Exception as e:
+                        log_error(e, "Failed to process ping message", ws)
+                        await send_json(ws, {"type": "pong", "ts": _now_ms()})
+                    continue
+
+                cmd, data = parse_json_or_string(message)
+                if not cmd:
+                    warn("non-JSON/unrecognized command; ignored")
+                    continue
+
+                cmd = norm_cmd_name(cmd)
+
+                # reads
                 try:
-                    obj = json.loads(message)
-                    await send_json(ws, {"type": "pong", "ts": obj.get("ts", _now_ms())})
-                except Exception:
-                    await send_json(ws, {"type": "pong", "ts": _now_ms()})
-                continue
+                    speed = int(data.get("speed", current_speed))
+                except Exception as e:
+                    log_error(e, f"Invalid speed parameter: {data.get('speed')}", ws)
+                    speed = current_speed
+                speed = clamp(speed, SPEED_MIN, SPEED_MAX)
 
-            cmd, data = parse_json_or_string(message)
-            if not cmd:
-                warn("non-JSON/unrecognized command; ignored")
-                continue
+                duration_raw = str(data.get("durationMs", "")).strip()
+                try:
+                    duration_ms = int(duration_raw) if duration_raw.isdigit() else 0
+                except Exception as e:
+                    log_error(e, f"Invalid duration parameter: {duration_raw}", ws)
+                    duration_ms = 0
 
-            cmd = norm_cmd_name(cmd)
+                try:
+                    # -------- MOVEMENT --------
+                    if cmd in {"forward", "backward", "left", "right"}:
+                        current_speed = speed
+                        await do_move(cmd, current_speed)
+                        await send_json(ws, ok(cmd, speed=current_speed))
 
-            # reads
-            try:
-                speed = int(data.get("speed", current_speed))
-            except Exception:
-                speed = current_speed
-            speed = clamp(speed, SPEED_MIN, SPEED_MAX)
+                        if duration_ms > 0:
+                            _last_move_op_id += 1
+                            my_id = _last_move_op_id
+                            async def _auto_stop(delay: float, op_id: int):
+                                try:
+                                    await asyncio.sleep(delay)
+                                    if op_id == _last_move_op_id:
+                                        await do_stop()
+                                        await send_json(ws, ok("auto-stop"))
+                                except Exception as e:
+                                    log_error(e, "Auto-stop failed", ws)
+                            asyncio.create_task(_auto_stop(duration_ms/1000.0, my_id))
 
-            duration_raw = str(data.get("durationMs", "")).strip()
-            duration_ms = int(duration_raw) if duration_raw.isdigit() else 0
-
-            try:
-                # -------- MOVEMENT --------
-                if cmd in {"forward", "backward", "left", "right"}:
-                    current_speed = speed
-                    await do_move(cmd, current_speed)
-                    await send_json(ws, ok(cmd, speed=current_speed))
-
-                    if duration_ms > 0:
-                        _last_move_op_id += 1
-                        my_id = _last_move_op_id
-                        async def _auto_stop(delay: float, op_id: int):
-                            try:
-                                await asyncio.sleep(delay)
-                                if op_id == _last_move_op_id:
-                                    await do_stop()
-                                    await send_json(ws, ok("auto-stop"))
-                            except Exception as e:
-                                elog("auto-stop failed:", repr(e))
-                        asyncio.create_task(_auto_stop(duration_ms/1000.0, my_id))
-
-                elif cmd == "stop":
-                    await do_stop()
-                    await send_json(ws, ok("stop"))
+                    elif cmd == "stop":
+                        await do_stop()
+                        await send_json(ws, ok("stop"))
 
                 # -------- STRAIGHT ASSIST --------
                 elif cmd in {"straight-assist", "straight-assist-config"}:
@@ -769,13 +838,13 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     await send_json(ws, err(f"unknown-command:{cmd}"))
 
             except Exception as ex:
-                elog("command failed:", repr(ex))
+                log_error(ex, f"Command '{cmd}' failed", ws)
                 await send_json(ws, err("exception", detail=str(ex)))
 
     except websockets.exceptions.ConnectionClosed as e:
         log(f"DISCONNECTED {peer} code={e.code} reason={e.reason or ''}")
     except Exception as e:
-        elog("handler error:", repr(e))
+        log_error(e, "Handler error", ws)
     finally:
         CLIENTS.discard(ws)
         remaining = len(CLIENTS)

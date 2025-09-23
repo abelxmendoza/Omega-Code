@@ -6,16 +6,39 @@ Provides individual motor data for frontend telemetry display.
 
 import time
 import math
-from typing import Dict, Any
+import logging
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Import mock PCA9685 for testing
 try:
     from mock_pca9685 import MockPCA9685 as PCA9685
+    logger.info("Using MockPCA9685 for motor telemetry")
 except ImportError:
-    from PCA9685 import PCA9685
+    try:
+        from PCA9685 import PCA9685
+        logger.info("Using real PCA9685 for motor telemetry")
+    except ImportError:
+        logger.error("No PCA9685 driver available - motor telemetry will not work")
+        raise ImportError("No PCA9685 driver available")
 
-from minimal_motor_control import Motor
+try:
+    from minimal_motor_control import Motor
+except ImportError:
+    logger.error("minimal_motor_control not available")
+    raise ImportError("minimal_motor_control module not found")
+
+# Error handling
+class MotorTelemetryError(Exception):
+    """Motor telemetry specific errors"""
+    pass
+
+class HardwareError(MotorTelemetryError):
+    """Hardware communication errors"""
+    pass
 
 @dataclass
 class MotorTelemetry:
@@ -30,7 +53,13 @@ class MotorTelemetryController:
     """Enhanced motor controller with telemetry tracking"""
     
     def __init__(self):
-        self.motor = Motor()
+        try:
+            self.motor = Motor()
+            logger.info("Motor controller initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize motor controller: {e}")
+            raise MotorTelemetryError(f"Motor initialization failed: {e}")
+        
         self.telemetry = {
             'frontLeft': MotorTelemetry(0, 0, 0, 0, 25),
             'frontRight': MotorTelemetry(0, 0, 0, 0, 25),
@@ -38,6 +67,8 @@ class MotorTelemetryController:
             'rearRight': MotorTelemetry(0, 0, 0, 0, 25)
         }
         self.last_update = time.time()
+        self.error_count = 0
+        self.max_errors = 10
         
         # Motor characteristics (simulated)
         self.motor_constants = {
@@ -50,15 +81,32 @@ class MotorTelemetryController:
     
     def setMotors(self, duty: int):
         """Set motor PWM and update telemetry"""
-        # Apply trim and set motors
-        left_duty = self._apply_trim(duty, self.motor.left_trim)
-        right_duty = self._apply_trim(duty, self.motor.right_trim)
-        
-        # Update telemetry for all motors
-        self._update_telemetry(left_duty, right_duty)
-        
-        # Set actual motor PWM
-        self.motor.setMotors(duty)
+        try:
+            # Validate duty cycle
+            if not isinstance(duty, (int, float)):
+                raise ValueError(f"Invalid duty cycle type: {type(duty)}")
+            
+            duty = int(duty)
+            if duty < -4095 or duty > 4095:
+                logger.warning(f"Duty cycle {duty} out of range [-4095, 4095]")
+                duty = max(-4095, min(4095, duty))
+            
+            # Apply trim and set motors
+            left_duty = self._apply_trim(duty, self.motor.left_trim)
+            right_duty = self._apply_trim(duty, self.motor.right_trim)
+            
+            # Update telemetry for all motors
+            self._update_telemetry(left_duty, right_duty)
+            
+            # Set actual motor PWM
+            self.motor.setMotors(duty)
+            
+        except Exception as e:
+            self.error_count += 1
+            logger.error(f"Error in setMotors: {e}")
+            if self.error_count >= self.max_errors:
+                raise MotorTelemetryError(f"Too many errors ({self.error_count}), stopping motor control")
+            # Continue with degraded performance
     
     def _update_telemetry(self, left_duty: int, right_duty: int):
         """Update motor telemetry based on PWM values"""
@@ -112,36 +160,53 @@ class MotorTelemetryController:
     
     def get_telemetry(self) -> Dict[str, Any]:
         """Get current motor telemetry data"""
-        return {
-            'frontLeft': {
-                'speed': round(self.telemetry['frontLeft'].speed, 1),
-                'power': round(self.telemetry['frontLeft'].power, 1),
-                'pwm': self.telemetry['frontLeft'].pwm,
-                'current': round(self.telemetry['frontLeft'].current, 2),
-                'temperature': round(self.telemetry['frontLeft'].temperature, 1)
-            },
-            'frontRight': {
-                'speed': round(self.telemetry['frontRight'].speed, 1),
-                'power': round(self.telemetry['frontRight'].power, 1),
-                'pwm': self.telemetry['frontRight'].pwm,
-                'current': round(self.telemetry['frontRight'].current, 2),
-                'temperature': round(self.telemetry['frontRight'].temperature, 1)
-            },
-            'rearLeft': {
-                'speed': round(self.telemetry['rearLeft'].speed, 1),
-                'power': round(self.telemetry['rearLeft'].power, 1),
-                'pwm': self.telemetry['rearLeft'].pwm,
-                'current': round(self.telemetry['rearLeft'].current, 2),
-                'temperature': round(self.telemetry['rearLeft'].temperature, 1)
-            },
-            'rearRight': {
-                'speed': round(self.telemetry['rearRight'].speed, 1),
-                'power': round(self.telemetry['rearRight'].power, 1),
-                'pwm': self.telemetry['rearRight'].pwm,
-                'current': round(self.telemetry['rearRight'].current, 2),
-                'temperature': round(self.telemetry['rearRight'].temperature, 1)
+        try:
+            return {
+                'frontLeft': {
+                    'speed': round(self.telemetry['frontLeft'].speed, 1),
+                    'power': round(self.telemetry['frontLeft'].power, 1),
+                    'pwm': self.telemetry['frontLeft'].pwm,
+                    'current': round(self.telemetry['frontLeft'].current, 2),
+                    'temperature': round(self.telemetry['frontLeft'].temperature, 1)
+                },
+                'frontRight': {
+                    'speed': round(self.telemetry['frontRight'].speed, 1),
+                    'power': round(self.telemetry['frontRight'].power, 1),
+                    'pwm': self.telemetry['frontRight'].pwm,
+                    'current': round(self.telemetry['frontRight'].current, 2),
+                    'temperature': round(self.telemetry['frontRight'].temperature, 1)
+                },
+                'rearLeft': {
+                    'speed': round(self.telemetry['rearLeft'].speed, 1),
+                    'power': round(self.telemetry['rearLeft'].power, 1),
+                    'pwm': self.telemetry['rearLeft'].pwm,
+                    'current': round(self.telemetry['rearLeft'].current, 2),
+                    'temperature': round(self.telemetry['rearLeft'].temperature, 1)
+                },
+                'rearRight': {
+                    'speed': round(self.telemetry['rearRight'].speed, 1),
+                    'power': round(self.telemetry['rearRight'].power, 1),
+                    'pwm': self.telemetry['rearRight'].pwm,
+                    'current': round(self.telemetry['rearRight'].current, 2),
+                    'temperature': round(self.telemetry['rearRight'].temperature, 1)
+                }
             }
-        }
+        except Exception as e:
+            logger.error(f"Error getting telemetry: {e}")
+            # Return safe default values
+            default_telemetry = {
+                'speed': 0.0,
+                'power': 0.0,
+                'pwm': 0,
+                'current': 0.0,
+                'temperature': 25.0
+            }
+            return {
+                'frontLeft': default_telemetry.copy(),
+                'frontRight': default_telemetry.copy(),
+                'rearLeft': default_telemetry.copy(),
+                'rearRight': default_telemetry.copy()
+            }
     
     def stop(self):
         """Stop all motors and reset telemetry"""
