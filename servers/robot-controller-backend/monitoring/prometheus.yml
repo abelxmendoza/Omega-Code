@@ -1,0 +1,67 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "rules/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # Robot Controller Backend
+  - job_name: 'robot-controller-backend'
+    static_configs:
+      - targets: ['robot-backend:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+    scrape_timeout: 5s
+
+  # Movement WebSocket Server
+  - job_name: 'movement-websocket'
+    static_configs:
+      - targets: ['robot-backend:8081']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # Sensor WebSocket Server
+  - job_name: 'sensor-websocket'
+    static_configs:
+      - targets: ['robot-backend:8090']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # Ultrasonic Service
+  - job_name: 'ultrasonic-service'
+    static_configs:
+      - targets: ['ultrasonic-service:8082']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Nginx
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx:80']
+    metrics_path: '/nginx_status'
+    scrape_interval: 15s
+
+  # Node Exporter (if available)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 15s
+
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
