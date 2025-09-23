@@ -12,14 +12,17 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { COMMAND } from '@/control_definitions';
 import { useCommand } from '@/context/CommandContext';
 import LedModal from '@/components/lighting/LedModal';
+import { useRobustWebSocket } from '@/utils/RobustWebSocket';
+import { envConfig } from '@/config/environment';
 
-type ServerStatus = 'connecting' | 'connected' | 'disconnected';
+type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
 // Small connection status dot
 function StatusDot({ status, title }: { status: ServerStatus; title: string }) {
   const color =
     status === 'connected' ? 'bg-emerald-500'
     : status === 'connecting' ? 'bg-slate-500'
+    : status === 'error' ? 'bg-red-600'
     : 'bg-rose-500';
   return (
     <span
@@ -40,12 +43,31 @@ const CMD_STOP        = (COMMAND as any)?.STOP            || 'stop';
 const CMD_BUZZ_ON     = (COMMAND as any)?.CMD_BUZZER      || 'buzz';
 const CMD_BUZZ_OFF    = (COMMAND as any)?.CMD_BUZZER_STOP || 'buzz-stop';
 
+interface MotorData {
+  left: {
+    speed: number;
+    power: number;
+    pwm: number;
+  };
+  right: {
+    speed: number;
+    power: number;
+    pwm: number;
+  };
+}
+
 const SpeedControl: React.FC = () => {
   const { sendCommand, status, latencyMs } = useCommand();
 
   // UI speed percent (0–100). Sent to server as PWM (0–4095).
   const [speedPct, setSpeedPct] = useState(0);
   const [isLedModalOpen, setIsLedModalOpen] = useState(false);
+  
+  // Motor telemetry data
+  const [motorData, setMotorData] = useState<MotorData>({
+    left: { speed: 0, power: 0, pwm: 0 },
+    right: { speed: 0, power: 0, pwm: 0 }
+  });
 
   const disabled = status !== 'connected';
   const moveTitle = `Movement server: ${status[0].toUpperCase()}${status.slice(1)}${
@@ -54,6 +76,45 @@ const SpeedControl: React.FC = () => {
 
   // Debounce for slider -> fewer WS messages
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // WebSocket connection for motor telemetry
+  const motorTelemetryWs = useRobustWebSocket({
+    url: envConfig.wsUrls.movement[0] || 'ws://localhost:8081/',
+    onMessage: (data) => {
+      // Parse motor telemetry data
+      if (data?.motors) {
+        setMotorData({
+          left: {
+            speed: data.motors.left?.speed || 0,
+            power: data.motors.left?.power || 0,
+            pwm: data.motors.left?.pwm || 0
+          },
+          right: {
+            speed: data.motors.right?.speed || 0,
+            power: data.motors.right?.power || 0,
+            pwm: data.motors.right?.pwm || 0
+          }
+        });
+      } else if (data?.leftMotor || data?.rightMotor) {
+        // Alternative data format
+        setMotorData({
+          left: {
+            speed: data.leftMotor?.speed || 0,
+            power: data.leftMotor?.power || 0,
+            pwm: data.leftMotor?.pwm || 0
+          },
+          right: {
+            speed: data.rightMotor?.speed || 0,
+            power: data.rightMotor?.power || 0,
+            pwm: data.rightMotor?.pwm || 0
+          }
+        });
+      }
+    },
+    onError: (error) => {
+      console.error('Motor telemetry WebSocket error:', error);
+    }
+  });
 
   // Horn state (avoid repeat spam, ensure clean stop)
   const hornHeldRef = useRef(false);
@@ -215,6 +276,62 @@ const SpeedControl: React.FC = () => {
           className="w-full accent-green-500"
           aria-label="Set speed percent"
         />
+      </div>
+
+      {/* Motor Telemetry Display */}
+      <div className="w-full mb-4">
+        <h3 className="text-sm font-semibold mb-2 text-gray-300">Motor Status</h3>
+        <div className="grid grid-cols-2 gap-3">
+          {/* Left Motor */}
+          <div className="bg-gray-700 p-3 rounded">
+            <div className="text-xs font-medium text-blue-300 mb-2">Left Motor</div>
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Speed:</span>
+                <span className="text-white font-mono">{motorData.left.speed.toFixed(1)} RPM</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Power:</span>
+                <span className="text-white font-mono">{motorData.left.power.toFixed(1)}W</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">PWM:</span>
+                <span className="text-white font-mono">{motorData.left.pwm}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Motor */}
+          <div className="bg-gray-700 p-3 rounded">
+            <div className="text-xs font-medium text-green-300 mb-2">Right Motor</div>
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Speed:</span>
+                <span className="text-white font-mono">{motorData.right.speed.toFixed(1)} RPM</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Power:</span>
+                <span className="text-white font-mono">{motorData.right.power.toFixed(1)}W</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">PWM:</span>
+                <span className="text-white font-mono">{motorData.right.pwm}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Connection Status for Motor Telemetry */}
+        <div className="mt-2 flex items-center justify-between text-xs">
+          <span className="text-gray-400">Motor Telemetry:</span>
+          <div className="flex items-center gap-1">
+            <StatusDot 
+              status={motorTelemetryWs.connectionStatus} 
+              title={`Motor telemetry: ${motorTelemetryWs.connectionStatus}`} 
+            />
+            <span className="text-gray-300">{motorTelemetryWs.connectionStatus}</span>
+          </div>
+        </div>
       </div>
 
       {/* Control Buttons */}
