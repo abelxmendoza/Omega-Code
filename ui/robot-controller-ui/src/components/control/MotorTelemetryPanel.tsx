@@ -232,6 +232,6 @@ const MotorTelemetryPanel: React.FC = memo(() => {
       </div>
     </div>
   );
-};
+});
 
 export default MotorTelemetryPanel;

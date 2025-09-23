@@ -173,12 +173,12 @@ export const logError = (error: Error | string, context?: ErrorContext): void =>
 // WebSocket error handling
 export const handleWebSocketError = (error: Event | Error, context?: ErrorContext): void => {
   const errorMessage = error instanceof Error ? error.message : 'WebSocket connection error';
-  handleError(errorMessage, { ...context, action: 'websocket' });
+  handleError(errorMessage, { ...context, action: 'websocket' } as ErrorContext);
 };
 
 // API error handling
 export const handleApiError = (error: Error, endpoint: string, context?: ErrorContext): void => {
-  handleError(`API Error (${endpoint}): ${error.message}`, { ...context, action: 'api' });
+  handleError(`API Error (${endpoint}): ${error.message}`, { ...context, action: 'api' } as ErrorContext);
 };
 
 // Component error handling
@@ -188,7 +188,7 @@ export const handleComponentError = (error: Error, componentName: string, action
 
 // Hardware error handling
 export const handleHardwareError = (error: Error, device: string, context?: ErrorContext): void => {
-  handleError(`Hardware Error (${device}): ${error.message}`, { ...context, action: 'hardware' });
+  handleError(`Hardware Error (${device}): ${error.message}`, { ...context, action: 'hardware' } as ErrorContext);
 };
 
 // Error boundary helper

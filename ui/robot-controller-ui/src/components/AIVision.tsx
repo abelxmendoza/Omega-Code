@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 interface AIVisionProps {
   onObjectDetected?: (objects: DetectedObject[]) => void;
@@ -69,7 +69,7 @@ const AIVision: React.FC<AIVisionProps> = ({
   const streamRef = useRef<MediaStream | null>(null);
 
   // Simulate AI processing (in real implementation, this would call AI APIs)
-  const simulateObjectDetection = () => {
+  const simulateObjectDetection = useCallback(() => {
     const objects: DetectedObject[] = [
       {
         id: 'obj1',
@@ -89,9 +89,9 @@ const AIVision: React.FC<AIVisionProps> = ({
     
     setDetectedObjects(objects);
     onObjectDetected?.(objects);
-  };
+  }, [onObjectDetected]);
 
-  const simulateFaceRecognition = () => {
+  const simulateFaceRecognition = useCallback(() => {
     const faces: DetectedFace[] = [
       {
         id: 'face1',
@@ -110,9 +110,9 @@ const AIVision: React.FC<AIVisionProps> = ({
     
     setDetectedFaces(faces);
     onFaceRecognized?.(faces);
-  };
+  }, [onFaceRecognized]);
 
-  const simulateMotionDetection = () => {
+  const simulateMotionDetection = useCallback(() => {
     const motion: MotionData = {
       regions: [
         {
@@ -128,7 +128,7 @@ const AIVision: React.FC<AIVisionProps> = ({
     
     setMotionData(motion);
     onMotionDetected?.(motion);
-  };
+  }, [onMotionDetected]);
 
   const startCamera = async () => {
     try {
@@ -182,7 +182,7 @@ const AIVision: React.FC<AIVisionProps> = ({
     return () => clearInterval(interval);
   }, [isActive, enabled, simulateObjectDetection, simulateFaceRecognition, simulateMotionDetection]);
 
-  const drawDetections = () => {
+  const drawDetections = useCallback(() => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
     if (!canvas || !video) return;
@@ -242,7 +242,7 @@ const AIVision: React.FC<AIVisionProps> = ({
         ctx.fillRect(region.x, region.y, region.width, region.height);
       });
     }
-  };
+  }, [detectedObjects, detectedFaces, motionData, confidence]);
 
   useEffect(() => {
     if (isActive) {

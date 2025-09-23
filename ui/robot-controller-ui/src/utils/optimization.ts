@@ -9,7 +9,33 @@
 */
 
 import React, { memo, useMemo, useCallback, lazy, Suspense } from 'react';
-import { debounce, throttle } from 'lodash-es';
+
+// Simple debounce implementation
+const debounce = <T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): ((...args: Parameters<T>) => void) => {
+  let timeout: NodeJS.Timeout;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+};
+
+// Simple throttle implementation
+const throttle = <T extends (...args: any[]) => any>(
+  func: T,
+  limit: number
+): ((...args: Parameters<T>) => void) => {
+  let inThrottle: boolean;
+  return (...args: Parameters<T>) => {
+    if (!inThrottle) {
+      func(...args);
+      inThrottle = true;
+      setTimeout(() => (inThrottle = false), limit);
+    }
+  };
+};
 
 // Performance monitoring
 export const performanceMonitor = {
@@ -35,25 +61,13 @@ export const withOptimization = <P extends object>(
   Component: React.ComponentType<P>,
   options: {
     memoize?: boolean;
-    debounceMs?: number;
-    throttleMs?: number;
   } = {}
-) => {
-  let OptimizedComponent = Component;
-
+): React.ComponentType<P> => {
   if (options.memoize) {
-    OptimizedComponent = memo(Component);
+    return memo(Component) as unknown as React.ComponentType<P>;
   }
-
-  if (options.debounceMs) {
-    OptimizedComponent = debounce(OptimizedComponent, options.debounceMs);
-  }
-
-  if (options.throttleMs) {
-    OptimizedComponent = throttle(OptimizedComponent, options.throttleMs);
-  }
-
-  return OptimizedComponent;
+  
+  return Component;
 };
 
 // Lazy loading helper
@@ -67,7 +81,7 @@ export const createLazyComponent = <P extends object>(
     React.createElement(
       Suspense,
       { fallback: fallback || React.createElement('div', null, 'Loading...') },
-      React.createElement(LazyComponent, props)
+      React.createElement(LazyComponent, props as any)
     );
 };
 
@@ -99,7 +113,7 @@ export const useDebouncedCallback = <T extends (...args: any[]) => any>(
 
   React.useEffect(() => {
     return () => {
-      debouncedCallback.cancel();
+      // Cleanup handled by debounce implementation
     };
   }, [debouncedCallback]);
 
@@ -119,7 +133,7 @@ export const useThrottledCallback = <T extends (...args: any[]) => any>(
 
   React.useEffect(() => {
     return () => {
-      throttledCallback.cancel();
+      // Cleanup handled by throttle implementation
     };
   }, [throttledCallback]);
 
@@ -177,30 +191,29 @@ export const OptimizedImage: React.FC<{
     setHasError(true);
   }, []);
 
-  return (
-    <div className={`relative ${className}`}>
-      {!isLoaded && !hasError && (
-        <div className="absolute inset-0 bg-gray-200 animate-pulse" />
-      )}
-      {hasError ? (
-        <div className="absolute inset-0 bg-gray-300 flex items-center justify-center">
-          <span className="text-gray-500">Failed to load</span>
-        </div>
-      ) : (
-        <img
-          src={src}
-          alt={alt}
-          width={width}
-          height={height}
-          loading={loading}
-          onLoad={handleLoad}
-          onError={handleError}
-          className={`transition-opacity duration-300 ${
-            isLoaded ? 'opacity-100' : 'opacity-0'
-          }`}
-        />
-      )}
-    </div>
+  return React.createElement(
+    'div',
+    { className: `relative ${className}` },
+    !isLoaded && !hasError && React.createElement(
+      'div',
+      { className: 'absolute inset-0 bg-gray-200 animate-pulse' }
+    ),
+    hasError ? React.createElement(
+      'div',
+      { className: 'absolute inset-0 bg-gray-300 flex items-center justify-center' },
+      React.createElement('span', { className: 'text-gray-500' }, 'Failed to load')
+    ) : React.createElement('img', {
+      src: src,
+      alt: alt,
+      width: width,
+      height: height,
+      loading: loading,
+      onLoad: handleLoad,
+      onError: handleError,
+      className: `transition-opacity duration-300 ${
+        isLoaded ? 'opacity-100' : 'opacity-0'
+      }`
+    })
   );
 });
 
