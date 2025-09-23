@@ -44,7 +44,7 @@ function StatusDot({ status, title }: { status: ServerStatus; title: string }) {
     status === 'connected' ? 'bg-emerald-500'
     : status === 'connecting' ? 'bg-slate-500'
     : status === 'error' ? 'bg-red-600'
-    : 'bg-rose-500';
+    : 'bg-black/20 backdrop-blur-sm border border-black/30';
   return (
     <span
       className={`inline-block rounded-full ${color} shrink-0`}
