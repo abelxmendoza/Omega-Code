@@ -34,6 +34,23 @@ Everything can run on the Pi, but the services are split so you can develop the 
 | Memory Usage | **30% reduction** |
 | Load Time | **40% faster** |
 
+### Hardware Performance Metrics
+| Component | Target Performance | Optimization Level |
+|-----------|-------------------|-------------------|
+| **GPIO Operations** | <1ms response time | **Critical** |
+| **Motor Control** | <10ms response time | **High** |
+| **Camera Capture** | 30+ FPS stable | **High** |
+| **Sensor Reading** | <5ms response time | **Medium** |
+| **System Resources** | <80% CPU usage | **Medium** |
+
+### Hardware Optimizations
+- **GPIO Performance**: <1ms response time with hardware PWM and interrupt-driven reading
+- **Motor Control**: <10ms response time with smooth acceleration/deceleration
+- **Camera Optimization**: 30+ FPS stable with optimized image processing pipeline
+- **Sensor Reading**: <5ms response time with interrupt-driven sensor reading
+- **Power Management**: Dynamic power scaling and temperature-based throttling
+- **Real-time Scheduling**: Real-time priority for critical hardware operations
+
 ## Repository layout
 
 | Path | Description |
