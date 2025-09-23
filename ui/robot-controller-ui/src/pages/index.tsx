@@ -28,6 +28,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import CarControlPanel from '../components/control/CarControlPanel';
 import CameraControlPanel from '../components/control/CameraControlPanel';
 import ServoTelemetryPanel from '../components/control/ServoTelemetryPanel';
+import EnhancedServoTelemetryPanel from '../components/control/EnhancedServoTelemetryPanel';
 import AutonomyPanel from '../components/control/AutonomyModal';
 import { useCommand } from '../context/CommandContext';
 import { COMMAND } from '../control_definitions';
@@ -377,7 +378,7 @@ export default function Home() {
 
           <div className="flex-shrink-0 flex flex-col items-center">
             <CameraControlPanel />
-            <ServoTelemetryPanel />
+            <EnhancedServoTelemetryPanel />
           </div>
         </div>
 
