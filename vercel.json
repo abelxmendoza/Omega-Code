@@ -1,0 +1,8 @@
+{
+  "buildCommand": "cd ui/robot-controller-ui && npm run build",
+  "outputDirectory": "ui/robot-controller-ui/.next",
+  "installCommand": "cd ui/robot-controller-ui && npm install",
+  "devCommand": "cd ui/robot-controller-ui && npm run dev",
+  "framework": "nextjs",
+  "rootDirectory": "ui/robot-controller-ui"
+}

@@ -1,0 +1,25 @@
+# Exclude non-UI directories from Vercel deployment
+servers/
+ros/
+machine_learning/
+scripts/
+config/
+image/
+venv/
+*.md
+LICENSE
+Makefile
+docker-compose.yml
+nginx.conf
+deploy.sh
+update_servo_center.py
+
+# Exclude UI files that aren't needed
+ui/robot-controller-ui/node_modules/
+ui/robot-controller-ui/.next/
+ui/robot-controller-ui/cypress/
+ui/robot-controller-ui/tests/
+ui/robot-controller-ui/Dockerfile
+ui/robot-controller-ui/COMPONENTS.md
+ui/robot-controller-ui/find_unused_components.py
+ui/robot-controller-ui/image/
