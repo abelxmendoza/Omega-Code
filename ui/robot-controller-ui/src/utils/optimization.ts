@@ -63,11 +63,12 @@ export const createLazyComponent = <P extends object>(
 ) => {
   const LazyComponent = lazy(importFn);
   
-  return (props: P) => (
-    <Suspense fallback={fallback || <div>Loading...</div>}>
-      <LazyComponent {...props} />
-    </Suspense>
-  );
+  return (props: P) => 
+    React.createElement(
+      Suspense,
+      { fallback: fallback || React.createElement('div', null, 'Loading...') },
+      React.createElement(LazyComponent, props)
+    );
 };
 
 // Memory optimization hooks

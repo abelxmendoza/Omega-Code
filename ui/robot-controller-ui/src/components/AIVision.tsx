@@ -180,7 +180,7 @@ const AIVision: React.FC<AIVisionProps> = ({
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [isActive, enabled]);
+  }, [isActive, enabled, simulateObjectDetection, simulateFaceRecognition, simulateMotionDetection]);
 
   const drawDetections = () => {
     const canvas = canvasRef.current;
@@ -249,7 +249,7 @@ const AIVision: React.FC<AIVisionProps> = ({
       const interval = setInterval(drawDetections, 100);
       return () => clearInterval(interval);
     }
-  }, [isActive, detectedObjects, detectedFaces, motionData]);
+  }, [isActive, detectedObjects, detectedFaces, motionData, drawDetections]);
 
   return (
     <div className="p-4 bg-gray-800 rounded-lg">

@@ -26,6 +26,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import GpsLocation from './GpsLocation';
 import { useHttpStatus } from '../hooks/useHttpStatus';
 import { getActiveProfile } from '@/utils/resolveWsUrl';
@@ -328,11 +329,12 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
       {/* Main media */}
       <div className="absolute inset-0 bg-black">
         {showImg ? (
-          <img
+          <Image
             key={IMG_SRC /* force a new request when buster changes */}
             src={IMG_SRC}
             alt="Live video feed"
-            className={`w-full h-full ${objectFit === 'cover' ? 'object-cover' : 'object-contain'}`}
+            fill
+            className={`${objectFit === 'cover' ? 'object-cover' : 'object-contain'}`}
             onLoad={onImgLoad}
             onError={onImgError}
             draggable={false}

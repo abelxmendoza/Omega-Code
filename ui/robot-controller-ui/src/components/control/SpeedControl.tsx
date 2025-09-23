@@ -32,6 +32,7 @@ const StatusDot = memo(({ status, title }: { status: ServerStatus; title: string
     />
   );
 });
+StatusDot.displayName = 'StatusDot';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const PWM_MAX = 4095; // keep in sync with the movement server

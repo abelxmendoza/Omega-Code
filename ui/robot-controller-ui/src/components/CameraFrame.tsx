@@ -21,6 +21,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { cameraStatusBus } from '@/utils/cameraStatusBus';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'no_camera';
@@ -525,12 +526,13 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       {/* Media area (16:9 default) */}
       <div className={`relative bg-black ${filterClass(filter)}`} style={{ paddingTop: '56.25%' }}>
         {playing ? (
-          <img
+          <Image
             ref={imgRef}
             key={IMG_SRC}
             src={IMG_SRC}
             alt="Live Camera"
-            className={`absolute inset-0 w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
+            fill
+            className={`${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
             style={mediaStyle}
             onError={handleImgError}
             onLoad={handleImgLoad}
@@ -538,10 +540,11 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
           />
         ) : (
           snapshotUrl && (
-            <img
+            <Image
               src={snapshotUrl}
               alt="Last frame"
-              className={`absolute inset-0 w-full h-full opacity-25 ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
+              fill
+              className={`opacity-25 ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
               style={mediaStyle}
               draggable={false}
             />
