@@ -28,6 +28,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import CarControlPanel from '../components/control/CarControlPanel';
 import CameraControlPanel from '../components/control/CameraControlPanel';
 import ServoTelemetryPanel from '../components/control/ServoTelemetryPanel';
+import PerformanceDashboard from '../components/PerformanceDashboard';
 import EnhancedServoTelemetryPanel from '../components/control/EnhancedServoTelemetryPanel';
 import AutonomyPanel from '../components/control/AutonomyModal';
 import { useCommand } from '../context/CommandContext';
@@ -400,6 +401,13 @@ export default function Home() {
               <EnhancedServoTelemetryPanel />
             </div>
           </div>
+        </div>
+
+        {/* Performance Dashboard */}
+        <div className="mt-8 flex justify-center">
+          <ErrorBoundary>
+            <PerformanceDashboard />
+          </ErrorBoundary>
         </div>
 
         <div className="flex flex-col items-center space-y-6 mt-6">
