@@ -24,7 +24,7 @@ const mockWebSocket = {
   CLOSED: WebSocket.CLOSED,
 };
 
-const WebSocketMock = jest.fn(() => mockWebSocket);
+const WebSocketMock = jest.fn(() => mockWebSocket) as any;
 WebSocketMock.CONNECTING = WebSocket.CONNECTING;
 WebSocketMock.OPEN = WebSocket.OPEN;
 WebSocketMock.CLOSING = WebSocket.CLOSING;

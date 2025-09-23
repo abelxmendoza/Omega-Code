@@ -1,4 +1,4 @@
-x/**
+/**
  * File: src/components/sensors/LineTrackerStatus.tsx
  * Summary:
  *   Real-time status panel for the robot's line tracking sensor (3 IR sensors).
@@ -14,7 +14,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 // Prefer Tailscale, fallback to LAN. Never hardcode your own IP!
 const LINE_TRACKER_WS =
   process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_TAILSCALE ||
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LAN;
+  process.env.NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LAN ||
+  'ws://localhost:3001/ws/line';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected';
 
@@ -209,7 +210,7 @@ const LineTrackerStatus: React.FC = () => {
         ws.current = null;
       }
     };
-  }, [startHeartbeat]); // include memoized heartbeat
+  }, [startHeartbeat, clearHeartbeat]); // include memoized heartbeat
 
   return (
     <div className="bg-gray-900 text-white p-4 rounded-lg shadow-md my-2 relative">

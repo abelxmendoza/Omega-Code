@@ -692,7 +692,7 @@ function num(s: string, fallback: number) { const n = Number(s); return Number.i
 function clampNum(s: string, fallback: number, min: number, max: number) {
   return clamp(num(s, fallback), min, max);
 }
-function canonicalize(obj: any) {
+function canonicalize(obj: any): any {
   // stable stringify (sort keys shallowly; arrays kept order)
   if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
     return Object.keys(obj).sort().reduce((acc:any, k) => { acc[k] = canonicalize(obj[k]); return acc; }, {} as any);

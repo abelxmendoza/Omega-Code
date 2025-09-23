@@ -150,10 +150,10 @@ export function useWsStatus(url: string | undefined, opts: Options = {}): Result
         setStatus('disconnected');
         setLatency(null);
         clearTimers();
-        // Auto-reconnect with a small backoff
+        // Auto-reconnect with mobile hotspot optimized backoff
         reconnectTimerRef.current = setTimeout(() => {
           if (!stopped) connect();
-        }, 1500);
+        }, 3000); // Increased from 1.5s to 3s for mobile hotspots
       };
     };
 

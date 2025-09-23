@@ -1,3 +1,5 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+
 /*
 # File: /src/utils/debounce.ts
 # Summary:
@@ -177,7 +179,6 @@ export function debounce<T extends (...args: any[]) => any>(
 
 /* -------------------------------- React hook -------------------------------- */
 
-import { useEffect, useMemo, useRef } from 'react';
 
 /**
  * useDebouncedCallback:
@@ -219,7 +220,7 @@ export function useDebouncedCallback<T extends (...args: any[]) => any>(
  * Useful for search inputs or sliders when you don't need manual .flush().
  */
 export function useDebouncedValue<T>(value: T, wait = 250): T {
-  const [v, setV] = (React as any).useState<T>(value);
+  const [v, setV] = useState<T>(value);
   const setDebounced = useDebouncedCallback(setV, wait, { trailing: true }, []);
   useEffect(() => { setDebounced(value); }, [value, setDebounced]);
   return v;

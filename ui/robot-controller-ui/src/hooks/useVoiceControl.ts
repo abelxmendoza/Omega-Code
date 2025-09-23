@@ -23,7 +23,7 @@ export const useVoiceControl = (options: VoiceControlOptions = {}) => {
     error: null
   });
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   const startListening = useCallback(() => {
     if (!recognitionRef.current) return;
@@ -87,7 +87,7 @@ export const useVoiceControl = (options: VoiceControlOptions = {}) => {
 
   useEffect(() => {
     // Check if speech recognition is supported
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
     if (!SpeechRecognition) {
       setState(prev => ({ 
@@ -111,7 +111,7 @@ export const useVoiceControl = (options: VoiceControlOptions = {}) => {
       setState(prev => ({ ...prev, isListening: true, error: null }));
     };
 
-    recognition.onresult = (event) => {
+    recognition.onresult = (event: any) => {
       let finalTranscript = '';
       
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -126,7 +126,7 @@ export const useVoiceControl = (options: VoiceControlOptions = {}) => {
       }
     };
 
-    recognition.onerror = (event) => {
+    recognition.onerror = (event: any) => {
       setState(prev => ({ 
         ...prev, 
         error: `Speech recognition error: ${event.error}`,

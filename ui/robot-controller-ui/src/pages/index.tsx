@@ -23,6 +23,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import SpeedControl from '../components/control/SpeedControl';
 import CommandLog from '../components/CommandLog';
 import SensorDashboard from '../components/sensors/SensorDashboard';
+import ErrorBoundary from '../components/ErrorBoundary';
 import CarControlPanel from '../components/control/CarControlPanel';
 import CameraControlPanel from '../components/control/CameraControlPanel';
 import ServoTelemetryPanel from '../components/control/ServoTelemetryPanel';
@@ -176,7 +177,7 @@ export default function Home() {
           } catch {
             /* swallow */
           }
-        }, 25_000);
+        }, 15_000); // Reduced from 25s to 15s for mobile hotspots
       };
 
       ws.current.onclose = (ev) => {
@@ -186,7 +187,7 @@ export default function Home() {
 
         addCommand('WebSocket connection closed. Reconnecting…');
         if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null; }
-        const delay = backoffRef.current;
+        const delay = Math.min(backoffRef.current, 10000); // Cap at 10s for mobile hotspots
         reconnectTimer.current = setTimeout(() => {
           backoffRef.current = nextBackoff(backoffRef.current);
           connectWebSocket();
@@ -381,7 +382,9 @@ export default function Home() {
 
         <div className="flex justify-center items-center space-x-6 mt-6">
           <div className="w-1/3">
-            <SensorDashboard />
+            <ErrorBoundary>
+              <SensorDashboard />
+            </ErrorBoundary>
           </div>
           <div className="w-1/4">
             <SpeedControl />
