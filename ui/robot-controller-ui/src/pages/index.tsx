@@ -378,7 +378,6 @@ export default function Home() {
 
           <div className="flex-shrink-0 flex flex-col items-center">
             <CameraControlPanel />
-            <EnhancedServoTelemetryPanel />
           </div>
         </div>
 
@@ -394,8 +393,11 @@ export default function Home() {
               {/* Optional: visible LED modal trigger */}
               {/* <Button onClick={() => setIsLedModalOpen(true)}>LEDs…</Button> */}
             </div>
-            <div className="w-80">
+            <div className="w-72">
               <MotorTelemetryPanel />
+            </div>
+            <div className="w-72">
+              <EnhancedServoTelemetryPanel />
             </div>
           </div>
         </div>

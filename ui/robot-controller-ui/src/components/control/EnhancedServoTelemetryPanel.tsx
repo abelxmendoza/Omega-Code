@@ -135,10 +135,10 @@ const EnhancedServoTelemetryPanel: React.FC = () => {
   }, [canRefresh, requestStatus]);
 
   return (
-    <div className="bg-gray-800 text-white p-4 rounded-md shadow-md w-full max-w-sm flex flex-col">
+    <div className="bg-gray-800 text-white p-3 rounded-md shadow-md w-full max-w-xs flex flex-col">
       {/* Header with status dot */}
-      <div className="w-full flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold">Servo Telemetry</h2>
+      <div className="w-full flex items-center justify-between mb-3">
+        <h2 className="text-base font-bold">Servo Telemetry</h2>
         <StatusDot 
           status={status} 
           title={`Servo telemetry: ${status}`} 
@@ -146,11 +146,11 @@ const EnhancedServoTelemetryPanel: React.FC = () => {
       </div>
 
       {/* Servo Status Grid */}
-      <div className="w-full mb-4">
-        <div className="grid grid-cols-2 gap-3">
+      <div className="w-full mb-3">
+        <div className="grid grid-cols-2 gap-1.5">
           {/* Horizontal Servo */}
-          <div className="bg-gray-700 p-3 rounded">
-            <div className="text-xs font-medium text-blue-300 mb-2">Horizontal (Pan)</div>
+          <div className="bg-gray-700 p-1.5 rounded">
+            <div className="text-xs font-medium text-blue-300 mb-1">Horizontal (Pan)</div>
             <div className="space-y-1 text-xs">
               <div className="flex justify-between">
                 <span className="text-gray-400">Angle:</span>
@@ -172,8 +172,8 @@ const EnhancedServoTelemetryPanel: React.FC = () => {
           </div>
 
           {/* Vertical Servo */}
-          <div className="bg-gray-700 p-3 rounded">
-            <div className="text-xs font-medium text-green-300 mb-2">Vertical (Tilt)</div>
+          <div className="bg-gray-700 p-1.5 rounded">
+            <div className="text-xs font-medium text-green-300 mb-1">Vertical (Tilt)</div>
             <div className="space-y-1 text-xs">
               <div className="flex justify-between">
                 <span className="text-gray-400">Angle:</span>

@@ -45,6 +45,11 @@ try:
 except Exception:  # pragma: no cover - fallback for script execution
     from straight_drive_assist import StraightDriveAssist
 
+try:
+    from .motor_telemetry import MotorTelemetryController
+except Exception:  # pragma: no cover - fallback for script execution
+    from motor_telemetry import MotorTelemetryController
+
 # Optional .env loader (backend root)
 try:
     from dotenv import load_dotenv
@@ -162,7 +167,8 @@ else:
         from controllers.servo_control import Servo as _Servo
         from controllers.buzzer import setup_buzzer, buzz_on as _buzz_on, buzz_off as _buzz_off
 
-        motor = _Motor()
+        # Use MotorTelemetryController instead of basic Motor
+        motor = MotorTelemetryController()
         servo = _Servo()
         buzz_on = _buzz_on
         buzz_off = _buzz_off
@@ -188,6 +194,7 @@ AUTONOMY = build_default_controller(context={
 })
 
 STRAIGHT_ASSIST = StraightDriveAssist(motor)
+MOTOR_TELEMETRY = MotorTelemetryController()
 
 # ---------- server state ----------
 
@@ -744,6 +751,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     await send_json(ws, {
                         "type": "status",
                         "speed": current_speed,
+                        "motors": MOTOR_TELEMETRY.get_telemetry(),
                         "servo": {
                             "horizontal": current_horizontal_angle,
                             "vertical": current_vertical_angle,

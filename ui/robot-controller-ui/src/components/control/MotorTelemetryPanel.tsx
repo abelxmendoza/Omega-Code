@@ -123,10 +123,10 @@ const MotorTelemetryPanel: React.FC = () => {
   });
 
   return (
-    <div className="bg-gray-800 text-white p-4 rounded-md shadow-md w-full max-w-sm flex flex-col">
+    <div className="bg-gray-800 text-white p-3 rounded-md shadow-md w-full max-w-xs flex flex-col">
       {/* Header with status dot */}
-      <div className="w-full flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold">Motor Telemetry</h2>
+      <div className="w-full flex items-center justify-between mb-3">
+        <h2 className="text-base font-bold">Motor Telemetry</h2>
         <StatusDot 
           status={motorTelemetryWs.connectionStatus} 
           title={`Motor telemetry: ${motorTelemetryWs.connectionStatus}`} 
@@ -134,10 +134,10 @@ const MotorTelemetryPanel: React.FC = () => {
       </div>
 
       {/* Motor Status Grid */}
-      <div className="w-full mb-4">
-        <div className="grid grid-cols-2 gap-2">
+      <div className="w-full mb-3">
+        <div className="grid grid-cols-2 gap-1.5">
           {/* Front Left Motor */}
-          <div className="bg-gray-700 p-2 rounded">
+          <div className="bg-gray-700 p-1.5 rounded">
             <div className="text-xs font-medium text-blue-300 mb-1">Front Left</div>
             <div className="space-y-1 text-xs">
               <div className="flex justify-between">
@@ -156,7 +156,7 @@ const MotorTelemetryPanel: React.FC = () => {
           </div>
 
           {/* Front Right Motor */}
-          <div className="bg-gray-700 p-2 rounded">
+          <div className="bg-gray-700 p-1.5 rounded">
             <div className="text-xs font-medium text-green-300 mb-1">Front Right</div>
             <div className="space-y-1 text-xs">
               <div className="flex justify-between">
@@ -175,7 +175,7 @@ const MotorTelemetryPanel: React.FC = () => {
           </div>
 
           {/* Rear Left Motor */}
-          <div className="bg-gray-700 p-2 rounded">
+          <div className="bg-gray-700 p-1.5 rounded">
             <div className="text-xs font-medium text-purple-300 mb-1">Rear Left</div>
             <div className="space-y-1 text-xs">
               <div className="flex justify-between">
@@ -194,7 +194,7 @@ const MotorTelemetryPanel: React.FC = () => {
           </div>
 
           {/* Rear Right Motor */}
-          <div className="bg-gray-700 p-2 rounded">
+          <div className="bg-gray-700 p-1.5 rounded">
             <div className="text-xs font-medium text-orange-300 mb-1">Rear Right</div>
             <div className="space-y-1 text-xs">
               <div className="flex justify-between">
