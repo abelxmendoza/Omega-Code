@@ -28,8 +28,8 @@ INVERT = {
     "right":  os.getenv("INVERT_RIGHT", "0") == "1",
 }
 
-RATE_HZ = float(os.getenv("RATE_HZ", "10"))
-KEEPALIVE_SEC = float(os.getenv("KEEPALIVE_SEC", "2.0"))
+RATE_HZ = float(os.getenv("RATE_HZ", "20"))  # Increased from 10Hz for better responsiveness
+KEEPALIVE_SEC = float(os.getenv("KEEPALIVE_SEC", "1.0"))  # Reduced from 2.0s for faster detection
 
 HOST = os.getenv("LINE_TRACKER_HOST", "0.0.0.0")
 PORT = int(os.getenv("LINE_TRACKER_PORT", "8090"))

@@ -82,7 +82,7 @@ class _PiCam2Backend:
         width: int,
         height: int,
         target_fps: int = 30,
-        warmup_timeout_s: float = 3.0,   # generous default on RPi
+        warmup_timeout_s: float = 2.0,   # Reduced from 3.0s for faster startup
         warmup_min_frames: int = 2,
     ) -> None:
         if not _PICAM2_OK:

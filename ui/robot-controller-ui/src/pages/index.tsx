@@ -21,6 +21,7 @@ import Head from 'next/head';
 import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import SpeedControl from '../components/control/SpeedControl';
+import MotorTelemetryPanel from '../components/control/MotorTelemetryPanel';
 import CommandLog from '../components/CommandLog';
 import SensorDashboard from '../components/sensors/SensorDashboard';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -386,10 +387,15 @@ export default function Home() {
               <SensorDashboard />
             </ErrorBoundary>
           </div>
-          <div className="w-1/4">
-            <SpeedControl />
-            {/* Optional: visible LED modal trigger */}
-            {/* <Button onClick={() => setIsLedModalOpen(true)}>LEDs…</Button> */}
+          <div className="flex space-x-4">
+            <div className="w-64">
+              <SpeedControl />
+              {/* Optional: visible LED modal trigger */}
+              {/* <Button onClick={() => setIsLedModalOpen(true)}>LEDs…</Button> */}
+            </div>
+            <div className="w-80">
+              <MotorTelemetryPanel />
+            </div>
           </div>
         </div>
 

@@ -8,21 +8,48 @@ This document describes the environment variables needed to run the robot contro
 Create a `.env.local` file in the `ui/robot-controller-ui/` directory:
 
 ```bash
-# WebSocket URLs for backend services
-NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT=ws://localhost:8001/ws
-NEXT_PUBLIC_BACKEND_WS_URL_VIDEO=ws://localhost:8002/ws
-NEXT_PUBLIC_BACKEND_WS_URL_SENSORS=ws://localhost:8003/ws
+# Active network profile for all endpoints (used by resolvers & proxies)
+# Options: lan | tailscale | local
+NEXT_PUBLIC_NETWORK_PROFILE=tailscale
 
-# API endpoints
-NEXT_PUBLIC_BACKEND_API_URL=http://localhost:8000
-NEXT_PUBLIC_VIDEO_API_URL=http://localhost:8002
+# Gateway host (unified FastAPI gateway on port 7070)
+# Replace with your Pi's Tailscale IP
+NEXT_PUBLIC_GATEWAY_HOST=100.93.225.61
+NEXT_PUBLIC_GATEWAY_PORT=7070
+
+# Per-profile robot host hints used by some resolvers
+NEXT_PUBLIC_ROBOT_HOST_TAILSCALE=100.93.225.61
+NEXT_PUBLIC_ROBOT_HOST_LAN=192.168.6.164
+NEXT_PUBLIC_ROBOT_HOST_LOCAL=100.93.225.61
+
+# Video stream (MJPEG) upstreams used by /api/video-proxy and /api/video-health
+NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE=http://100.93.225.61:5000/video_feed
+NEXT_PUBLIC_VIDEO_STREAM_URL_LAN=http://192.168.6.164:5000/video_feed
+NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL=http://100.93.225.61:5000/video_feed
+
+# WebSocket URLs (gateway proxies to subsystems under /ws/*)
+NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_TAILSCALE=ws://100.93.225.61:5000/ws/movement
+NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LAN=ws://192.168.6.164:5000/ws/movement
+NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LOCAL=ws://100.93.225.61:5000/ws/movement
+
+NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_TAILSCALE=ws://100.93.225.61:5000/ws/ultrasonic
+NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_LAN=ws://192.168.6.164:5000/ws/ultrasonic
+NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC_LOCAL=ws://100.93.225.61:5000/ws/ultrasonic
+
+NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_TAILSCALE=ws://100.93.225.61:5000/ws/line
+NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LAN=ws://192.168.6.164:5000/ws/line
+NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER_LOCAL=ws://100.93.225.61:5000/ws/line
+
+NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_TAILSCALE=ws://100.93.225.61:5000/ws/lighting
+NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LAN=ws://192.168.6.164:5000/ws/lighting
+NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LOCAL=ws://100.93.225.61:5000/ws/lighting
 ```
 
 ### Optional Variables
 ```bash
-# Development settings
-NEXT_PUBLIC_MOCK_WS=true  # Use mock WebSocket connections for development
-NODE_ENV=development
+# WebSocket behavior & debug
+NEXT_PUBLIC_WS_FORCE_INSECURE=0  # Keep ws:// even on HTTPS pages
+NEXT_PUBLIC_WS_DEBUG=1  # Browser console debug for URL selection & socket lifecycle
 ```
 
 ## Backend (Python Services)
