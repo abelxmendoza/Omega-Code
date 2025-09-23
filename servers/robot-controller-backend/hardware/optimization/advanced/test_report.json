@@ -2,8 +2,8 @@
   "test_suites": {
     "DMA Accelerator Tests": {
       "tests_run": 18,
-      "failures": 3,
-      "errors": 2,
+      "failures": 2,
+      "errors": 1,
       "success": false
     },
     "DMA Error Handling Tests": {
@@ -14,9 +14,9 @@
     },
     "CPU Accelerator Tests": {
       "tests_run": 16,
-      "failures": 1,
+      "failures": 0,
       "errors": 0,
-      "success": false
+      "success": true
     },
     "CPU Error Handling Tests": {
       "tests_run": 3,
@@ -32,15 +32,15 @@
     },
     "Error Handler Tests": {
       "tests_run": 16,
-      "failures": 1,
+      "failures": 0,
       "errors": 0,
-      "success": false
+      "success": true
     },
     "Error Handler Decorator Tests": {
       "tests_run": 4,
-      "failures": 2,
+      "failures": 0,
       "errors": 0,
-      "success": false
+      "success": true
     },
     "Error Recovery Strategy Tests": {
       "tests_run": 3,
@@ -50,10 +50,10 @@
     }
   },
   "total_tests": 66,
-  "passed_tests": 57,
-  "failed_tests": 7,
-  "error_tests": 2,
-  "start_time": 1758664297.707459,
-  "end_time": 1758664308.963077,
-  "duration": 11.25561809539795
+  "passed_tests": 63,
+  "failed_tests": 2,
+  "error_tests": 1,
+  "start_time": 1758664531.160317,
+  "end_time": 1758664542.7226508,
+  "duration": 11.562333822250366
 }

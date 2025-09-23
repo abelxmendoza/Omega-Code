@@ -217,6 +217,42 @@ class DMAAccelerator:
         time.sleep(0.0005)  # Simulate 500μs transfer time
         logger.debug(f"Software memory to GPIO transfer completed: {operation.operation_id}")
     
+    def _process_transfer_queue(self):
+        """Process queued transfers when channels become available"""
+        try:
+            with self.lock:
+                if not self.transfer_queue:
+                    return
+                
+                # Process transfers in priority order
+                self.transfer_queue.sort(key=lambda x: x.priority)
+                
+                processed_transfers = []
+                for operation in self.transfer_queue:
+                    channel = self._find_available_channel(operation.priority)
+                    if channel is not None:
+                        # Start the transfer
+                        if self.hardware_dma:
+                            success = self._start_hardware_dma(operation, channel)
+                        else:
+                            success = self._start_software_dma(operation, channel)
+                        
+                        if success:
+                            self.active_transfers[operation.operation_id] = {
+                                "operation": operation,
+                                "channel": channel,
+                                "start_time": time.time(),
+                                "status": "active"
+                            }
+                            processed_transfers.append(operation)
+                
+                # Remove processed transfers from queue
+                for operation in processed_transfers:
+                    self.transfer_queue.remove(operation)
+                
+        except Exception as e:
+            logger.error(f"Failed to process transfer queue: {e}")
+    
     def _monitor_transfer(self, operation_id: str):
         """Monitor DMA transfer completion"""
         try:
