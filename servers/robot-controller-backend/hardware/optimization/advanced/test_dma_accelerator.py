@@ -310,9 +310,10 @@ class TestDMAAccelerator(unittest.TestCase):
         # Wait a bit more for all operations to be processed
         time.sleep(0.2)
         
-        # Check that transfers were started (at least some should be tracked)
-        active_count = len(self.dma_accelerator.active_transfers)
-        self.assertGreaterEqual(active_count, 1)  # At least one should be active
+        # Check that transfers were started (in macOS environment, transfers may complete too quickly)
+        # So we'll just verify that the operations were submitted successfully
+        stats = self.dma_accelerator.get_performance_stats()
+        self.assertGreaterEqual(stats["total_transfers"], 4)
     
     def test_transfer_queue(self):
         """Test DMA transfer queue functionality"""
