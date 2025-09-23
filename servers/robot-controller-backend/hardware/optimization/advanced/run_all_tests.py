@@ -136,7 +136,7 @@ def run_performance_benchmarks():
     # Import modules for benchmarking
     from dma_accelerator import DMAAccelerator, DMAOperation, DMAMode
     from cpu_accelerator import CPUAccelerator, CPUComputeTask
-    from error_handler import HardwareErrorHandler
+    from error_handler import HardwareErrorHandler, ErrorSeverity, ErrorCategory
     
     benchmarks = {}
     

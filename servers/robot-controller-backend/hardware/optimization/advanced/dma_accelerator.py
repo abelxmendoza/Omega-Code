@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass
 from enum import Enum
 import asyncio
-from .error_handler import error_handler, error_handler_decorator, ErrorSeverity, ErrorCategory
+from error_handler import error_handler, error_handler_decorator, ErrorSeverity, ErrorCategory
 
 logger = logging.getLogger(__name__)
 
@@ -331,6 +331,34 @@ class DMAAccelerator:
                 
         except Exception as e:
             logger.error(f"Failed to handle DMA transfer failure: {e}")
+    
+    def start(self):
+        """Start DMA accelerator"""
+        self.running = True
+        logger.info("DMA accelerator started")
+    
+    def stop(self):
+        """Stop DMA accelerator"""
+        self.running = False
+        logger.info("DMA accelerator stopped")
+    
+    def cleanup(self):
+        """Cleanup DMA accelerator resources"""
+        try:
+            with self.lock:
+                self.active_transfers.clear()
+                self.transfer_queue.clear()
+                
+                # Reset all channels
+                for channel_id in self.dma_channels:
+                    self.dma_channels[channel_id]["available"] = True
+                    self.dma_channels[channel_id]["current_transfer"] = None
+                    self.dma_channels[channel_id]["priority"] = 0
+            
+            logger.info("DMA accelerator cleanup completed")
+            
+        except Exception as e:
+            logger.error(f"DMA accelerator cleanup failed: {e}")
     
     def get_performance_stats(self) -> Dict[str, Any]:
         """Get DMA performance statistics"""

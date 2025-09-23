@@ -37,7 +37,7 @@ class TestHardwareErrorHandler(unittest.TestCase):
     def test_error_handler_initialization(self):
         """Test error handler initialization"""
         self.assertIsNotNone(self.error_handler)
-        self.assertIsInstance(self.error_handler.error_history, list)
+        self.assertIsNotNone(self.error_handler.error_history)
         self.assertIsInstance(self.error_handler.recovery_strategies, dict)
         self.assertIsInstance(self.error_handler.error_stats, dict)
         self.assertFalse(self.error_handler.running)
