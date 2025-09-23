@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass
 from enum import Enum
 import asyncio
+from .error_handler import error_handler, error_handler_decorator, ErrorSeverity, ErrorCategory
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ class DMAAccelerator:
             logger.error(f"Failed to initialize DMA system: {e}")
             self.hardware_dma = False
     
+    @error_handler_decorator("dma", ErrorSeverity.HIGH, ErrorCategory.HARDWARE)
     def start_dma_transfer(self, operation: DMAOperation) -> bool:
         """Start a DMA transfer with hardware acceleration"""
         start_time = time.time()
@@ -131,6 +133,7 @@ class DMAAccelerator:
             logger.error(f"Failed to start DMA transfer: {e}")
             return False
     
+    @error_handler_decorator("dma", ErrorSeverity.MEDIUM, ErrorCategory.HARDWARE)
     def _find_available_channel(self, priority: int) -> Optional[int]:
         """Find available DMA channel with appropriate priority"""
         # Sort channels by priority and availability
