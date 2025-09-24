@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRobustWebSocket } from '../utils/RobustWebSocket';
-import { envConfig } from '../config/environment';
+import { envConfig } from '@/config/environment';
 import ErrorBoundary from './ErrorBoundary';
 
 interface SensorDashboardProps {
