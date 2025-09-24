@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRobustWebSocket } from '../utils/RobustWebSocket';
-import { envConfig } from '@/config/environment';
 import ErrorBoundary from './ErrorBoundary';
+
+// Simple fallback configuration to avoid import issues
+const fallbackConfig = {
+  wsUrls: {
+    ultrasonic: ['ws://localhost:8080/ultrasonic', 'ws://localhost:3001/ws/ultrasonic'],
+    lineTracker: ['ws://localhost:8090/line-tracker', 'ws://localhost:3001/ws/line']
+  }
+};
 
 interface SensorDashboardProps {
   sensors?: Record<string, any>;
@@ -17,7 +24,7 @@ const SensorDashboard: React.FC<SensorDashboardProps> = ({
 
   // Use robust WebSocket connections
   const lineTrackerWs = useRobustWebSocket({
-    url: envConfig.wsUrls.lineTracker[0] || 'ws://localhost:8090/line-tracker',
+    url: fallbackConfig.wsUrls.lineTracker?.[0] || 'ws://localhost:8090/line-tracker',
     onMessage: (data) => {
       if (data?.lineTracking) {
         setLineTrackerData(data.lineTracking);
@@ -32,7 +39,7 @@ const SensorDashboard: React.FC<SensorDashboardProps> = ({
   });
   
   const ultrasonicWs = useRobustWebSocket({
-    url: envConfig.wsUrls.ultrasonic[0] || 'ws://localhost:8080/ultrasonic',
+    url: fallbackConfig.wsUrls.ultrasonic[0] || 'ws://localhost:8080/ultrasonic',
     onMessage: (data) => {
       if (data?.distance !== undefined) {
         setUltrasonicData({ distance: data.distance, status: 'connected' });
