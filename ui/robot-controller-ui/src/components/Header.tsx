@@ -16,7 +16,7 @@
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
+import { CheckCircle, XCircle } from 'lucide-react';
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { net } from '@/utils/netProfile';
@@ -441,9 +441,9 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
           <div className="flex items-center text-sm">
             <span className="opacity-80">Status:</span>
             {allGood ? (
-              <FaCheckCircle aria-label="All services reachable" className="text-green-500 ml-2" />
+              <CheckCircle aria-label="All services reachable" className="text-green-500 ml-2" />
             ) : (
-              <FaTimesCircle aria-label="Some services down" className="text-red-500 ml-2" />
+              <XCircle aria-label="Some services down" className="text-red-500 ml-2" />
             )}
             <span className="ml-2 opacity-80">{upCount}/{states.length} online</span>
           </div>
