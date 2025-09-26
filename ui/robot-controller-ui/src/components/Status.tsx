@@ -5,7 +5,7 @@ Small drive-ready indicator + battery bar. No sockets — props only.
 */
 
 import React from 'react';
-import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
+import { CheckCircle, XCircle } from 'lucide-react';
 
 type Props = {
   connected?: boolean;     // "drive-ready"
@@ -41,9 +41,13 @@ const Status: React.FC<Props> = ({
       {/* compact drive-ready chip */}
       <div className="flex items-center gap-1 text-sm">
         {actualConnected ? (
-          <FaCheckCircle className="text-green-500" title="Drive ready" />
+          <div title="Drive ready">
+            <CheckCircle className="text-green-500" />
+          </div>
         ) : (
-          <FaTimesCircle className="text-red-500" title="Not ready" />
+          <div title="Not ready">
+            <XCircle className="text-red-500" />
+          </div>
         )}
         {typeof upCount === 'number' && typeof total === 'number' && (
           <span className="text-xs text-white/70">{upCount}/{total}</span>
