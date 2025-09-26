@@ -323,7 +323,7 @@ export default function AutonomyModal({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
                   <div>
                     <label className="text-xs text-neutral-200">Mode</label>
-                    <Select value={mode} onValueChange={(v) => setMode(v as AutonomyMode)}>
+                    <Select value={mode} onValueChange={(v: string) => setMode(v as AutonomyMode)}>
                       <SelectTrigger className="mt-1 bg-neutral-950 border-neutral-800 text-neutral-100">
                         <SelectValue placeholder="Select mode" />
                       </SelectTrigger>
