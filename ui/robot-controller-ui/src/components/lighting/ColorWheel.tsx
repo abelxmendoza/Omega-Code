@@ -1,13 +1,12 @@
 // File: /Omega-Code/ui/robot-controller-ui/src/components/lighting/ColorWheel.tsx
 
 /*
-This component provides a color picker using the HexColorPicker component from the react-colorful library.
+This component provides a simple color picker using HTML input elements.
 Users can select a color, and the selected color is passed to the parent component via a callback function.
 It also includes a button to confirm the selected color.
 */
 
 import React, { useState } from 'react';
-import { HexColorPicker } from 'react-colorful';
 
 const ColorWheel: React.FC<{ onSelectColor: (color: string) => void }> = ({ onSelectColor }) => {
   // State to store the selected color
@@ -27,8 +26,15 @@ const ColorWheel: React.FC<{ onSelectColor: (color: string) => void }> = ({ onSe
   return (
     <div className="p-4 bg-gray-900 rounded-lg shadow-md text-center">
       <h2 className="text-lg font-bold text-green-400 mb-4">Color Picker</h2>
-      {/* HexColorPicker component for selecting color */}
-      <HexColorPicker color={color} onChange={handleChange} className="mb-4" />
+      {/* Simple HTML color input for selecting color */}
+      <div className="mb-4 flex justify-center">
+        <input
+          type="color"
+          value={color}
+          onChange={(e) => handleChange(e.target.value)}
+          className="w-32 h-32 rounded-lg border-2 border-gray-600 cursor-pointer"
+        />
+      </div>
       <div className="mt-2">
         {/* Display the currently selected color */}
         <div className="text-green-300 font-semibold mb-2">
