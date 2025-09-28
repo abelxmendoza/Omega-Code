@@ -12,7 +12,13 @@ import React, { useState, memo, useMemo } from 'react';
 import { useRobustWebSocket } from '@/utils/RobustWebSocket';
 import { handleWebSocketError, handleComponentError } from '@/utils/errorHandling';
 import { withOptimization, performanceMonitor } from '@/utils/optimization';
-import { envConfig } from '@/config/environment';
+
+// Simple fallback configuration to avoid import issues
+const fallbackConfig = {
+  wsUrls: {
+    movement: ['ws://localhost:8081/', 'ws://localhost:3001/ws/movement']
+  }
+};
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -146,7 +152,7 @@ const MotorTelemetryPanel: React.FC = memo(() => {
 
   // WebSocket connection for motor telemetry
   const motorTelemetryWs = useRobustWebSocket({
-    url: envConfig.wsUrls.movement[0] || 'ws://localhost:8081/',
+    url: fallbackConfig.wsUrls.movement[0] || 'ws://localhost:8081/',
     onMessage: (data) => {
       try {
         // Parse motor telemetry data for 4 motors

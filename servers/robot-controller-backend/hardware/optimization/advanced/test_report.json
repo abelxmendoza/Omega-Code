@@ -2,9 +2,9 @@
   "test_suites": {
     "DMA Accelerator Tests": {
       "tests_run": 18,
-      "failures": 2,
-      "errors": 1,
-      "success": false
+      "failures": 0,
+      "errors": 0,
+      "success": true
     },
     "DMA Error Handling Tests": {
       "tests_run": 3,
@@ -50,10 +50,10 @@
     }
   },
   "total_tests": 66,
-  "passed_tests": 63,
-  "failed_tests": 2,
-  "error_tests": 1,
-  "start_time": 1758664531.160317,
-  "end_time": 1758664542.7226508,
-  "duration": 11.562333822250366
+  "passed_tests": 66,
+  "failed_tests": 0,
+  "error_tests": 0,
+  "start_time": 1758664640.5003278,
+  "end_time": 1758664652.282099,
+  "duration": 11.781771183013916
 }
