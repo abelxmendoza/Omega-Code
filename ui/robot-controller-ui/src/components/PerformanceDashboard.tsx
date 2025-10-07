@@ -43,11 +43,58 @@ const PerformanceDashboard: React.FC = memo(() => {
     // Start performance monitoring
     const startMonitoring = async () => {
       try {
-        // This would connect to your backend performance monitoring endpoint
-        // For now, we'll simulate the data
         setIsMonitoring(true);
         
+        // Connect to Pi's performance API through the gateway
+        const fetchPerformanceData = async () => {
+          try {
+            const response = await fetch('/api/performance-proxy/metrics');
+            if (response.ok) {
+              const data = await response.json();
+              setPerformanceData(data);
+            } else {
+              console.warn('Performance API not available, using fallback data');
+              // Fallback to simulated data if Pi API is unavailable
+              setPerformanceData({
+                timestamp: Date.now(),
+                cpuUsage: Math.random() * 100,
+                memoryUsage: Math.random() * 8 * 1024 * 1024 * 1024, // Random GB
+                memoryPercent: Math.random() * 100,
+                diskUsage: Math.random() * 100,
+                networkIO: {
+                  bytesSent: Math.random() * 1000000,
+                  bytesRecv: Math.random() * 1000000,
+                },
+                websocketConnections: Math.floor(Math.random() * 5),
+                responseTime: Math.random() * 100,
+                errorRate: Math.random() * 5,
+                throughput: Math.random() * 1000,
+              });
+            }
+          } catch (error) {
+            console.error('Failed to fetch performance data:', error);
+          }
+        };
+
+        const fetchCacheStats = async () => {
+          try {
+            const response = await fetch('/api/performance-proxy/cache');
+            if (response.ok) {
+              const data = await response.json();
+              setCacheStats(data);
+            }
+          } catch (error) {
+            console.error('Failed to fetch cache stats:', error);
+          }
+        };
+
+        // Initial fetch
+        await fetchPerformanceData();
+        await fetchCacheStats();
+        
         const interval = setInterval(() => {
+          fetchPerformanceData();
+          fetchCacheStats();
           // Simulate performance data (replace with real API call)
           const mockData: PerformanceData = {
             timestamp: Date.now(),

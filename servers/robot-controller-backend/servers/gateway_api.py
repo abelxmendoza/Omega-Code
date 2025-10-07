@@ -323,3 +323,37 @@ async def ws_ultra(ws: WebSocket):
 @app.websocket("/ws/line")
 async def ws_line(ws: WebSocket):
     await ws_proxy_to_downstream(ws, DS_LINE, "line")
+
+# ---------- Performance API endpoints ----------
+@app.get("/api/performance/metrics")
+async def get_performance_metrics():
+    """Proxy performance metrics from the Pi's performance API"""
+    try:
+        import httpx
+        async with httpx.AsyncClient() as client:
+            response = await client.get("http://127.0.0.1:8080/api/performance/metrics", timeout=5.0)
+            return JSONResponse(content=response.json(), status_code=response.status_code)
+    except Exception as e:
+        return JSONResponse(content={"error": f"Performance API unavailable: {str(e)}"}, status_code=503)
+
+@app.get("/api/performance/cache")
+async def get_cache_stats():
+    """Proxy cache statistics from the Pi's performance API"""
+    try:
+        import httpx
+        async with httpx.AsyncClient() as client:
+            response = await client.get("http://127.0.0.1:8080/api/performance/cache", timeout=5.0)
+            return JSONResponse(content=response.json(), status_code=response.status_code)
+    except Exception as e:
+        return JSONResponse(content={"error": f"Cache API unavailable: {str(e)}"}, status_code=503)
+
+@app.get("/api/performance/system")
+async def get_system_info():
+    """Proxy system information from the Pi's performance API"""
+    try:
+        import httpx
+        async with httpx.AsyncClient() as client:
+            response = await client.get("http://127.0.0.1:8080/api/performance/system", timeout=5.0)
+            return JSONResponse(content=response.json(), status_code=response.status_code)
+    except Exception as e:
+        return JSONResponse(content={"error": f"System API unavailable: {str(e)}"}, status_code=503)
