@@ -33,6 +33,13 @@ type NetInfo = {
   iface?: string | null;
   tailscaleIp?: string | null;
   ts?: number;
+  panActive?: boolean;
+  panDevice?: {
+    deviceName?: string;
+    deviceAlias?: string;
+    batteryLevel?: string;
+    macAddress?: string;
+  };
 };
 
 type ScanEntry = { ssid: string; rssi?: number; secure?: boolean };
@@ -281,6 +288,39 @@ const NetworkWizard: React.FC = () => {
 
       {/* Quick actions: PAN connect + fast Wi-Fi join */}
       <QuickActionsRow setMsg={setMsg} onAfterAction={refresh} />
+
+      {/* iPhone Device Info (when PAN is active) */}
+      {info.panActive && info.panDevice && Object.keys(info.panDevice).length > 0 && (
+        <div className="bg-amber-900/20 border border-amber-500/30 rounded p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-amber-400">📱</span>
+            <span className="text-sm font-semibold text-amber-300">iPhone Connected</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            <div>
+              <div className="text-amber-400/70">Device Name</div>
+              <div className="text-white">{info.panDevice.deviceName || '—'}</div>
+            </div>
+            <div>
+              <div className="text-amber-400/70">Alias</div>
+              <div className="text-white">{info.panDevice.deviceAlias || '—'}</div>
+            </div>
+            <div>
+              <div className="text-amber-400/70">Battery</div>
+              <div className="text-white">{info.panDevice.batteryLevel || '—'}</div>
+            </div>
+            <div>
+              <div className="text-amber-400/70">MAC Address</div>
+              <button
+                className="text-white underline decoration-dotted"
+                onClick={() => copy(info.panDevice.macAddress)} title="Copy MAC"
+              >
+                {info.panDevice.macAddress ? info.panDevice.macAddress.slice(-8) : '—'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Current info */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">

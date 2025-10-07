@@ -84,10 +84,52 @@ def net_summary():
                 except:
                     pass
             
-            # Check if PAN is active
+            # Check if PAN is active and get iPhone info
             pan_active = False
+            pan_device_info = {}
             if interface == 'bnep0':
                 pan_active = True
+                # Get iPhone device information
+                try:
+                    # Get connected Bluetooth devices
+                    bt_result = subprocess.run([
+                        'bluetoothctl', 'paired-devices'
+                    ], capture_output=True, text=True, timeout=3)
+                    
+                    if bt_result.returncode == 0:
+                        lines = bt_result.stdout.split('\n')
+                        for line in lines:
+                            if 'iPhone' in line or 'iPhone' in line.lower():
+                                parts = line.split()
+                                if len(parts) >= 2:
+                                    mac_address = parts[1]
+                                    # Get detailed device info
+                                    info_result = subprocess.run([
+                                        'bluetoothctl', 'info', mac_address
+                                    ], capture_output=True, text=True, timeout=3)
+                                    
+                                    if info_result.returncode == 0:
+                                        device_name = None
+                                        device_alias = None
+                                        battery_level = None
+                                        
+                                        for info_line in info_result.stdout.split('\n'):
+                                            if 'Name:' in info_line:
+                                                device_name = info_line.split('Name:')[1].strip()
+                                            elif 'Alias:' in info_line:
+                                                device_alias = info_line.split('Alias:')[1].strip()
+                                            elif 'Battery Level:' in info_line:
+                                                battery_level = info_line.split('Battery Level:')[1].strip()
+                                        
+                                        pan_device_info = {
+                                            "deviceName": device_name or device_alias or "iPhone",
+                                            "deviceAlias": device_alias,
+                                            "batteryLevel": battery_level,
+                                            "macAddress": mac_address
+                                        }
+                                        break
+                except:
+                    pass
             
             return {
                 "linkType": "pan" if pan_active else "wifi",
@@ -97,7 +139,8 @@ def net_summary():
                 "ipv4": ip_address or "Unknown",
                 "gateway": gateway or "Unknown",
                 "rssi": rssi or -100,
-                "panActive": pan_active
+                "panActive": pan_active,
+                "panDevice": pan_device_info
             }
         else:
             # Fallback to static data
@@ -109,7 +152,8 @@ def net_summary():
                 "ipv4": "No IP",
                 "gateway": "Unknown",
                 "rssi": -100,
-                "panActive": False
+                "panActive": False,
+                "panDevice": {}
             }
             
     except Exception as e:
@@ -122,6 +166,7 @@ def net_summary():
             "gateway": "Unknown",
             "rssi": -100,
             "panActive": False,
+            "panDevice": {},
             "error": str(e)
         }
 
@@ -136,9 +181,15 @@ async def connect_pan(payload: dict):
         
         if result["success"]:
             return {
-                "message": f"Successfully connected to PAN: {result.get('device', 'iPhone')}",
+                "message": f"Successfully connected to PAN: {result.get('deviceName', 'iPhone')}",
                 "device": result.get("device"),
+                "deviceName": result.get("deviceName"),
+                "deviceAlias": result.get("deviceAlias"),
+                "deviceClass": result.get("deviceClass"),
+                "batteryLevel": result.get("batteryLevel"),
                 "ip": result.get("ip"),
+                "pingSuccess": result.get("pingSuccess"),
+                "connectionVerified": result.get("connectionVerified"),
                 "status": "connected"
             }
         else:
@@ -240,13 +291,29 @@ async def connect_bluetooth_pan(mac_or_name: str = "") -> dict:
         if connect_result.returncode != 0:
             return {"success": False, "error": f"Failed to connect: {connect_result.stderr}"}
         
-        # Step 4: Check if PAN service is available
+        # Step 4: Check if PAN service is available and get device info
         services_result = subprocess.run([
             'bluetoothctl', 'info', mac_or_name
         ], capture_output=True, text=True, timeout=5)
         
         if 'NAP' not in services_result.stdout and 'PAN' not in services_result.stdout:
             return {"success": False, "error": "PAN service not available on device"}
+        
+        # Extract device information
+        device_name = None
+        device_class = None
+        battery_level = None
+        device_alias = None
+        
+        for line in services_result.stdout.split('\n'):
+            if 'Name:' in line:
+                device_name = line.split('Name:')[1].strip()
+            elif 'Alias:' in line:
+                device_alias = line.split('Alias:')[1].strip()
+            elif 'Class:' in line:
+                device_class = line.split('Class:')[1].strip()
+            elif 'Battery Level:' in line:
+                battery_level = line.split('Battery Level:')[1].strip()
         
         # Step 5: Try to establish PAN connection
         # This would typically involve using bluez-tools or similar
@@ -265,11 +332,39 @@ async def connect_bluetooth_pan(mac_or_name: str = "") -> dict:
                     ip_address = line.split()[1].split('/')[0]
                     break
         
+        # Step 6: Verify PAN connection by pinging iPhone
+        ping_success = False
+        if ip_address:
+            try:
+                # Get iPhone's IP (usually gateway)
+                gateway_result = subprocess.run([
+                    'ip', 'route', 'show', 'dev', 'bnep0'
+                ], capture_output=True, text=True, timeout=3)
+                
+                if gateway_result.returncode == 0:
+                    for line in gateway_result.stdout.split('\n'):
+                        if 'default via' in line:
+                            gateway_ip = line.split('default via')[1].split()[0]
+                            # Ping the iPhone
+                            ping_result = subprocess.run([
+                                'ping', '-c', '1', '-W', '2', gateway_ip
+                            ], capture_output=True, text=True, timeout=5)
+                            ping_success = ping_result.returncode == 0
+                            break
+            except:
+                pass
+        
         return {
             "success": True,
             "device": mac_or_name,
+            "deviceName": device_name or device_alias or "iPhone",
+            "deviceAlias": device_alias,
+            "deviceClass": device_class,
+            "batteryLevel": battery_level,
             "ip": ip_address,
-            "service": "PAN"
+            "service": "PAN",
+            "pingSuccess": ping_success,
+            "connectionVerified": ping_success
         }
         
     except subprocess.TimeoutExpired:
