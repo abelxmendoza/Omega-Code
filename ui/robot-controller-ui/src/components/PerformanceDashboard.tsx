@@ -36,6 +36,26 @@ interface PerformanceData {
     piModel: string;
     firmwareVersion: string;
   };
+  robotTelemetry: {
+    power: { voltage: number | null; percentage: number | null; charging: boolean; powerSource: string; undervoltage: boolean; powerConsumption: number | null };
+    sensors: {
+      camera: { fps: number | null; resolution: string | null; status: string };
+      ultrasonic: { distance: number | null; status: string; pins: string };
+      lineTracking: { sensors: number[]; status: string; pins: string };
+      voltage: { value: number | null; status: string; adc: string; i2c: string };
+      buzzer: { status: string; pin: string };
+      leds: { status: string; pins: string };
+    };
+    motors: {
+      leftMotor: { speed: number; position: number; temperature: number | null; status: string };
+      rightMotor: { speed: number; position: number; temperature: number | null; status: string };
+      servoMotors: { id: number; position: number; status: string }[];
+      actuators: any[];
+    };
+    network: { wifiSignal: number | null; latency: number | null; throughput: number | null; connectionType: string; ipAddress: string | null };
+    autonomous: { mode: string; navigation: { status: string; target: any; path: any[] }; obstacleAvoidance: { enabled: boolean; detected: boolean }; lineFollowing: { enabled: boolean; onLine: boolean }; mission: { active: boolean; progress: number } };
+    safety: { emergencyStop: boolean; safetyLimits: { enabled: boolean; violations: number }; collisionDetection: { enabled: boolean; detected: boolean }; batteryProtection: { enabled: boolean; lowBattery: boolean }; thermalProtection: { enabled: boolean; overheated: boolean } };
+  };
 }
 
 interface CacheStats {
@@ -238,6 +258,215 @@ const PerformanceDashboard: React.FC = memo(() => {
                   <span className="text-xs capitalize">{service}</span>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Robot Telemetry Sections */}
+      {performanceData?.robotTelemetry && (
+        <div className="mb-4 space-y-4">
+          {/* Power & Safety Status */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-gray-700 p-3 rounded border border-gray-600">
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-yellow-300">
+                <span>🔋</span>
+                Power Status
+              </h3>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Source:</span>
+                  <span className="font-medium capitalize">{performanceData.robotTelemetry.power.powerSource}</span>
+                </div>
+                {performanceData.robotTelemetry.power.voltage && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Voltage:</span>
+                    <span className={`font-medium ${performanceData.robotTelemetry.power.undervoltage ? 'text-red-400' : 'text-green-400'}`}>
+                      {performanceData.robotTelemetry.power.voltage}V
+                    </span>
+                  </div>
+                )}
+                {performanceData.robotTelemetry.power.powerConsumption && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Power:</span>
+                    <span className="font-medium">{performanceData.robotTelemetry.power.powerConsumption}W</span>
+                  </div>
+                )}
+                {performanceData.robotTelemetry.power.undervoltage && (
+                  <div className="text-red-400 text-xs">⚠️ Undervoltage Warning</div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-gray-700 p-3 rounded border border-gray-600">
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-red-300">
+                <span>🛡️</span>
+                Safety Systems
+              </h3>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Emergency Stop:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.safety.emergencyStop ? 'text-red-400' : 'text-green-400'}`}>
+                    {performanceData.robotTelemetry.safety.emergencyStop ? 'ACTIVE' : 'Safe'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Thermal:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.safety.thermalProtection.overheated ? 'text-red-400' : 'text-green-400'}`}>
+                    {performanceData.robotTelemetry.safety.thermalProtection.overheated ? 'Overheated' : 'Normal'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Battery:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.safety.batteryProtection.lowBattery ? 'text-red-400' : 'text-green-400'}`}>
+                    {performanceData.robotTelemetry.safety.batteryProtection.lowBattery ? 'Low Battery' : 'OK'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Sensors & Motors */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-gray-700 p-3 rounded border border-gray-600">
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-blue-300">
+                <span>📡</span>
+                Sensors
+              </h3>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Camera:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.sensors.camera.status === 'active' ? 'text-green-400' : 'text-red-400'}`}>
+                    {performanceData.robotTelemetry.sensors.camera.fps ? `${performanceData.robotTelemetry.sensors.camera.fps}fps` : performanceData.robotTelemetry.sensors.camera.status}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Ultrasonic:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.sensors.ultrasonic.status === 'active' ? 'text-green-400' : 'text-red-400'}`}>
+                    {performanceData.robotTelemetry.sensors.ultrasonic.distance ? `${performanceData.robotTelemetry.sensors.ultrasonic.distance}cm` : performanceData.robotTelemetry.sensors.ultrasonic.status}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Line Tracking:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.sensors.lineTracking.status === 'active' ? 'text-green-400' : 'text-red-400'}`}>
+                    {performanceData.robotTelemetry.sensors.lineTracking.status}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Voltage:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.sensors.voltage.status === 'connected' ? 'text-green-400' : 'text-red-400'}`}>
+                    {performanceData.robotTelemetry.sensors.voltage.value ? `${performanceData.robotTelemetry.sensors.voltage.value}V` : performanceData.robotTelemetry.sensors.voltage.status}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Buzzer:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.sensors.buzzer.status === 'active' ? 'text-green-400' : 'text-red-400'}`}>
+                    {performanceData.robotTelemetry.sensors.buzzer.status}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">LEDs:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.sensors.leds.status === 'active' ? 'text-green-400' : 'text-red-400'}`}>
+                    {performanceData.robotTelemetry.sensors.leds.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gray-700 p-3 rounded border border-gray-600">
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-purple-300">
+                <span>⚙️</span>
+                Motors
+              </h3>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Left Motor:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.motors.leftMotor.status === 'connected' ? 'text-green-400' : 'text-red-400'}`}>
+                    {performanceData.robotTelemetry.motors.leftMotor.status}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Right Motor:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.motors.rightMotor.status === 'connected' ? 'text-green-400' : 'text-red-400'}`}>
+                    {performanceData.robotTelemetry.motors.rightMotor.status}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Servos:</span>
+                  <span className="font-medium text-blue-400">
+                    {performanceData.robotTelemetry.motors.servoMotors.length} active
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Network & Autonomous */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-gray-700 p-3 rounded border border-gray-600">
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-green-300">
+                <span>🌐</span>
+                Network
+              </h3>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Type:</span>
+                  <span className="font-medium capitalize">{performanceData.robotTelemetry.network.connectionType}</span>
+                </div>
+                {performanceData.robotTelemetry.network.ipAddress && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">IP:</span>
+                    <span className="font-medium">{performanceData.robotTelemetry.network.ipAddress}</span>
+                  </div>
+                )}
+                {performanceData.robotTelemetry.network.latency && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Latency:</span>
+                    <span className="font-medium">{performanceData.robotTelemetry.network.latency}ms</span>
+                  </div>
+                )}
+                {performanceData.robotTelemetry.network.wifiSignal && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Signal:</span>
+                    <span className={`font-medium ${performanceData.robotTelemetry.network.wifiSignal > -60 ? 'text-green-400' : 'text-yellow-400'}`}>
+                      {performanceData.robotTelemetry.network.wifiSignal}dBm
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-gray-700 p-3 rounded border border-gray-600">
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-cyan-300">
+                <span>🤖</span>
+                Autonomous
+              </h3>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Mode:</span>
+                  <span className={`font-medium capitalize ${performanceData.robotTelemetry.autonomous.mode === 'autonomous' ? 'text-green-400' : 'text-blue-400'}`}>
+                    {performanceData.robotTelemetry.autonomous.mode}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Navigation:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.autonomous.navigation.status === 'active' ? 'text-green-400' : 'text-gray-400'}`}>
+                    {performanceData.robotTelemetry.autonomous.navigation.status}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Obstacle Avoid:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.autonomous.obstacleAvoidance.enabled ? 'text-green-400' : 'text-gray-400'}`}>
+                    {performanceData.robotTelemetry.autonomous.obstacleAvoidance.enabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Line Follow:</span>
+                  <span className={`font-medium ${performanceData.robotTelemetry.autonomous.lineFollowing.enabled ? 'text-green-400' : 'text-gray-400'}`}>
+                    {performanceData.robotTelemetry.autonomous.lineFollowing.enabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
