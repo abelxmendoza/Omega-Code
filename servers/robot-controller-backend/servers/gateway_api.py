@@ -327,33 +327,179 @@ async def ws_line(ws: WebSocket):
 # ---------- Performance API endpoints ----------
 @app.get("/api/performance/metrics")
 async def get_performance_metrics():
-    """Proxy performance metrics from the Pi's performance API"""
+    """Get real-time performance metrics from the Pi"""
     try:
-        import httpx
-        async with httpx.AsyncClient() as client:
-            response = await client.get("http://127.0.0.1:8080/api/performance/metrics", timeout=5.0)
-            return JSONResponse(content=response.json(), status_code=response.status_code)
+        import psutil
+        import time
+        
+        # Get system metrics
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        
+        # Get network I/O
+        net_io = psutil.net_io_counters()
+        
+        # Count active WebSocket connections (approximate)
+        connections = len(psutil.net_connections())
+        
+        # Calculate uptime
+        uptime = time.time() - psutil.boot_time()
+        
+        return JSONResponse(content={
+            "timestamp": int(time.time() * 1000),
+            "source": "Raspberry Pi",
+            "deviceName": get_device_name(),
+            "cpuUsage": cpu_percent,
+            "memoryUsage": memory.used,
+            "memoryPercent": memory.percent,
+            "memoryTotal": memory.total,
+            "diskUsage": disk.percent,
+            "diskUsed": disk.used,
+            "diskTotal": disk.total,
+            "networkIO": {
+                "bytesSent": net_io.bytes_sent,
+                "bytesRecv": net_io.bytes_recv,
+                "packetsSent": net_io.packets_sent,
+                "packetsRecv": net_io.packets_recv,
+            },
+            "websocketConnections": connections,
+            "uptime": uptime,
+            "loadAverage": psutil.getloadavg()[0] if hasattr(psutil, 'getloadavg') else 0,
+            "temperature": get_cpu_temperature(),
+            "piSpecific": {
+                "gpioStatus": check_gpio_status(),
+                "cameraStatus": check_camera_status(),
+                "robotServices": get_robot_services_status(),
+                "piModel": get_pi_model(),
+                "firmwareVersion": get_firmware_version(),
+            }
+        })
     except Exception as e:
-        return JSONResponse(content={"error": f"Performance API unavailable: {str(e)}"}, status_code=503)
+        return JSONResponse(content={"error": f"Failed to get metrics: {str(e)}"}, status_code=500)
 
 @app.get("/api/performance/cache")
 async def get_cache_stats():
-    """Proxy cache statistics from the Pi's performance API"""
+    """Get cache statistics"""
     try:
-        import httpx
-        async with httpx.AsyncClient() as client:
-            response = await client.get("http://127.0.0.1:8080/api/performance/cache", timeout=5.0)
-            return JSONResponse(content=response.json(), status_code=response.status_code)
+        # Simple cache stats - can be enhanced with actual cache implementation
+        return JSONResponse(content={
+            "hits": 0,
+            "misses": 0,
+            "hitRate": 0.0,
+            "totalRequests": 0,
+            "cacheSize": 0,
+            "maxSize": 1000,
+        })
     except Exception as e:
-        return JSONResponse(content={"error": f"Cache API unavailable: {str(e)}"}, status_code=503)
+        return JSONResponse(content={"error": f"Failed to get cache stats: {str(e)}"}, status_code=500)
 
 @app.get("/api/performance/system")
 async def get_system_info():
-    """Proxy system information from the Pi's performance API"""
+    """Get system information"""
     try:
-        import httpx
-        async with httpx.AsyncClient() as client:
-            response = await client.get("http://127.0.0.1:8080/api/performance/system", timeout=5.0)
-            return JSONResponse(content=response.json(), status_code=response.status_code)
+        import psutil
+        import platform
+        
+        return JSONResponse(content={
+            "platform": platform.platform(),
+            "system": platform.system(),
+            "release": platform.release(),
+            "version": platform.version(),
+            "machine": platform.machine(),
+            "processor": platform.processor(),
+            "cpuCount": psutil.cpu_count(),
+            "cpuFreq": psutil.cpu_freq()._asdict() if psutil.cpu_freq() else None,
+            "bootTime": psutil.boot_time(),
+            "timestamp": int(time.time() * 1000),
+        })
     except Exception as e:
-        return JSONResponse(content={"error": f"System API unavailable: {str(e)}"}, status_code=503)
+        return JSONResponse(content={"error": f"Failed to get system info: {str(e)}"}, status_code=500)
+
+def get_cpu_temperature():
+    """Get CPU temperature if available"""
+    try:
+        with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+            temp = int(f.read().strip()) / 1000.0
+            return temp
+    except:
+        return None
+
+def get_device_name():
+    """Get the device hostname"""
+    try:
+        import socket
+        return socket.gethostname()
+    except:
+        return "omega1"
+
+def get_pi_model():
+    """Get Raspberry Pi model information"""
+    try:
+        with open('/proc/device-tree/model', 'r') as f:
+            model = f.read().strip().replace('\x00', '')
+            return model
+    except:
+        return "Raspberry Pi (Unknown Model)"
+
+def get_firmware_version():
+    """Get Pi firmware version"""
+    try:
+        with open('/proc/version', 'r') as f:
+            version = f.read().strip()
+            return version.split()[2]  # Extract kernel version
+    except:
+        return "Unknown"
+
+def check_gpio_status():
+    """Check GPIO status and available pins"""
+    try:
+        # Check if GPIO is accessible
+        import subprocess
+        result = subprocess.run(['gpio', 'readall'], capture_output=True, text=True, timeout=2)
+        if result.returncode == 0:
+            return {"status": "active", "pins": "available"}
+        else:
+            return {"status": "inactive", "pins": "unavailable"}
+    except:
+        return {"status": "unknown", "pins": "unknown"}
+
+def check_camera_status():
+    """Check if camera is available"""
+    try:
+        import subprocess
+        result = subprocess.run(['vcgencmd', 'get_camera'], capture_output=True, text=True, timeout=2)
+        if result.returncode == 0:
+            output = result.stdout.strip()
+            if "detected=1" in output:
+                return {"status": "detected", "enabled": True}
+            else:
+                return {"status": "not detected", "enabled": False}
+        else:
+            return {"status": "unknown", "enabled": False}
+    except:
+        return {"status": "unknown", "enabled": False}
+
+def get_robot_services_status():
+    """Check status of robot services"""
+    try:
+        import subprocess
+        services = {
+            "movement": False,
+            "camera": False,
+            "sensors": False,
+            "lighting": False
+        }
+        
+        # Check if services are running by looking for processes
+        result = subprocess.run(['ps', 'aux'], capture_output=True, text=True, timeout=2)
+        if result.returncode == 0:
+            output = result.stdout
+            services["movement"] = "movement_ws_server.py" in output
+            services["camera"] = "video_server.py" in output
+            services["sensors"] = "ultrasonic" in output or "line_tracking" in output
+            services["lighting"] = "lighting" in output
+            
+        return services
+    except:
+        return {"movement": False, "camera": False, "sensors": False, "lighting": False}

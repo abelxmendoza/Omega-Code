@@ -13,6 +13,8 @@ import { performanceMonitor, performanceMetrics } from '@/utils/optimization';
 
 interface PerformanceData {
   timestamp: number;
+  source: string;
+  deviceName: string;
   cpuUsage: number;
   memoryUsage: number;
   memoryPercent: number;
@@ -20,11 +22,20 @@ interface PerformanceData {
   networkIO: {
     bytesSent: number;
     bytesRecv: number;
+    packetsSent: number;
+    packetsRecv: number;
   };
   websocketConnections: number;
-  responseTime: number;
-  errorRate: number;
-  throughput: number;
+  uptime: number;
+  loadAverage: number;
+  temperature: number | null;
+  piSpecific: {
+    gpioStatus: { status: string; pins: string };
+    cameraStatus: { status: string; enabled: boolean };
+    robotServices: { movement: boolean; camera: boolean; sensors: boolean; lighting: boolean };
+    piModel: string;
+    firmwareVersion: string;
+  };
 }
 
 interface CacheStats {
@@ -166,7 +177,17 @@ const PerformanceDashboard: React.FC = memo(() => {
   return (
     <div className="bg-gray-800 text-white p-4 rounded-md shadow-md w-full max-w-4xl">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold">Performance Dashboard</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-bold">Performance Dashboard</h2>
+          {performanceData && (
+            <div className="flex items-center gap-2 px-2 py-1 bg-blue-600 rounded-full text-xs">
+              <span className="text-blue-200">📱</span>
+              <span className="font-medium">{performanceData.source}</span>
+              <span className="text-blue-200">•</span>
+              <span className="text-blue-200">{performanceData.deviceName}</span>
+            </div>
+          )}
+        </div>
         <div className="flex items-center space-x-2">
           <div className={`w-2 h-2 rounded-full ${isMonitoring ? 'bg-green-500' : 'bg-red-500'}`} />
           <span className="text-sm text-gray-400">
@@ -174,6 +195,53 @@ const PerformanceDashboard: React.FC = memo(() => {
           </span>
         </div>
       </div>
+
+      {/* Pi-Specific Information */}
+      {performanceData?.piSpecific && (
+        <div className="mb-4 p-3 bg-gray-700 rounded border border-gray-600">
+          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-orange-300">
+            <span>🤖</span>
+            Raspberry Pi Status
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div>
+              <div className="text-gray-400">Model</div>
+              <div className="font-medium">{performanceData.piSpecific.piModel}</div>
+            </div>
+            <div>
+              <div className="text-gray-400">Temperature</div>
+              <div className="font-medium">
+                {performanceData.temperature ? `${performanceData.temperature.toFixed(1)}°C` : 'N/A'}
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-400">GPIO</div>
+              <div className={`font-medium ${performanceData.piSpecific.gpioStatus.status === 'active' ? 'text-green-400' : 'text-red-400'}`}>
+                {performanceData.piSpecific.gpioStatus.status}
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-400">Camera</div>
+              <div className={`font-medium ${performanceData.piSpecific.cameraStatus.enabled ? 'text-green-400' : 'text-red-400'}`}>
+                {performanceData.piSpecific.cameraStatus.status}
+              </div>
+            </div>
+          </div>
+          
+          {/* Robot Services Status */}
+          <div className="mt-2">
+            <div className="text-gray-400 mb-1">Robot Services</div>
+            <div className="flex gap-3">
+              {Object.entries(performanceData.piSpecific.robotServices).map(([service, status]) => (
+                <div key={service} className="flex items-center gap-1">
+                  <div className={`w-1.5 h-1.5 rounded-full ${status ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                  <span className="text-xs capitalize">{service}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* System Metrics */}
