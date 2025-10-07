@@ -159,7 +159,9 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
   }, [currentProfile, qpVideo]);
 
   // Final image src: proxy first, then direct (ONLY if not mixed-content)
-  const proxyStream = `${PROXY_URL_BASE}?${proxyQuery}`;
+  // Add mock parameter if mock mode is enabled
+  const mockQuery = process.env.NEXT_PUBLIC_MOCK_BACKEND === '1' ? '&mock=1' : '';
+  const proxyStream = `${PROXY_URL_BASE}?${proxyQuery}${mockQuery}`;
   const IMG_BASE = useDirect ? directForProfile : proxyStream;
 
   // Add a cache-buster whenever we retry or status toggles to force a fresh MJPEG request
@@ -171,9 +173,11 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
 
   // Health for the status pill: we always prefer the proxy health (same-origin).
   // If someone removes the proxy route in the future, we *could* fall back to direct health
-  // but only when it won’t be mixed content.
-  const proxyHealth = `${PROXY_HEALTH_BASE}?${proxyQuery}`;
-  const directHealth = directForProfile && !willBeMixedContent(directForProfile)
+  // but only when it won't be mixed content.
+  // Skip health checks in mock mode
+  const isMockMode = process.env.NEXT_PUBLIC_MOCK_BACKEND === '1';
+  const proxyHealth = isMockMode ? undefined : `${PROXY_HEALTH_BASE}?${proxyQuery}`;
+  const directHealth = !isMockMode && directForProfile && !willBeMixedContent(directForProfile)
     ? toDirectHealthUrl(directForProfile)
     : '';
   const HEALTH_URL = proxyHealth || directHealth || undefined;
@@ -187,12 +191,14 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
   // Effective status combines browser offline state + recent successful image load + health
   const effectiveStatus: ServerStatus = useMemo(() => {
     if (isOffline) return 'disconnected';
+    // In mock mode, always show as connected
+    if (isMockMode) return 'connected';
     const now = Date.now();
     const recentOk = lastImgOkAt.current && now - lastImgOkAt.current < 8000; // ~8s grace after last good frame
     if (recentOk) return 'connected';
     if (healthStatus) return healthStatus;
     return imgError ? 'disconnected' : 'connecting';
-  }, [healthStatus, imgError, isOffline]);
+  }, [healthStatus, imgError, isOffline, isMockMode]);
 
   // Notify parent on online state transitions
   const wasOnline = useRef<boolean | null>(null);

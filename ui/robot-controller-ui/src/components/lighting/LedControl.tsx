@@ -6,7 +6,6 @@ Settings are sent as commands to the backend WebSocket server.
 */
 
 import React, { useState } from 'react';
-import { SketchPicker, type ColorResult } from 'react-color';
 import { COMMAND, LIGHTING_MODES, LIGHTING_PATTERNS } from '../../control_definitions';
 
 // Derive union types from your constant arrays (falls back to string if not `as const`)
@@ -30,7 +29,7 @@ const LedControl: React.FC<LedControlProps> = ({ sendCommand }) => {
   const [brightness, setBrightness] = useState(100); // Brightness in percent (0–100)
 
   // Color change handler
-  const handleColorChange = (color: ColorResult) => setColor(color.hex);
+  const handleColorChange = (event: React.ChangeEvent<HTMLInputElement>) => setColor(event.target.value);
 
   // Mode change handler
   const handleModeChange = (event: React.ChangeEvent<HTMLSelectElement>) =>
@@ -94,7 +93,20 @@ const LedControl: React.FC<LedControlProps> = ({ sendCommand }) => {
 
       <div className="mt-4">
         {/* Color Picker */}
-        <SketchPicker color={color} onChange={handleColorChange} />
+        <div className="mt-4">
+          <label className="block text-green-300 mb-1">Color:</label>
+          <div className="flex items-center gap-4">
+            <input
+              type="color"
+              value={color}
+              onChange={handleColorChange}
+              className="w-16 h-16 rounded-lg border-2 border-gray-600 cursor-pointer"
+            />
+            <div className="text-green-300 font-semibold">
+              Selected: <span style={{ color }}>{color}</span>
+            </div>
+          </div>
+        </div>
 
         {/* Mode Dropdown */}
         <div className="mt-4">

@@ -104,6 +104,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  // Check if mock mode is enabled via query parameter or environment
+  const isMockMode = req.query.mock === '1' || process.env.MOCK_BACKEND === '1';
+  console.log('[video-health] mock check:', { 
+    queryMock: req.query.mock, 
+    envMock: process.env.MOCK_BACKEND, 
+    isMockMode 
+  });
+  if (isMockMode) {
+    console.log('[video-health] returning mock response');
+    return res
+      .status(200)
+      .setHeader('Cache-Control', 'no-store, must-revalidate')
+      .setHeader('Content-Type', 'application/json; charset=utf-8')
+      .end(JSON.stringify({
+        ok: true,
+        upstream: 'mock',
+        profile: 'mock',
+        latencyMs: 0,
+        mock: true,
+      }));
+  }
+
   const profile = pickProfile(req);
   const upstreams = buildUpstreamCandidates(req);
   const timeoutMs = getTimeoutMs(req);

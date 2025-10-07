@@ -140,12 +140,17 @@ const ServiceStatusBar: React.FC = () => {
     } catch {}
   }, [collapsed]);
 
-  // Build proxy health URL (preferred): /api/video-health?profile=<p>[&video=...]
+  
+  // Build proxy health URL (preferred): /api/video-health?profile=<p>[&video=...][&mock=1]
   const VIDEO_PROXY_HEALTH = useMemo(() => {
     const qs = new URLSearchParams();
     qs.set('profile', getActiveProfile());
     const qpVideo = getQueryParam('video');
     if (qpVideo) qs.set('video', qpVideo);
+    // Add mock parameter if mock mode is enabled
+    if (process.env.NEXT_PUBLIC_MOCK_BACKEND === '1') {
+      qs.set('mock', '1');
+    }
     const url = `/api/video-health?${qs.toString()}`;
     if (DEBUG) console.log('[status] video proxy health:', url);
     return url;
@@ -167,8 +172,10 @@ const ServiceStatusBar: React.FC = () => {
     : (canUseDirectHealth ? (VIDEO_DIRECT_HEALTH as string) : '');
 
   // Video HTTP status (backend /health) — always call hook; gate with enabled
+  // Skip health checks in mock mode
+  const isMockMode = process.env.NEXT_PUBLIC_MOCK_BACKEND === '1';
   const video = useHttpStatus(healthUrl || undefined, {
-    enabled: !!healthUrl,
+    enabled: !!healthUrl && !isMockMode,
     intervalMs: 5000,
     timeoutMs: 2500,
     treat503AsConnecting: true,

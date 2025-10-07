@@ -214,6 +214,29 @@ const NetworkWizard: React.FC = () => {
     window.location.href = url.toString();
   };
 
+  // Get current active profile for indicator
+  const currentProfile = React.useMemo(() => {
+    try {
+      return net.profile();
+    } catch {
+      return 'local';
+    }
+  }, []);
+
+  // Map profile to display info
+  const profileInfo = React.useMemo(() => {
+    switch (currentProfile) {
+      case 'lan':
+        return { label: 'LAN', color: 'bg-blue-500', description: 'Local Network' };
+      case 'tailscale':
+        return { label: 'Tailscale', color: 'bg-violet-500', description: 'Tailscale VPN' };
+      case 'local':
+        return { label: 'Hotspot', color: 'bg-amber-500', description: 'Local/Hotspot' };
+      default:
+        return { label: 'Unknown', color: 'bg-gray-500', description: 'Unknown Profile' };
+    }
+  }, [currentProfile]);
+
   return (
     <div className="rounded-lg bg-zinc-800 p-3 text-white space-y-3 border border-white/10">
       <div className="flex items-center justify-between">
@@ -228,6 +251,31 @@ const NetworkWizard: React.FC = () => {
           >
             Refresh
           </button>
+        </div>
+      </div>
+
+      {/* Current Network Profile Indicator */}
+      <div className="bg-black/20 rounded border border-white/10 p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <div className={`w-3 h-3 rounded-full ${profileInfo.color}`} title={profileInfo.description}></div>
+          <div className="text-sm">
+            <span className="text-white/70">Active Profile: </span>
+            <span className="font-medium text-white">{profileInfo.label}</span>
+            <span className="text-white/50 ml-1">({profileInfo.description})</span>
+          </div>
+        </div>
+        
+        {/* Show current endpoints being used */}
+        <div className="text-xs text-white/60 space-y-1">
+          <div className="flex items-center gap-2">
+            <span>Movement:</span>
+            <span className="text-white/80 font-mono">{WS_URL || '—'}</span>
+            <div className={`w-2 h-2 rounded-full ${
+              wsState === 'connected' ? 'bg-green-400' : 
+              wsState === 'connecting' ? 'bg-yellow-400' : 'bg-red-400'
+            }`} title={`WebSocket: ${wsState}`}></div>
+          </div>
+          <div>Video: <span className="text-white/80 font-mono">{movementLink || '—'}</span></div>
         </div>
       </div>
 
@@ -284,14 +332,35 @@ const NetworkWizard: React.FC = () => {
 
       {/* Profile switcher */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="text-sm text-white/70">Profile:</div>
-        <button onClick={() => switchProfile('lan')} className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-sm">
+        <div className="text-sm text-white/70">Switch Profile:</div>
+        <button 
+          onClick={() => switchProfile('lan')} 
+          className={`px-3 py-1 rounded text-sm transition-all ${
+            currentProfile === 'lan' 
+              ? 'bg-blue-500 ring-2 ring-blue-300 text-white font-medium' 
+              : 'bg-blue-600 hover:bg-blue-500 text-white/90'
+          }`}
+        >
           LAN
         </button>
-        <button onClick={() => switchProfile('tailscale')} className="px-3 py-1 rounded bg-violet-600 hover:bg-violet-500 text-sm">
+        <button 
+          onClick={() => switchProfile('tailscale')} 
+          className={`px-3 py-1 rounded text-sm transition-all ${
+            currentProfile === 'tailscale' 
+              ? 'bg-violet-500 ring-2 ring-violet-300 text-white font-medium' 
+              : 'bg-violet-600 hover:bg-violet-500 text-white/90'
+          }`}
+        >
           Tailscale
         </button>
-        <button onClick={() => switchProfile('hotspot')} className="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-sm">
+        <button 
+          onClick={() => switchProfile('hotspot')} 
+          className={`px-3 py-1 rounded text-sm transition-all ${
+            currentProfile === 'local' 
+              ? 'bg-amber-500 ring-2 ring-amber-300 text-white font-medium' 
+              : 'bg-amber-600 hover:bg-amber-500 text-white/90'
+          }`}
+        >
           Hotspot
         </button>
         <div className="text-xs text-white/50 ml-1">
