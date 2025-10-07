@@ -87,49 +87,55 @@ def net_summary():
             # Check if PAN is active and get iPhone info
             pan_active = False
             pan_device_info = {}
+            
+            # Always check for iPhone connection (even if not on bnep0)
+            try:
+                # Get connected Bluetooth devices
+                bt_result = subprocess.run([
+                    'bluetoothctl', 'paired-devices'
+                ], capture_output=True, text=True, timeout=3)
+                
+                if bt_result.returncode == 0:
+                    lines = bt_result.stdout.split('\n')
+                    for line in lines:
+                        if 'iPhone' in line or 'iPhone' in line.lower():
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                mac_address = parts[1]
+                                # Get detailed device info
+                                info_result = subprocess.run([
+                                    'bluetoothctl', 'info', mac_address
+                                ], capture_output=True, text=True, timeout=3)
+                                
+                                if info_result.returncode == 0:
+                                    device_name = None
+                                    device_alias = None
+                                    battery_level = None
+                                    
+                                    for info_line in info_result.stdout.split('\n'):
+                                        if 'Name:' in info_line:
+                                            device_name = info_line.split('Name:')[1].strip()
+                                        elif 'Alias:' in info_line:
+                                            device_alias = info_line.split('Alias:')[1].strip()
+                                        elif 'Battery Percentage:' in info_line:
+                                            # Extract hex value and convert to percentage
+                                            hex_val = info_line.split('0x')[1].split()[0]
+                                            battery_level = str(int(hex_val, 16)) + '%'
+                                    
+                                    pan_device_info = {
+                                        "deviceName": device_name or device_alias or "iPhone",
+                                        "deviceAlias": device_alias,
+                                        "batteryLevel": battery_level,
+                                        "macAddress": mac_address
+                                    }
+                                    pan_active = True  # Show iPhone info even without PAN
+                                    break
+            except:
+                pass
+            
+            # Also check if actually on PAN interface
             if interface == 'bnep0':
                 pan_active = True
-                # Get iPhone device information
-                try:
-                    # Get connected Bluetooth devices
-                    bt_result = subprocess.run([
-                        'bluetoothctl', 'paired-devices'
-                    ], capture_output=True, text=True, timeout=3)
-                    
-                    if bt_result.returncode == 0:
-                        lines = bt_result.stdout.split('\n')
-                        for line in lines:
-                            if 'iPhone' in line or 'iPhone' in line.lower():
-                                parts = line.split()
-                                if len(parts) >= 2:
-                                    mac_address = parts[1]
-                                    # Get detailed device info
-                                    info_result = subprocess.run([
-                                        'bluetoothctl', 'info', mac_address
-                                    ], capture_output=True, text=True, timeout=3)
-                                    
-                                    if info_result.returncode == 0:
-                                        device_name = None
-                                        device_alias = None
-                                        battery_level = None
-                                        
-                                        for info_line in info_result.stdout.split('\n'):
-                                            if 'Name:' in info_line:
-                                                device_name = info_line.split('Name:')[1].strip()
-                                            elif 'Alias:' in info_line:
-                                                device_alias = info_line.split('Alias:')[1].strip()
-                                            elif 'Battery Level:' in info_line:
-                                                battery_level = info_line.split('Battery Level:')[1].strip()
-                                        
-                                        pan_device_info = {
-                                            "deviceName": device_name or device_alias or "iPhone",
-                                            "deviceAlias": device_alias,
-                                            "batteryLevel": battery_level,
-                                            "macAddress": mac_address
-                                        }
-                                        break
-                except:
-                    pass
             
             return {
                 "linkType": "pan" if pan_active else "wifi",
