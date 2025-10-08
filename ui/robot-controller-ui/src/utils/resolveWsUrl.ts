@@ -103,6 +103,16 @@ function getUrlProfileOverride(): NetProfile | null {
 }
 
 export function getActiveProfile(): NetProfile {
+  // Only check URL parameters on client-side to avoid hydration errors
+  if (typeof window === 'undefined') {
+    // Server-side: always use environment variable or default
+    const raw = (readEnv('NEXT_PUBLIC_NETWORK_PROFILE') || 'local').toLowerCase();
+    return (['lan', 'tailscale', 'local'] as NetProfile[]).includes(raw as NetProfile)
+      ? (raw as NetProfile)
+      : 'local';
+  }
+  
+  // Client-side: check URL override first, then environment
   const fromUrl = getUrlProfileOverride();
   if (fromUrl) return fromUrl;
   const raw = (readEnv('NEXT_PUBLIC_NETWORK_PROFILE') || 'local').toLowerCase();
