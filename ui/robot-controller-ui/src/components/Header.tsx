@@ -39,11 +39,17 @@ const truthy = (v: unknown) =>
 const MOCK_WS = truthy(process.env.NEXT_PUBLIC_MOCK_WS);
 
 const getActiveProfile = (): 'lan' | 'tailscale' | 'local' => {
+  // Only check URL parameters on client-side to avoid hydration errors
+  if (typeof window === 'undefined') {
+    // Server-side: always use environment variable or default
+    const env = (process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local').toLowerCase();
+    return (['lan', 'tailscale', 'local'].includes(env) ? env : 'local') as any;
+  }
+  
+  // Client-side: check URL override first, then environment
   try {
-    if (typeof window !== 'undefined') {
-      const q = new URL(window.location.href).searchParams.get('profile');
-      if (q && ['lan', 'tailscale', 'local'].includes(q)) return q as any;
-    }
+    const q = new URL(window.location.href).searchParams.get('profile');
+    if (q && ['lan', 'tailscale', 'local'].includes(q)) return q as any;
   } catch {}
   const env = (process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local').toLowerCase();
   return (['lan', 'tailscale', 'local'].includes(env) ? env : 'local') as any;

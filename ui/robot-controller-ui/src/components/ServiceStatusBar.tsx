@@ -35,6 +35,14 @@ const getQueryParam = (name: string): string | undefined => {
 };
 
 const getActiveProfile = (): 'lan' | 'tailscale' | 'local' => {
+  // Only check URL parameters on client-side to avoid hydration errors
+  if (typeof window === 'undefined') {
+    // Server-side: always use environment variable or default
+    const env = (process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local').toLowerCase();
+    return (['lan', 'tailscale', 'local'].includes(env) ? env : 'local') as any;
+  }
+  
+  // Client-side: check URL override first, then environment
   const qp = (getQueryParam('profile') || '').toLowerCase();
   if (qp === 'lan' || qp === 'tailscale' || qp === 'local') return qp;
   const env = (process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local').toLowerCase();
