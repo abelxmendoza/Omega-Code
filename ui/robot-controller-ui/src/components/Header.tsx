@@ -16,7 +16,8 @@
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { CheckCircle, XCircle } from 'lucide-react';
+import Link from 'next/link';
+import { CheckCircle, XCircle, Settings } from 'lucide-react';
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { net } from '@/utils/netProfile';
@@ -440,6 +441,16 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
               MOCK
             </span>
           )}
+          
+          {/* Network Management Link */}
+          <div className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 border border-blue-400/40 text-blue-100 hover:bg-blue-500/30 transition-colors">
+            <Link 
+              href="/network"
+              title="Network Management"
+            >
+              <Settings className="w-3 h-3" />
+            </Link>
+          </div>
         </div>
 
         {/* Overall status + battery */}

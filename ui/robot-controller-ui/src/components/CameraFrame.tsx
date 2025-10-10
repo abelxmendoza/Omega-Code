@@ -304,6 +304,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
     const delay = Math.min(6000, backoffRef.current);
     retryTimerRef.current = window.setTimeout(() => {
       setBuster(Date.now());
+      // Only log retry attempts in debug mode to reduce console spam
       if (DEBUG) console.log('[CameraFrame] retrying MJPEG after', delay, 'ms');
       backoffRef.current = Math.min(6000, Math.floor(backoffRef.current * 1.6));
     }, delay);

@@ -21,8 +21,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
+import { useMobileWebSocket } from '../hooks/useMobileWebSocket';
 import { resolveWsUrl } from '@/utils/resolveWsUrl';
 import { cameraStatusBus, CameraUiStatus } from '@/utils/cameraStatusBus';
+import { connectionHealth, getConnectionOptimizations } from '@/utils/connectionHealth';
+import { unifiedNetworkManager, addNetworkChangeListener } from '@/utils/unifiedNetworkManager';
 
 const DEBUG = !!process.env.NEXT_PUBLIC_WS_DEBUG;
 
@@ -223,6 +226,48 @@ const ServiceStatusBar: React.FC = () => {
     };
   }, []);
 
+  // Mobile connection health monitoring
+  const [connectionHealthState, setConnectionHealthState] = useState<any>(null);
+  const [mobileOptimizations, setMobileOptimizations] = useState<any>({});
+  const [currentNetworkProfile, setCurrentNetworkProfile] = useState<any>(null);
+  
+  useEffect(() => {
+    const updateHealth = () => {
+      const health = connectionHealth.getCurrentHealth();
+      const optimizations = getConnectionOptimizations();
+      setConnectionHealthState(health);
+      setMobileOptimizations(optimizations);
+    };
+
+    // Start monitoring
+    connectionHealth.startMonitoring();
+    updateHealth();
+
+    // Update periodically
+    const interval = setInterval(updateHealth, 5000);
+
+    return () => {
+      clearInterval(interval);
+      connectionHealth.stopMonitoring();
+    };
+  }, []);
+
+  // Unified network manager integration
+  useEffect(() => {
+    const unsubscribe = addNetworkChangeListener((profile) => {
+      setCurrentNetworkProfile(profile);
+      console.log('[ServiceStatusBar] Network profile changed:', profile.name);
+    });
+
+    // Set initial profile
+    const initialProfile = unifiedNetworkManager.getCurrentProfile();
+    if (initialProfile) {
+      setCurrentNetworkProfile(initialProfile);
+    }
+
+    return unsubscribe;
+  }, []);
+
   // Build summary
   const states = [
     move.status,
@@ -278,6 +323,68 @@ const ServiceStatusBar: React.FC = () => {
             <Item label="Camera UI"   state={cameraUi.state as HttpStatus} latency={cameraUi.pingMs ?? null} />
             <Item label="Speed"       state={speed.status}  latency={speed.latency} />
           </div>
+          
+          {/* Network Profile Status */}
+          {currentNetworkProfile && (
+            <div className="mt-3 pt-3 border-t border-white/10">
+              <div className="text-xs text-white/70 mb-2">Network Profile</div>
+              <div className="flex items-center gap-4 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">
+                    {currentNetworkProfile.type === 'tailscale' ? '🔒' :
+                     currentNetworkProfile.type === 'wifi' ? '📶' :
+                     currentNetworkProfile.type === 'mobile' ? '📱' : '🌐'}
+                  </span>
+                  <span className="text-white">{currentNetworkProfile.name}</span>
+                </div>
+                <div className="text-white/60">
+                  {currentNetworkProfile.gatewayHost}:{currentNetworkProfile.gatewayPort}
+                </div>
+                {currentNetworkProfile.latency && (
+                  <div className="text-white/60">
+                    {Math.round(currentNetworkProfile.latency)}ms
+                  </div>
+                )}
+              </div>
+              <div className="mt-2 text-xs text-gray-400">
+                Priority: {currentNetworkProfile.priority} • 
+                Timeout: {currentNetworkProfile.optimization.timeout}ms • 
+                Retries: {currentNetworkProfile.optimization.retries}
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Connection Health */}
+          {connectionHealthState && (
+            <div className="mt-3 pt-3 border-t border-white/10">
+              <div className="text-xs text-white/70 mb-2">Connection Quality</div>
+              <div className="flex items-center gap-4 text-xs">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    connectionHealthState.status === 'excellent' ? 'bg-green-500' :
+                    connectionHealthState.status === 'good' ? 'bg-blue-500' :
+                    connectionHealthState.status === 'fair' ? 'bg-yellow-500' :
+                    connectionHealthState.status === 'poor' ? 'bg-red-500' :
+                    'bg-gray-500'
+                  }`} />
+                  <span className="capitalize">{connectionHealthState.status}</span>
+                </div>
+                <div className="text-white/60">
+                  {connectionHealthState.metrics.connectionType} • {Math.round(connectionHealthState.metrics.latency)}ms
+                </div>
+                {connectionHealthState.metrics.bandwidth > 0 && (
+                  <div className="text-white/60">
+                    {(connectionHealthState.metrics.bandwidth / 1000).toFixed(0)}KB/s
+                  </div>
+                )}
+              </div>
+              {connectionHealthState.recommendations.length > 0 && (
+                <div className="mt-2 text-xs text-amber-300">
+                  💡 {connectionHealthState.recommendations[0]}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

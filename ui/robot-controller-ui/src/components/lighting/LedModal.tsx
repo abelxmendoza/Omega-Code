@@ -242,22 +242,19 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
 
     if (!newState) {
       send({
-        color: color1,
-        mode,
-        pattern: 'off',
-        interval: intervalMs,
-        brightness: 0,
+        type: 'lighting_command',
+        command: 'SET_LED',
+        color: 'off',
       });
       console.log('LED OFF command sent!');
     } else {
+      // Send hex color directly to backend
       send({
-        color: color1,
-        mode,
-        pattern,
-        interval: intervalMs,
-        brightness: brightness / 100,
+        type: 'lighting_command',
+        command: 'SET_LED',
+        color: color1, // Send hex color directly
       });
-      console.log('LED ON command sent!');
+      console.log('LED ON command sent with color:', color1);
     }
   };
 
@@ -270,12 +267,12 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       console.error('Lighting WS not open.');
       return;
     }
+    
+    // Send hex color directly to backend
     const commandData = {
-      color: color1,
-      mode,
-      pattern,
-      interval: intervalMs,
-      brightness: brightness / 100,
+      type: 'lighting_command',
+      command: 'SET_LED',
+      color: color1, // Send hex color directly
     };
     send(commandData);
     console.log('LED settings applied:', commandData);

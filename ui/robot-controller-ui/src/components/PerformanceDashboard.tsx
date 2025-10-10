@@ -29,6 +29,9 @@ interface PerformanceData {
   uptime: number;
   loadAverage: number;
   temperature: number | null;
+  responseTime?: number;
+  errorRate?: number;
+  throughput?: number;
   piSpecific: {
     gpioStatus: { status: string; pins: string };
     cameraStatus: { status: string; enabled: boolean };
@@ -88,6 +91,8 @@ const PerformanceDashboard: React.FC = memo(() => {
               // Fallback to simulated data if Pi API is unavailable
               setPerformanceData({
                 timestamp: Date.now(),
+                source: 'Development',
+                deviceName: 'MacBook Pro',
                 cpuUsage: Math.random() * 100,
                 memoryUsage: Math.random() * 8 * 1024 * 1024 * 1024, // Random GB
                 memoryPercent: Math.random() * 100,
@@ -95,11 +100,55 @@ const PerformanceDashboard: React.FC = memo(() => {
                 networkIO: {
                   bytesSent: Math.random() * 1000000,
                   bytesRecv: Math.random() * 1000000,
+                  packetsSent: Math.random() * 10000,
+                  packetsRecv: Math.random() * 10000,
                 },
                 websocketConnections: Math.floor(Math.random() * 5),
+                uptime: Math.random() * 86400,
+                loadAverage: Math.random() * 4,
+                temperature: null,
                 responseTime: Math.random() * 100,
                 errorRate: Math.random() * 5,
                 throughput: Math.random() * 1000,
+                piSpecific: {
+                  gpioStatus: { status: 'unknown', pins: 'N/A' },
+                  cameraStatus: { status: 'unknown', enabled: false },
+                  robotServices: { movement: false, camera: false, sensors: false, lighting: false },
+                  piModel: 'N/A',
+                  firmwareVersion: 'N/A',
+                },
+                robotTelemetry: {
+                  power: { voltage: null, percentage: null, charging: false, powerSource: 'unknown', undervoltage: false, powerConsumption: null },
+                  sensors: {
+                    camera: { fps: null, resolution: null, status: 'unknown' },
+                    ultrasonic: { distance: null, status: 'unknown', pins: 'N/A' },
+                    lineTracking: { sensors: [], status: 'unknown', pins: 'N/A' },
+                    voltage: { value: null, status: 'unknown', adc: 'N/A', i2c: 'N/A' },
+                    buzzer: { status: 'unknown', pin: 'N/A' },
+                    leds: { status: 'unknown', pins: 'N/A' },
+                  },
+                  motors: {
+                    leftMotor: { speed: 0, position: 0, temperature: null, status: 'unknown' },
+                    rightMotor: { speed: 0, position: 0, temperature: null, status: 'unknown' },
+                    servoMotors: [],
+                    actuators: [],
+                  },
+                  network: { wifiSignal: null, latency: null, throughput: null, connectionType: 'unknown', ipAddress: null },
+                  autonomous: { 
+                    mode: 'manual', 
+                    navigation: { status: 'inactive', target: null, path: [] }, 
+                    obstacleAvoidance: { enabled: false, detected: false },
+                    lineFollowing: { enabled: false, onLine: false },
+                    mission: { active: false, progress: 0 }
+                  },
+                  safety: { 
+                    emergencyStop: false, 
+                    safetyLimits: { enabled: false, violations: 0 },
+                    collisionDetection: { enabled: false, detected: false },
+                    batteryProtection: { enabled: false, lowBattery: false },
+                    thermalProtection: { enabled: false, overheated: false }
+                  },
+                },
               });
             }
           } catch (error) {
@@ -129,6 +178,8 @@ const PerformanceDashboard: React.FC = memo(() => {
           // Simulate performance data (replace with real API call)
           const mockData: PerformanceData = {
             timestamp: Date.now(),
+            source: 'Development',
+            deviceName: 'MacBook Pro',
             cpuUsage: Math.random() * 100,
             memoryUsage: Math.random() * 1000,
             memoryPercent: Math.random() * 100,
@@ -136,11 +187,55 @@ const PerformanceDashboard: React.FC = memo(() => {
             networkIO: {
               bytesSent: Math.random() * 1000000,
               bytesRecv: Math.random() * 1000000,
+              packetsSent: Math.random() * 10000,
+              packetsRecv: Math.random() * 10000,
             },
             websocketConnections: Math.floor(Math.random() * 10),
+            uptime: Math.random() * 86400,
+            loadAverage: Math.random() * 4,
+            temperature: null,
             responseTime: Math.random() * 100,
             errorRate: Math.random() * 5,
             throughput: Math.random() * 1000,
+            piSpecific: {
+              gpioStatus: { status: 'unknown', pins: 'N/A' },
+              cameraStatus: { status: 'unknown', enabled: false },
+              robotServices: { movement: false, camera: false, sensors: false, lighting: false },
+              piModel: 'N/A',
+              firmwareVersion: 'N/A',
+            },
+            robotTelemetry: {
+              power: { voltage: null, percentage: null, charging: false, powerSource: 'unknown', undervoltage: false, powerConsumption: null },
+              sensors: {
+                camera: { fps: null, resolution: null, status: 'unknown' },
+                ultrasonic: { distance: null, status: 'unknown', pins: 'N/A' },
+                lineTracking: { sensors: [], status: 'unknown', pins: 'N/A' },
+                voltage: { value: null, status: 'unknown', adc: 'N/A', i2c: 'N/A' },
+                buzzer: { status: 'unknown', pin: 'N/A' },
+                leds: { status: 'unknown', pins: 'N/A' },
+              },
+              motors: {
+                leftMotor: { speed: 0, position: 0, temperature: null, status: 'unknown' },
+                rightMotor: { speed: 0, position: 0, temperature: null, status: 'unknown' },
+                servoMotors: [],
+                actuators: [],
+              },
+              network: { wifiSignal: null, latency: null, throughput: null, connectionType: 'unknown', ipAddress: null },
+              autonomous: { 
+                mode: 'manual', 
+                navigation: { status: 'inactive', target: null, path: [] }, 
+                obstacleAvoidance: { enabled: false, detected: false },
+                lineFollowing: { enabled: false, onLine: false },
+                mission: { active: false, progress: 0 }
+              },
+              safety: { 
+                emergencyStop: false, 
+                safetyLimits: { enabled: false, violations: 0 },
+                collisionDetection: { enabled: false, detected: false },
+                batteryProtection: { enabled: false, lowBattery: false },
+                thermalProtection: { enabled: false, overheated: false }
+              },
+            },
           };
           
           setPerformanceData(mockData);
@@ -523,19 +618,19 @@ const PerformanceDashboard: React.FC = memo(() => {
           <div className="space-y-1 text-xs">
             <div className="flex justify-between">
               <span className="text-gray-400">Response Time:</span>
-              <span className={getStatusColor(performanceData.responseTime, { warning: 500, critical: 1000 })}>
-                {performanceData.responseTime.toFixed(1)}ms
+              <span className={getStatusColor(performanceData.responseTime || 0, { warning: 500, critical: 1000 })}>
+                {(performanceData.responseTime || 0).toFixed(1)}ms
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400">Error Rate:</span>
-              <span className={getStatusColor(performanceData.errorRate, { warning: 2, critical: 5 })}>
-                {performanceData.errorRate.toFixed(2)}%
+              <span className={getStatusColor(performanceData.errorRate || 0, { warning: 2, critical: 5 })}>
+                {(performanceData.errorRate || 0).toFixed(2)}%
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400">Throughput:</span>
-              <span className="text-white font-mono">{performanceData.throughput.toFixed(0)} req/s</span>
+              <span className="text-white font-mono">{(performanceData.throughput || 0).toFixed(0)} req/s</span>
             </div>
           </div>
         </div>
@@ -571,10 +666,10 @@ const PerformanceDashboard: React.FC = memo(() => {
             {performanceData.memoryPercent > 95 && (
               <div className="text-red-400">⚠️ High memory usage</div>
             )}
-            {performanceData.responseTime > 1000 && (
+            {(performanceData.responseTime || 0) > 1000 && (
               <div className="text-red-400">⚠️ Slow response time</div>
             )}
-            {performanceData.errorRate > 5 && (
+            {(performanceData.errorRate || 0) > 5 && (
               <div className="text-red-400">⚠️ High error rate</div>
             )}
             {cacheStats.hitRate < 60 && (

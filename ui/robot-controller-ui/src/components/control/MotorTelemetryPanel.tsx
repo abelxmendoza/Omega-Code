@@ -8,17 +8,11 @@
 # - Color-coded motor cards for easy identification
 */
 
-import React, { useState, memo, useMemo } from 'react';
+import React, { useState, memo, useMemo, useEffect } from 'react';
 import { useRobustWebSocket } from '@/utils/RobustWebSocket';
 import { handleWebSocketError, handleComponentError } from '@/utils/errorHandling';
 import { withOptimization, performanceMonitor } from '@/utils/optimization';
-
-// Simple fallback configuration to avoid import issues
-const fallbackConfig = {
-  wsUrls: {
-    movement: ['ws://localhost:8081/', 'ws://localhost:3001/ws/movement']
-  }
-};
+import { unifiedNetworkManager, addNetworkChangeListener } from '@/utils/unifiedNetworkManager';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -70,6 +64,23 @@ const MotorTelemetryPanel: React.FC = memo(() => {
     rearLeft: { speed: 0, power: 0, pwm: 0 },
     rearRight: { speed: 0, power: 0, pwm: 0 }
   });
+
+  // Get current network profile for WebSocket URL
+  const [currentProfile, setCurrentProfile] = useState<any>(null);
+
+  useEffect(() => {
+    const unsubscribe = addNetworkChangeListener((profile) => {
+      setCurrentProfile(profile);
+    });
+
+    // Set initial profile
+    const initialProfile = unifiedNetworkManager.getCurrentProfile();
+    if (initialProfile) {
+      setCurrentProfile(initialProfile);
+    }
+
+    return unsubscribe;
+  }, []);
 
   // Memoized motor cards for better performance
   const motorCards = useMemo(() => [
@@ -152,7 +163,7 @@ const MotorTelemetryPanel: React.FC = memo(() => {
 
   // WebSocket connection for motor telemetry
   const motorTelemetryWs = useRobustWebSocket({
-    url: fallbackConfig.wsUrls.movement[0] || 'ws://localhost:8081/',
+    url: currentProfile?.wsEndpoints?.movement || 'ws://localhost:8081/',
     onMessage: (data) => {
       try {
         // Parse motor telemetry data for 4 motors
