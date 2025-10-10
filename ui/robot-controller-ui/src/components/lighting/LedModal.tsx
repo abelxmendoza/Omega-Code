@@ -122,6 +122,9 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       setServerStatus('connecting');
       try {
         console.log('[LedModal] Attempting to connect to lighting WebSocket...');
+        const { lightingCandidates } = await import('../../utils/connectLightingWs');
+        const candidates = lightingCandidates();
+        console.log('[LedModal] WebSocket candidates:', candidates);
         const wsObj = await connectLightingWs();
         console.log('[LedModal] Successfully connected to lighting WebSocket');
         if (cancelled) {
