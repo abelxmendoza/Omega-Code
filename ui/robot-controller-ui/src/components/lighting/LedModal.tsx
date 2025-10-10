@@ -121,7 +121,9 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
 
       setServerStatus('connecting');
       try {
+        console.log('[LedModal] Attempting to connect to lighting WebSocket...');
         const wsObj = await connectLightingWs();
+        console.log('[LedModal] Successfully connected to lighting WebSocket');
         if (cancelled) {
           try { wsObj.close(); } catch {}
           return;
@@ -172,7 +174,7 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         };
       } catch (err) {
         if (!mounted.current) return;
-        console.error('Lighting WS failed to connect', err);
+        console.error('[LedModal] Lighting WS failed to connect:', err);
         setServerStatus('disconnected');
         // retry
         const backoff = Math.min(1000 * Math.pow(2, attempt), 10000);
