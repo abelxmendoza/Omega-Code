@@ -391,13 +391,6 @@ export default function Home() {
           <div className="flex space-x-4">
             <div className="w-64">
               <SpeedControl />
-              {/* LED modal trigger */}
-              <button 
-                onClick={() => setIsLedModalOpen(true)}
-                className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
-              >
-                LEDs…
-              </button>
             </div>
             <div className="w-72">
               <MotorTelemetryPanel />
