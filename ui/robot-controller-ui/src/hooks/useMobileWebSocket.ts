@@ -250,7 +250,7 @@ export function useMobileWebSocket(options: MobileWebSocketOptions) {
       if (health) {
         setState(prev => ({ 
           ...prev, 
-          connectionQuality: health.status 
+          connectionQuality: health.status === 'disconnected' ? 'unknown' : health.status
         }));
       }
     } catch (error) {

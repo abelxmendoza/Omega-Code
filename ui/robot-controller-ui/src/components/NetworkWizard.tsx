@@ -313,7 +313,7 @@ const NetworkWizard: React.FC = () => {
               <div className="text-amber-400/70">MAC Address</div>
               <button
                 className="text-white underline decoration-dotted"
-                onClick={() => copy(info.panDevice.macAddress)} title="Copy MAC"
+                onClick={() => copy(info.panDevice?.macAddress || '')} title="Copy MAC"
               >
                 {info.panDevice.macAddress ? info.panDevice.macAddress.slice(-8) : '—'}
               </button>
