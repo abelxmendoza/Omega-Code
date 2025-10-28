@@ -21,7 +21,6 @@
 // $ go run main_ultrasonic.go
 //
 
-
 package main
 
 import (
@@ -101,7 +100,7 @@ func loadCfg() envCfg {
 		Port:            getenvInt("PORT_ULTRASONIC", 8080),
 		Path:            firstNonEmpty(os.Getenv("ULTRA_PATH"), "/ultrasonic"),
 		OriginAllow:     getenvSet("ORIGIN_ALLOW"), // e.g. http://localhost:3000,http://192.168.1.107:3000
-		LogEvery:        getenvDur("ULTRA_LOG_EVERY", 5 * time.Second),
+		LogEvery:        getenvDur("ULTRA_LOG_EVERY", 5*time.Second),
 		LogDeltaCM:      getenvInt("ULTRA_LOG_DELTA_CM", 10),
 		ReadLimit:       int64(getenvInt("ULTRA_READ_LIMIT", 4096)),
 		WriteTimeout:    getenvDur("ULTRA_WRITE_TIMEOUT", 1500*time.Millisecond),
@@ -135,11 +134,11 @@ var upgrader websocket.Upgrader // set in main()
 
 // measureDistance triggers HC-SR04 and returns distance in cm.
 func measureDistance(trigger gpio.PinOut, echo gpio.PinIn) (int, error) {
-	// Ensure low, then 10µs high pulse
+	// Ensure low, then 20µs high pulse
 	trigger.Out(gpio.Low)
 	time.Sleep(2 * time.Microsecond)
 	trigger.Out(gpio.High)
-	time.Sleep(10 * time.Microsecond)
+	time.Sleep(20 * time.Microsecond) // Increased from 10µs to 20µs
 	trigger.Out(gpio.Low)
 
 	// Wait for echo high (start) with timeout
@@ -161,7 +160,7 @@ func measureDistance(trigger gpio.PinOut, echo gpio.PinIn) (int, error) {
 
 	// Convert to cm (~58µs per cm round-trip)
 	cm := int(float64(dur.Microseconds()) / 58.0)
-	if cm <= 0 || cm > 400 {
+	if cm < 0 || cm > 400 {
 		return -1, os.ErrInvalid
 	}
 	return cm, nil

@@ -33,7 +33,7 @@ class Ultrasonic:
         lgpio.gpio_write(self.h, TRIG, 0)
         time.sleep(0.000002)  # 2 µs
         lgpio.gpio_write(self.h, TRIG, 1)
-        time.sleep(0.00001)   # 10 µs
+        time.sleep(0.00002)   # 20 µs (increased from 10µs)
         lgpio.gpio_write(self.h, TRIG, 0)
 
         timeout_ns = 1_000_000_000  # 1 second in nanoseconds
