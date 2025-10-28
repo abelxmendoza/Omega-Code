@@ -1,20 +1,20 @@
 # Exclude non-UI directories from Vercel deployment
-servers/
-ros/
-machine_learning/
-scripts/
-config/
-venv/
-*.md
-LICENSE
-Makefile
-docker-compose.yml
-nginx.conf
-deploy.sh
-update_servo_center.py
+/servers/
+/ros/
+/machine_learning/
+/scripts/
+/config/
+/venv/
+/*.md
+/LICENSE
+/Makefile
+/docker-compose.yml
+/nginx.conf
+/deploy.sh
+/update_servo_center.py
 
-# Exclude non-UI image directories
-image/
+# Exclude non-UI image directories (root level only)
+/image/
 
 # Exclude UI files that aren't needed
 ui/robot-controller-ui/node_modules/
