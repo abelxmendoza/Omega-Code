@@ -17,6 +17,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import Image from 'next/image';
 import { CheckCircle, XCircle, Settings } from 'lucide-react';
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
@@ -431,6 +432,13 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
     <div className="flex flex-col gap-2 bg-gray-800 text-white p-4 sticky top-0 z-10 shadow-md">
       <div className="flex justify-between items-center">
         <div className="text-lg font-bold flex items-center gap-2">
+          <Image
+            src="/image/README/omegatechlogopro-noBackground.png"
+            alt="Omega Tech Logo"
+            width={40}
+            height={40}
+            className="h-10 w-auto object-contain"
+          />
           Robot Controller
           {/* Profile + MOCK badges (no hostnames = no leaks) */}
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 border border-white/15">
