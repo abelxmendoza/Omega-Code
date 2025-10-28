@@ -5,13 +5,18 @@
 /scripts/
 /config/
 /venv/
-/*.md
 /LICENSE
 /Makefile
 /docker-compose.yml
 /nginx.conf
 /deploy.sh
 /update_servo_center.py
+
+# Exclude non-UI root-level markdown files
+/README.md
+/ENVIRONMENT_VARIABLES.md
+/HARDWARE_PERFORMANCE_SUMMARY.md
+/CI-CD-README.md
 
 # Exclude non-UI image directories (root level only)
 /image/
@@ -21,6 +26,4 @@ ui/robot-controller-ui/node_modules/
 ui/robot-controller-ui/.next/
 ui/robot-controller-ui/cypress/
 ui/robot-controller-ui/tests/
-ui/robot-controller-ui/Dockerfile
-ui/robot-controller-ui/COMPONENTS.md
 ui/robot-controller-ui/find_unused_components.py
