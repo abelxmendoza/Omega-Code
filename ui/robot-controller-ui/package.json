@@ -24,42 +24,45 @@
     "deps:update": "npx npm-check-updates -u"
   },
   "dependencies": {
-    "next": "14.2.4",
-    "react": "^18",
-    "react-dom": "^18",
-    "typescript": "^5",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "tailwindcss": "^3.4.1",
+    "@vercel/speed-insights": "^1.2.0",
     "autoprefixer": "^10.4.16",
-    "postcss": "^8.4.32",
-    "lucide-react": "^0.294.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
-    "tailwind-merge": "^2.0.0"
+    "lucide-react": "^0.294.0",
+    "next": "14.2.4",
+    "postcss": "^8.4.32",
+    "react": "^18",
+    "react-dom": "^18",
+    "tailwind-merge": "^2.0.0",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
   },
   "devDependencies": {
-    "eslint": "^8",
-    "eslint-config-next": "14.2.4",
+    "@next/bundle-analyzer": "^14.2.4",
+    "@testing-library/jest-dom": "^6.1.5",
+    "@testing-library/react": "^14.1.2",
+    "@testing-library/user-event": "^14.5.1",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
-    "prettier": "^3.1.1",
-    "prettier-plugin-tailwindcss": "^0.5.7",
+    "cypress": "^13.6.0",
+    "depcheck": "^1.4.7",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.4",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
-    "@testing-library/react": "^14.1.2",
-    "@testing-library/jest-dom": "^6.1.5",
-    "@testing-library/user-event": "^14.5.1",
-    "cypress": "^13.6.0",
-    "@next/bundle-analyzer": "^14.2.4",
-    "depcheck": "^1.4.7",
-    "snyk": "^1.1248.0",
-    "npm-check-updates": "^16.14.15"
+    "npm-check-updates": "^16.14.15",
+    "prettier": "^3.1.1",
+    "prettier-plugin-tailwindcss": "^0.5.7",
+    "snyk": "^1.1248.0"
   },
   "jest": {
     "testEnvironment": "jsdom",
-    "setupFilesAfterEnv": ["<rootDir>/jest.setup.js"],
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest.setup.js"
+    ],
     "moduleNameMapping": {
       "^@/(.*)$": "<rootDir>/src/$1"
     },

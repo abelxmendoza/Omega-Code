@@ -14,6 +14,7 @@ import { MacroProvider } from '../context/MacroContext'; // Macro builder + auto
 import store from '../redux/store'; // Redux store configuration
 import '../styles/globals.scss'; // Import global styles
 import { ErrorBoundary } from 'react-error-boundary'; // Error boundary for runtime error handling
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 /**
  * Fallback UI for the ErrorBoundary.
@@ -52,6 +53,7 @@ const MyApp = ({ Component, pageProps }: AppProps) => {
         <MacroProvider> {/* Persisted macro editor + runtime */}
           <ErrorBoundary FallbackComponent={ErrorFallback}> {/* Gracefully handle runtime errors */}
             <Component {...pageProps} /> {/* Render the current page */}
+            <SpeedInsights /> {/* Track performance metrics */}
           </ErrorBoundary>
         </MacroProvider>
       </CommandProvider>
