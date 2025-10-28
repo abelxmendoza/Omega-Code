@@ -21,9 +21,8 @@
 # Exclude non-UI image directories (root level only)
 /image/
 
-# Exclude UI files that aren't needed
+# Exclude UI build artifacts
 ui/robot-controller-ui/node_modules/
 ui/robot-controller-ui/.next/
 ui/robot-controller-ui/cypress/
 ui/robot-controller-ui/tests/
-ui/robot-controller-ui/find_unused_components.py
