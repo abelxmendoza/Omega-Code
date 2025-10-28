@@ -18,8 +18,7 @@
 /HARDWARE_PERFORMANCE_SUMMARY.md
 /CI-CD-README.md
 
-# Exclude non-UI image directories (root level only)
-/image/
+# Note: /image/ is the root-level image directory, NOT ui/robot-controller-ui/public/image/
 
 # Exclude UI build artifacts
 ui/robot-controller-ui/node_modules/
