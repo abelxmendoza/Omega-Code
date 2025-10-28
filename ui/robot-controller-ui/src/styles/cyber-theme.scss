@@ -1,0 +1,273 @@
+/**
+ * Omega Cyber-Industrial Theme Styles
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;600;700&family=Exo+2:wght@300;400;600;700&family=Audiowide&family=Fira+Code:wght@400;500&display=swap');
+
+:root {
+  --cyber-bg-primary: #050007;
+  --cyber-bg-secondary: #0a0a0a;
+  --cyber-neon-purple: #C400FF;
+  --cyber-neon-purple-dark: #8B00FF;
+  --cyber-neon-magenta: #FF0048;
+}
+
+body {
+  background: #2a2a3a !important;
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(100, 60, 150, 0.7) 0%, #2a2a3a 100%) !important;
+  color: #E0E0E0 !important;
+  font-family: 'Rajdhani', 'Exo 2', sans-serif;
+}
+
+#__next {
+  background: #2a2a3a !important;
+}
+
+.cyber-theme {
+  background: #2a2a3a !important;
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(100, 60, 150, 0.7) 0%, #2a2a3a 100%) !important;
+  color: #E0E0E0 !important;
+  font-family: 'Rajdhani', 'Exo 2', sans-serif;
+  position: relative;
+  overflow-x: hidden;
+}
+
+.cyber-logo {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #C400FF 0%, #8B00FF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  position: relative;
+}
+
+.cyber-logo::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, transparent, rgba(196, 0, 255, 0.3), transparent);
+  animation: crackPulse 2s ease-in-out infinite;
+  opacity: 0.3;
+}
+
+.cyber-panel {
+  background: rgba(40, 25, 50, 0.9);
+  border: 3px solid rgba(196, 0, 255, 0.7);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 30px rgba(196, 0, 255, 0.2), 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 0 30px rgba(196, 0, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.cyber-panel:hover {
+  border-color: rgba(196, 0, 255, 0.9);
+  box-shadow: 0 0 40px rgba(196, 0, 255, 0.4), 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 0 30px rgba(196, 0, 255, 0.15);
+}
+
+.cyber-button {
+  background: linear-gradient(135deg, rgba(139, 0, 255, 0.2) 0%, rgba(196, 0, 255, 0.1) 100%);
+  border: 1px solid rgba(196, 0, 255, 0.4);
+  border-radius: 4px;
+  color: #FFFFFF;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.cyber-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(196, 0, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.cyber-button:hover::before {
+  left: 100%;
+}
+
+.cyber-button:hover {
+  border-color: rgba(196, 0, 255, 0.7);
+  box-shadow: 0 0 20px rgba(196, 0, 255, 0.4);
+}
+
+.cyber-button:active {
+  transform: scale(0.98);
+  box-shadow: inset 0 0 20px rgba(196, 0, 255, 0.3);
+}
+
+@keyframes crackPulse {
+  0%, 100% { 
+    opacity: 0.3; 
+    filter: brightness(1);
+  }
+  50% { 
+    opacity: 1; 
+    filter: brightness(1.5);
+  }
+}
+
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(196, 0, 255, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(196, 0, 255, 0.8), 0 0 60px rgba(196, 0, 255, 0.5);
+  }
+}
+
+@keyframes energyFlow {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.glow-pulse {
+  animation: glowPulse 2s ease-in-out infinite;
+}
+
+.status-online {
+  color: #00FF88;
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+}
+
+.status-warning {
+  color: #FFB800;
+  text-shadow: 0 0 10px rgba(255, 184, 0, 0.5);
+}
+
+.status-error {
+  color: #FF0048;
+  text-shadow: 0 0 10px rgba(255, 0, 72, 0.5);
+}
+
+/* Cyber Content Override */
+.cyber-content {
+  color: #E0E0E0;
+}
+
+/* Override default panels to use cyber styling */
+.cyber-theme .bg-gray-800,
+.cyber-theme .bg-gray-900 {
+  background: rgba(50, 40, 70, 0.9) !important;
+  border: 2px solid rgba(196, 0, 255, 0.6) !important;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 20px rgba(196, 0, 255, 0.3);
+  color: #E0E0E0 !important;
+}
+
+.cyber-theme .text-white,
+.cyber-theme .text-white\/90 {
+  color: #E0E0E0 !important;
+}
+
+.cyber-theme .border-white\/10 {
+  border-color: rgba(196, 0, 255, 0.4) !important;
+}
+
+/* Make sure text is visible */
+.cyber-theme h1, .cyber-theme h2, .cyber-theme h3 {
+  color: #E0E0E0 !important;
+}
+
+.cyber-theme p, .cyber-theme span {
+  color: #D0D0D0 !important;
+}
+
+/* Camera Control & Car Control Button Styling */
+.cyber-theme .bg-zinc-800,
+.cyber-theme .bg-gray-800 {
+  background: rgba(80, 40, 120, 0.4) !important;
+  border: 2px solid rgba(196, 0, 255, 0.4) !important;
+  box-shadow: 0 0 10px rgba(196, 0, 255, 0.2) !important;
+  transition: all 0.2s ease !important;
+}
+
+.cyber-theme .bg-zinc-800:hover,
+.cyber-theme .bg-gray-800:hover,
+.cyber-theme .hover\:bg-zinc-700:hover,
+.cyber-theme .hover\:bg-gray-700:hover {
+  background: rgba(100, 60, 150, 0.6) !important;
+  border-color: rgba(196, 0, 255, 0.7) !important;
+  box-shadow: 0 0 20px rgba(196, 0, 255, 0.4) !important;
+}
+
+/* Active/pressed state with cyber purple glow */
+.cyber-theme .bg-emerald-600 {
+  background: linear-gradient(135deg, rgba(196, 0, 255, 0.8), rgba(80, 40, 120, 0.8)) !important;
+  border: 2px solid #C400FF !important;
+  box-shadow: 
+    0 0 30px rgba(196, 0, 255, 0.6),
+    inset 0 0 20px rgba(196, 0, 255, 0.2) !important;
+}
+
+.cyber-theme .ring-emerald-300,
+.cyber-theme .ring-2 {
+  box-shadow: 
+    0 0 30px rgba(196, 0, 255, 0.6),
+    inset 0 0 20px rgba(196, 0, 255, 0.2),
+    0 0 40px rgba(196, 0, 255, 0.8) !important;
+}
+
+/* Center button styling */
+.cyber-theme .bg-sky-600,
+.cyber-theme .bg-sky-500 {
+  background: linear-gradient(135deg, rgba(196, 0, 255, 0.6), rgba(139, 0, 255, 0.6)) !important;
+  border: 2px solid rgba(196, 0, 255, 0.8) !important;
+  box-shadow: 0 0 15px rgba(196, 0, 255, 0.4) !important;
+  color: #FFFFFF !important;
+}
+
+.cyber-theme .bg-sky-600:hover,
+.cyber-theme .bg-sky-500:hover,
+.cyber-theme .hover\:bg-sky-500:hover {
+  background: linear-gradient(135deg, rgba(196, 0, 255, 0.8), rgba(139, 0, 255, 0.8)) !important;
+  border-color: #C400FF !important;
+  box-shadow: 0 0 25px rgba(196, 0, 255, 0.6) !important;
+}
+
+/* Modal Styling */
+@keyframes zoom-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-in {
+  animation: zoom-in 0.2s ease-out;
+}
+
+.zoom-in-95 {
+  animation: zoom-in 0.2s ease-out;
+}
+
+/* LED Modal Enhancement */
+.fixed.inset-0 {
+  overflow-y: auto !important;
+}
+
+/* Ensure modal doesn't overflow on mobile */
+.max-w-2xl {
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+

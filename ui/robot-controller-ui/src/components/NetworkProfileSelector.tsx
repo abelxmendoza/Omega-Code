@@ -285,10 +285,10 @@ export default function NetworkProfileSelector({
           <strong>Automatic Selection:</strong> System automatically chooses the best available profile
         </div>
         <div className="mb-2">
-          <strong>Manual Selection:</strong> Click "Select" to manually choose a profile
+          <strong>Manual Selection:</strong> Click &quot;Select&quot; to manually choose a profile
         </div>
         <div className="mb-2">
-          <strong>Fallback:</strong> Click "Fallback" to switch to the next available profile
+          <strong>Fallback:</strong> Click &quot;Fallback&quot; to switch to the next available profile
         </div>
         <div>
           <strong>Priority:</strong> Tailscale → WiFi → Mobile → Direct → Local

@@ -160,7 +160,7 @@ export default function NetworkPage() {
             <div className="space-y-3 text-sm text-yellow-800">
               <div>
                 <h3 className="font-medium">Connection Issues:</h3>
-                <p className="ml-4">Use the "Fallback" button to switch to the next available network profile</p>
+                <p className="ml-4">Use the &quot;Fallback&quot; button to switch to the next available network profile</p>
               </div>
               
               <div>

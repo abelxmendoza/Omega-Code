@@ -1,0 +1,51 @@
+/* Omega Technologies Theme Styles */
+
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;600;700&family=Exo+2:wght@300;400;600;700&display=swap');
+
+:root {
+  --omega-font-display: 'Orbitron', sans-serif;
+  --omega-font-primary: 'Rajdhani', 'Exo 2', sans-serif;
+}
+
+body.omega-theme {
+  font-family: var(--omega-font-primary);
+  background: #000000;
+  color: #B0B0B0;
+}
+
+.omega-logo {
+  font-family: var(--omega-font-display);
+  font-weight: 700;
+  background: linear-gradient(135deg, #C400FF 0%, #00FFFF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: glow-slow 3s ease-in-out infinite;
+}
+
+.omega-panel {
+  background: rgba(26, 26, 26, 0.7);
+  border: 1px solid rgba(196, 0, 255, 0.2);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+}
+
+.omega-button {
+  background: linear-gradient(135deg, #4B0082 0%, #1A1A1A 100%);
+  border: 1px solid rgba(196, 0, 255, 0.4);
+  border-radius: 8px;
+  color: #B0B0B0;
+  padding: 0.75rem 1.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.omega-button:hover {
+  border-color: #C400FF;
+  box-shadow: 0 0 15px rgba(196, 0, 255, 0.3);
+}
+
+@keyframes glow-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+

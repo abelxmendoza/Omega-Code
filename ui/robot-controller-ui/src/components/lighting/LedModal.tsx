@@ -9,6 +9,7 @@ layout tweaks so the status never overlaps the Close button. Adds safe cleanup +
 */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { ColorResult } from 'react-color';
 import { SketchPicker } from 'react-color';
 import { connectLightingWs } from '../../utils/connectLightingWs';
@@ -307,18 +308,20 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 bg-gray-800/75 flex justify-center items-center z-50"
+      className="fixed inset-0 bg-gray-800/75 backdrop-blur-sm flex justify-center items-center z-[9999] p-4"
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="led-config-title"
     >
-      <div className="bg-gray-900 rounded-lg p-6 w-full max-w-lg relative text-white shadow-xl">
+      <div className="bg-gray-900 rounded-lg p-8 w-full max-w-2xl relative text-white shadow-2xl border-2 border-purple-500/50 animate-in zoom-in-95 duration-200" style={{ position: 'relative', zIndex: 10000 }}>
         {/* Close Button (absolute) */}
         <button
           type="button"
-          className="absolute top-3 right-3 text-white bg-red-500 hover:bg-red-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-red-400"
+          className="absolute top-3 right-3 text-white bg-red-500 hover:bg-red-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-red-400 z-[10001]"
+          style={{ position: 'absolute', zIndex: 10001 }}
           onClick={onClose}
           aria-label="Close LED configuration"
         >
@@ -453,16 +456,17 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         <button
           onClick={handleApply}
           disabled={serverStatus !== 'connected' || !ledOn}
-          className={`text-white p-3 rounded mt-6 w-full focus:outline-none focus:ring-2 ${
+          className={`text-white p-3 rounded mt-6 w-full focus:outline-none focus:ring-2 transition-all ${
             serverStatus !== 'connected' || !ledOn
               ? 'bg-gray-600 cursor-not-allowed'
-              : 'bg-blue-500 hover:bg-blue-600 focus:ring-blue-400'
+              : 'bg-purple-600 hover:bg-purple-700 focus:ring-purple-400 hover:shadow-lg'
           }`}
         >
           {serverStatus !== 'connected' ? 'Server Unavailable' : 'Apply Settings'}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

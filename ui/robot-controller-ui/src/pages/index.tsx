@@ -305,7 +305,7 @@ export default function Home() {
     MOCK_WS || (ws.current?.readyState === WebSocket.OPEN);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="cyber-theme min-h-screen">
       <Head>
         <title>Robot Controller</title>
         <meta name="description" content="Control your robot" />
@@ -315,7 +315,7 @@ export default function Home() {
       {/* Header computes live service dots internally; passing battery for now */}
       <Header batteryLevel={75} />
 
-      <main className="p-4 space-y-4">
+      <main className="cyber-content p-4 space-y-4">
         <div className="flex justify-center items-center space-x-8">
           <div className="flex-shrink-0">
             <CarControlPanel />
