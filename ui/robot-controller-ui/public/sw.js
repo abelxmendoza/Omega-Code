@@ -35,6 +35,16 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Skip Next.js dev server assets and HMR
+  if (event.request.url.includes('/_next/') || event.request.url.includes('/__webpack') || event.request.url.includes('webpack-hmr') || event.request.url.includes('hot-update')) {
+    return;
+  }
+
+  // Skip localhost in development (let Next.js handle it)
+  if (event.request.url.includes('localhost游行')) {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
