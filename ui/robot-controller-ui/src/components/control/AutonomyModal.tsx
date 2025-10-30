@@ -14,7 +14,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, User, QrCode, Users, Package, Move, Palette, Network, Activity, Layers } from 'lucide-react';
+import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, User, QrCode, Users, Package, Move, Palette, Network, Activity, Layers, Code, CheckCircle2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -92,6 +92,9 @@ export type AutonomyParams = {
   rosNodeSensorFusion: boolean;
   rosNodePathPlanning: boolean;
   rosNodeAutonomousDriving: boolean;
+
+  // Algorithm selection
+  pathPlanningAlgorithm: 'a_star' | 'd_star_lite' | 'rrt' | 'none';
 };
 
 export type AutonomyModalProps = {
@@ -172,6 +175,9 @@ const defaults: AutonomyParams = {
   rosNodeSensorFusion: true,
   rosNodePathPlanning: false,
   rosNodeAutonomousDriving: false,
+
+  // Algorithm selection
+  pathPlanningAlgorithm: 'a_star',
 };
 
 /* -------------------------------- Component -------------------------------- */
@@ -588,6 +594,147 @@ export default function AutonomyModal({
               </Card>
             )}
 
+            {/* Active Algorithms Display */}
+            <Card className="bg-neutral-900/80 border-neutral-800">
+              <CardContent className="p-3 grid gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
+                  <Code className="h-4 w-4 text-indigo-400" /> Active Algorithms
+                </div>
+                <p className="text-xs text-neutral-400">
+                  Algorithms currently running based on your settings:
+                </p>
+
+                <div className="space-y-2 pt-2">
+                  {/* Path Planning Algorithms */}
+                  {(params.rosNodePathPlanning || mode === 'waypoints') && (
+                    <div className="flex items-center justify-between rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-2">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-indigo-400" />
+                        <span className="text-xs font-medium text-neutral-200">
+                          Path Planning: <span className="text-indigo-300">{params.pathPlanningAlgorithm.toUpperCase()}</span>
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] border-indigo-500/50 text-indigo-300">
+                        {params.pathPlanningAlgorithm === 'a_star' ? 'Heuristic Search' : 
+                         params.pathPlanningAlgorithm === 'd_star_lite' ? 'Dynamic Replanning' : 
+                         params.pathPlanningAlgorithm === 'rrt' ? 'Sampling-Based' : 'None'}
+                      </Badge>
+                    </div>
+                  )}
+
+                  {/* SLAM */}
+                  {params.rosNodeSlam && (
+                    <div className="flex items-center justify-between rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-2">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-yellow-400" />
+                        <span className="text-xs font-medium text-neutral-200">
+                          SLAM: <span className="text-yellow-300">gmapping</span>
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] border-yellow-500/50 text-yellow-300">
+                        Mapping
+                      </Badge>
+                    </div>
+                  )}
+
+                  {/* Sensor Fusion */}
+                  {params.rosNodeSensorFusion && (
+                    <div className="flex items-center justify-between rounded-lg border border-orange-500/30 bg-orange-500/10 px-2.5 py-2">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-orange-400" />
+                        <span className="text-xs font-medium text-neutral-200">
+                          Sensor Fusion: <span className="text-orange-300">Multi-Sensor Fusion</span>
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] border-orange-500/50 text-orange-300">
+                        Data Fusion
+                      </Badge>
+                    </div>
+                  )}
+
+                  {/* Obstacle Avoidance */}
+                  {params.obstacleAvoidance && (
+                    <div className="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-2">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                        <span className="text-xs font-medium text-neutral-200">
+                          Obstacle Avoidance: <span className="text-emerald-300">Collision Detection</span>
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] border-emerald-500/50 text-emerald-300">
+                        Safety
+                      </Badge>
+                    </div>
+                  )}
+
+                  {/* Computer Vision Algorithms */}
+                  {params.cvEnabled && (
+                    <>
+                      {(params.cvDetectFaces || params.cvDetectPeople || params.cvDetectObjects) && (
+                        <div className="flex items-center justify-between rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-2">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-blue-400" />
+                            <span className="text-xs font-medium text-neutral-200">
+                              Object Detection: <span className="text-blue-300">
+                                {params.cvDetectFaces && 'Faces '}
+                                {params.cvDetectPeople && 'People '}
+                                {params.cvDetectObjects && 'Objects'}
+                              </span>
+                            </span>
+                          </div>
+                          <Badge variant="outline" className="text-[10px] border-blue-500/50 text-blue-300">
+                            CV
+                          </Badge>
+                        </div>
+                      )}
+
+                      {(params.cvDetectAruco || params.cvTrackColor) && (
+                        <div className="flex items-center justify-between rounded-lg border border-purple-500/30 bg-purple-500/10 px-2.5 py-2">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-purple-400" />
+                            <span className="text-xs font-medium text-neutral-200">
+                              Tracking: <span className="text-purple-300">
+                                {params.cvDetectAruco && 'ArUco '}
+                                {params.cvTrackColor && 'Color '}
+                                {params.cvDetectMotion && 'Motion'}
+                              </span>
+                            </span>
+                          </div>
+                          <Badge variant="outline" className="text-[10px] border-purple-500/50 text-purple-300">
+                            Tracking
+                          </Badge>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Line Following */}
+                  {(mode === 'line_follow' || mode === 'line_track') && params.laneKeeping && (
+                    <div className="flex items-center justify-between rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-2">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-cyan-400" />
+                        <span className="text-xs font-medium text-neutral-200">
+                          Line Following: <span className="text-cyan-300">PID Control</span>
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] border-cyan-500/50 text-cyan-300">
+                        Control
+                      </Badge>
+                    </div>
+                  )}
+
+                  {/* No algorithms active */}
+                  {!params.rosNodePathPlanning && !params.rosNodeSlam && !params.rosNodeSensorFusion && 
+                   !params.obstacleAvoidance && !params.cvEnabled && 
+                   (mode !== 'line_follow' && mode !== 'line_track') && (
+                    <div className="text-xs text-neutral-500 italic text-center py-2">
+                      No algorithms active. Enable features above to see active algorithms.
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Computer Vision Section */}
             <Card className="bg-neutral-900/80 border-neutral-800">
               <CardContent className="p-3 grid gap-3">
@@ -907,10 +1054,43 @@ export default function AutonomyModal({
                       <ToggleRow
                         icon={<Crosshair className="h-3.5 w-3.5 text-red-400" />}
                         label="Path Planning"
-                        description="ON: Run A* pathfinding. OFF: Disable path planning."
+                        description="ON: Run pathfinding algorithm. OFF: Disable path planning."
                         checked={params.rosNodePathPlanning}
                         onCheckedChange={(v) => setParam('rosNodePathPlanning', v)}
                       />
+                      {params.rosNodePathPlanning && (
+                        <div className="ml-6">
+                          <label className="text-xs text-neutral-300 mb-1 block">Algorithm</label>
+                          <Select 
+                            value={params.pathPlanningAlgorithm} 
+                            onValueChange={(v) => setParam('pathPlanningAlgorithm', v as AutonomyParams['pathPlanningAlgorithm'])}
+                          >
+                            <SelectTrigger className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-neutral-950 border-neutral-800 text-neutral-100">
+                              <SelectItem value="a_star">
+                                <div>
+                                  <div className="font-medium">A*</div>
+                                  <div className="text-[10px] text-neutral-400">Heuristic search, optimal paths</div>
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="d_star_lite">
+                                <div>
+                                  <div className="font-medium">D* Lite</div>
+                                  <div className="text-[10px] text-neutral-400">Dynamic replanning, handles changes</div>
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="rrt">
+                                <div>
+                                  <div className="font-medium">RRT</div>
+                                  <div className="text-[10px] text-neutral-400">Rapidly-exploring random trees</div>
+                                </div>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                       <ToggleRow
                         icon={<Play className="h-3.5 w-3.5 text-emerald-400" />}
                         label="Autonomous Driving"
