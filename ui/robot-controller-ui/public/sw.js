@@ -42,7 +42,7 @@ self.addEventListener('fetch', (event) => {
 
   // Skip localhost in development (let Next.js handle it)
   if (event.request.url.includes('localhost') || event.request.url.includes('127.0.0.1')) {
-ควร return;
+    return;
   }
 
   event.respondWith(
