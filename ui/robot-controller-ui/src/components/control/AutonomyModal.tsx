@@ -14,7 +14,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload } from 'lucide-react';
+import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -300,10 +300,13 @@ export default function AutonomyModal({
         </DialogTrigger>
 
         <DialogContent className="sm:max-w-2xl p-0 overflow-hidden border border-neutral-800 bg-neutral-950 text-neutral-100">
-          <DialogHeader className="px-5 pt-5">
+          <DialogHeader className="px-5 pt-5 pb-2">
             <DialogTitle className="flex items-center gap-2 text-lg">
-              <Settings2 className="h-5 w-5" /> Autonomy
+              <Settings2 className="h-5 w-5" /> Autonomy Control
             </DialogTitle>
+            <p className="text-xs text-neutral-400 mt-1">
+              Choose a mode, adjust settings, and start your robot's autonomous behavior
+            </p>
           </DialogHeader>
 
           {/* Status */}
@@ -322,52 +325,144 @@ export default function AutonomyModal({
               <CardContent className="p-4 grid gap-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
                   <div>
-                    <label className="text-xs text-neutral-200">Mode</label>
+                    <div className="flex items-center gap-1 mb-1">
+                      <label className="text-xs text-neutral-200 font-medium">Autonomy Mode</label>
+                      <div className="group relative">
+                        <HelpCircle className="h-3 w-3 text-neutral-400 cursor-help" />
+                        <div className="absolute left-0 top-4 w-48 bg-neutral-900 border border-neutral-700 rounded-md p-2 text-xs text-neutral-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-lg">
+                          <strong>Mode Options:</strong><br/>
+                          • <strong>Line Follow:</strong> Follows marked lines on the ground<br/>
+                          • <strong>Avoid Obstacles:</strong> Drives while avoiding objects<br/>
+                          • <strong>Patrol:</strong> Follows a preset route<br/>
+                          • <strong>Waypoints:</strong> Navigates to specific locations<br/>
+                          • <strong>Color Track:</strong> Tracks objects by color
+                        </div>
+                      </div>
+                    </div>
                     <Select value={mode} onValueChange={(v: string) => setMode(v as AutonomyMode)}>
                       <SelectTrigger className="mt-1 bg-neutral-950 border-neutral-800 text-neutral-100">
                         <SelectValue placeholder="Select mode" />
                       </SelectTrigger>
                       <SelectContent className="bg-neutral-950 border-neutral-800 text-neutral-100">
-                        {/* legacy + simple names */}
-                        <SelectItem value="idle">Idle</SelectItem>
-                        <SelectItem value="patrol">Patrol</SelectItem>
+                        <SelectItem value="idle">
+                          <div>
+                            <div className="font-medium">Idle</div>
+                            <div className="text-xs text-neutral-400">Robot stays still</div>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="line_follow">
+                          <div>
+                            <div className="font-medium">Line Follow</div>
+                            <div className="text-xs text-neutral-400">Follows marked lines</div>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="avoid_obstacles">
+                          <div>
+                            <div className="font-medium">Avoid Obstacles</div>
+                            <div className="text-xs text-neutral-400">Drives safely around objects</div>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="patrol">
+                          <div>
+                            <div className="font-medium">Patrol</div>
+                            <div className="text-xs text-neutral-400">Follows a preset route</div>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="waypoints">
+                          <div>
+                            <div className="font-medium">Waypoints</div>
+                            <div className="text-xs text-neutral-400">Navigate to specific locations</div>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="line_track">Line Track (Legacy)</SelectItem>
                         <SelectItem value="follow">Follow</SelectItem>
-                        <SelectItem value="line_track">Line Track</SelectItem>
-                        <SelectItem value="dock">Dock</SelectItem>
-                        {/* common explicit */}
-                        <SelectItem value="line_follow">Line Follow</SelectItem>
-                        <SelectItem value="avoid_obstacles">Avoid Obstacles</SelectItem>
-                        <SelectItem value="waypoints">Waypoints</SelectItem>
                         <SelectItem value="color_track">Color Track</SelectItem>
+                        <SelectItem value="dock">Dock</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="flex gap-2">
-                    <Button disabled={busy || !connected} onClick={handleStart} className="gap-2" aria-busy={busy}>
+                    <Button disabled={busy || !connected} onClick={handleStart} className="gap-2 flex-1" aria-busy={busy}>
                       <Play className="h-4 w-4" /> Start
                     </Button>
-                    <Button disabled={busy} variant="destructive" onClick={handleStop} className="gap-2" aria-busy={busy}>
+                    <Button disabled={busy} variant="destructive" onClick={handleStop} className="gap-2 flex-1" aria-busy={busy}>
                       <Square className="h-4 w-4" /> Stop
                     </Button>
                   </div>
                 </div>
 
                 {/* BASIC: Speed + two obvious toggles */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <SliderField label="Speed" value={params.speedPct} onChange={(n) => setParam('speedPct', n)} />
-                  <SliderField label="Aggressiveness" value={params.aggressiveness} onChange={(n) => setParam('aggressiveness', n)} />
+                <div className="space-y-3 pt-2 border-t border-neutral-800/50">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-medium text-neutral-200">Speed</span>
+                        <div className="group relative">
+                          <HelpCircle className="h-3 w-3 text-neutral-400 cursor-help" />
+                          <div className="absolute left-0 top-4 w-56 bg-neutral-900 border border-neutral-700 rounded-md p-2 text-xs text-neutral-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-lg">
+                            Controls how fast the robot moves (0-100%). Start with 30-40% for safe testing.
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-neutral-100">{params.speedPct}%</span>
+                    </div>
+                    <Slider
+                      value={[params.speedPct]}
+                      onValueChange={(v: number[]) => setParam('speedPct', v[0] ?? 0)}
+                      min={0}
+                      max={100}
+                      step={5}
+                      className="mt-2"
+                      aria-label="Speed"
+                    />
+                    <div className="flex justify-between text-[10px] text-neutral-500 mt-1">
+                      <span>Slow</span>
+                      <span>Fast</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-medium text-neutral-200">Response Speed</span>
+                        <div className="group relative">
+                          <HelpCircle className="h-3 w-3 text-neutral-400 cursor-help" />
+                          <div className="absolute left-0 top-4 w-56 bg-neutral-900 border border-neutral-700 rounded-md p-2 text-xs text-neutral-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-lg">
+                            How quickly the robot reacts to changes. Lower = smoother, Higher = more responsive.
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-neutral-100">{params.aggressiveness}%</span>
+                    </div>
+                    <Slider
+                      value={[params.aggressiveness]}
+                      onValueChange={(v: number[]) => setParam('aggressiveness', v[0] ?? 0)}
+                      min={0}
+                      max={100}
+                      step={5}
+                      className="mt-2"
+                      aria-label="Response Speed"
+                    />
+                    <div className="flex justify-between text-[10px] text-neutral-500 mt-1">
+                      <span>Smooth</span>
+                      <span>Responsive</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2 pt-2 border-t border-neutral-800/50">
+                  <div className="text-xs font-medium text-neutral-300 mb-2">Safety Features</div>
                   <ToggleRow
-                    icon={<Shield className="h-4 w-4" />}
+                    icon={<Shield className="h-4 w-4 text-emerald-400" />}
                     label="Obstacle Avoidance"
+                    description="Robot will stop or turn when it detects objects in its path"
                     checked={params.obstacleAvoidance}
                     onCheckedChange={(v) => setParam('obstacleAvoidance', v)}
                   />
                   <ToggleRow
-                    icon={<Zap className="h-4 w-4" />}
-                    label="Auto-lights (suggest LED preset)"
+                    icon={<Zap className="h-4 w-4 text-yellow-400" />}
+                    label="Auto-lights"
+                    description="Automatically adjust LED lighting for better visibility"
                     checked={params.headlights}
                     onCheckedChange={(v) => setParam('headlights', v)}
                   />
@@ -375,49 +470,68 @@ export default function AutonomyModal({
               </CardContent>
             </Card>
 
-            {/* BASIC: Waypoints */}
+            {/* BASIC: Waypoints - Only show if waypoints mode is selected */}
+            {mode === 'waypoints' && (
+              <Card className="bg-neutral-900/80 border-neutral-800">
+                <CardContent className="p-4 grid gap-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
+                    <Flag className="h-4 w-4" /> Navigation Waypoints
+                  </div>
+                  <p className="text-xs text-neutral-400">
+                    Set specific locations for your robot to navigate to. GPS coordinates required.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    <Input value={wpLabel} onChange={(e) => setWpLabel(e.target.value)} placeholder="Location name"
+                           className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
+                    <Input value={wpLat}   onChange={(e) => setWpLat(e.target.value)}   placeholder="Latitude"
+                           inputMode="decimal" className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
+                    <Input value={wpLon}   onChange={(e) => setWpLon(e.target.value)}   placeholder="Longitude"
+                           inputMode="decimal" className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
+                    <Button
+                      disabled={busy || waypointError || !wpLat || !wpLon || !wpLabel.trim()}
+                      onClick={handleSetWaypoint}
+                      className="gap-2"
+                      aria-disabled={busy || waypointError}
+                      title={waypointError ? 'Latitude must be -90 to 90, Longitude -180 to 180' : 'Add waypoint'}
+                    >
+                      <Crosshair className="h-4 w-4" /> Add
+                    </Button>
+                  </div>
+                  {waypointError && (
+                    <div className="text-[11px] text-red-300 flex items-center gap-1">
+                      <Info className="h-3 w-3" /> Invalid coordinates. Latitude: -90 to 90, Longitude: -180 to 180.
+                    </div>
+                  )}
+
+                  {waypoints.length > 0 && (
+                    <div className="mt-2">
+                      <div className="text-xs text-neutral-400 mb-2">Saved Waypoints ({waypoints.length}):</div>
+                      <div className="text-xs text-neutral-300 grid gap-1">
+                        {waypoints.map((w, i) => (
+                          <div key={`${w.label}-${i}`} className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-950 px-2 py-1">
+                            <span className="font-medium text-neutral-100">{w.label}</span>
+                            <span className="tabular-nums text-neutral-300 text-[10px]">{w.lat.toFixed(5)}, {w.lon.toFixed(5)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Quick Actions */}
             <Card className="bg-neutral-900/80 border-neutral-800">
               <CardContent className="p-4 grid gap-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
-                  <Flag className="h-4 w-4" /> Waypoints
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <Input value={wpLabel} onChange={(e) => setWpLabel(e.target.value)} placeholder="Label"
-                         className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
-                  <Input value={wpLat}   onChange={(e) => setWpLat(e.target.value)}   placeholder="Lat"
-                         inputMode="decimal" className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
-                  <Input value={wpLon}   onChange={(e) => setWpLon(e.target.value)}   placeholder="Lon"
-                         inputMode="decimal" className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
-                  <Button
-                    disabled={busy || waypointError || !wpLat || !wpLon || !wpLabel.trim()}
-                    onClick={handleSetWaypoint}
-                    className="gap-2"
-                    aria-disabled={busy || waypointError}
-                    title={waypointError ? 'Lat must be -90..90, Lon -180..180' : 'Add waypoint'}
-                  >
-                    <Crosshair className="h-4 w-4" /> Add
-                  </Button>
-                </div>
-                {waypointError && (
-                  <div className="text-[11px] text-red-300">Lat must be -90..90 and Lon -180..180.</div>
-                )}
-
-                {waypoints.length > 0 && (
-                  <div className="mt-2 text-xs text-neutral-300 grid gap-1">
-                    {waypoints.map((w, i) => (
-                      <div key={`${w.label}-${i}`} className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-950 px-2 py-1">
-                        <span className="font-medium text-neutral-100">{w.label}</span>
-                        <span className="tabular-nums text-neutral-300">{w.lat.toFixed(5)}, {w.lon.toFixed(5)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
+                <div className="text-xs font-medium text-neutral-300">Quick Actions</div>
                 <div className="flex gap-2">
-                  <Button disabled={busy} variant="secondary" onClick={handleDock} className="gap-2" aria-busy={busy}>
-                    <Bot className="h-4 w-4" /> Dock
+                  <Button disabled={busy} variant="secondary" onClick={handleDock} className="gap-2 flex-1" aria-busy={busy}>
+                    <Bot className="h-4 w-4" /> Return to Dock
                   </Button>
                 </div>
+                <p className="text-xs text-neutral-400">
+                  Use "Return to Dock" to send your robot back to its charging/home position.
+                </p>
               </CardContent>
             </Card>
 
@@ -425,11 +539,14 @@ export default function AutonomyModal({
             <button
               type="button"
               onClick={() => setShowAdvanced(v => !v)}
-              className="text-left w-full rounded-md border border-neutral-800 bg-neutral-900/80 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-900 flex items-center justify-between"
+              className="text-left w-full rounded-md border border-neutral-800 bg-neutral-900/80 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-900 flex items-center justify-between transition-colors"
               aria-expanded={showAdvanced}
             >
-              <span>Advanced settings</span>
-              <span className="text-neutral-400">{showAdvanced ? 'Hide' : 'Show'}</span>
+              <div className="flex items-center gap-2">
+                <Settings2 className="h-4 w-4 text-neutral-400" />
+                <span>Advanced Settings</span>
+              </div>
+              <span className="text-neutral-400 text-xs">{showAdvanced ? 'Hide' : 'Show'} Expert Options</span>
             </button>
 
             {/* ADVANCED content */}
@@ -570,11 +687,18 @@ function canonicalizeMode(m: AutonomyMode): AutonomyMode {
 }
 
 function ToggleRow({
-  icon, label, checked, onCheckedChange,
-}: { icon: React.ReactNode; label: string; checked: boolean; onCheckedChange: (v: boolean) => void }) {
+  icon, label, description, checked, onCheckedChange,
+}: { icon: React.ReactNode; label: string; description?: string; checked: boolean; onCheckedChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-      <div className="flex items-center gap-2 text-sm text-neutral-100">{icon} <span>{label}</span></div>
+    <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2.5">
+      <div className="flex-1">
+        <div className="flex items-center gap-2 text-sm text-neutral-100">
+          {icon} <span className="font-medium">{label}</span>
+        </div>
+        {description && (
+          <div className="text-xs text-neutral-400 mt-0.5 ml-6">{description}</div>
+        )}
+      </div>
       <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={label} />
     </div>
   );
