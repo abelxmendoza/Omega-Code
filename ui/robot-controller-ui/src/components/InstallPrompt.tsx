@@ -15,6 +15,11 @@ export default function InstallPrompt() {
   const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
+    // Only show install prompt in production
+    if (process.env.NODE_ENV !== 'production') {
+      return;
+    }
+
     // Check if app is already installed
     if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
       setIsInstalled(true);

@@ -21,7 +21,7 @@ export default function Document() {
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              if ('serviceWorker' in navigator) {
+              if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
                 window.addEventListener('load', function() {
                   navigator.serviceWorker.register('/sw.js')
                     .then(function(registration) {
@@ -30,6 +30,15 @@ export default function Document() {
                       console.log('ServiceWorker registration failed: ', err);
                     });
                 });
+              } else {
+                // Unregister service worker in development
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                    for(var i = 0; i < registrations.length; i++) {
+                      registrations[i].unregister();
+                    }
+                  });
+                }
               }
             `,
           }}
