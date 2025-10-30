@@ -14,7 +14,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle } from 'lucide-react';
+import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, User, QrCode } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -62,6 +62,15 @@ export type AutonomyParams = {
 
   // safety
   batteryMinPct: number;
+
+  // computer vision
+  cvEnabled: boolean;
+  cvMode: 'color_track' | 'face_follow' | 'person_follow' | 'aruco_track' | 'motion_detect' | 'object_detect';
+  cvConfidenceThreshold: number; // 0-100
+  cvMaxDetections: number;
+  cvShowBoundingBoxes: boolean;
+  cvTrackObjects: boolean;
+  cvTrackerType: 'CSRT' | 'KCF' | 'MIL';
 };
 
 export type AutonomyModalProps = {
@@ -112,6 +121,15 @@ const defaults: AutonomyParams = {
 
   // safety
   batteryMinPct: 15,
+
+  // computer vision
+  cvEnabled: false,
+  cvMode: 'color_track',
+  cvConfidenceThreshold: 70,
+  cvMaxDetections: 5,
+  cvShowBoundingBoxes: true,
+  cvTrackObjects: true,
+  cvTrackerType: 'CSRT',
 };
 
 /* -------------------------------- Component -------------------------------- */
@@ -419,7 +437,7 @@ export default function AutonomyModal({
                       <span>Slow</span>
                       <span>Fast</span>
                     </div>
-                  </div>
+                </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-2">
@@ -472,53 +490,215 @@ export default function AutonomyModal({
 
             {/* BASIC: Waypoints - Only show if waypoints mode is selected */}
             {mode === 'waypoints' && (
-              <Card className="bg-neutral-900/80 border-neutral-800">
-                <CardContent className="p-4 grid gap-3">
-                  <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
+            <Card className="bg-neutral-900/80 border-neutral-800">
+              <CardContent className="p-4 grid gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
                     <Flag className="h-4 w-4" /> Navigation Waypoints
-                  </div>
+                </div>
                   <p className="text-xs text-neutral-400">
                     Set specific locations for your robot to navigate to. GPS coordinates required.
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                     <Input value={wpLabel} onChange={(e) => setWpLabel(e.target.value)} placeholder="Location name"
-                           className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
+                         className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
                     <Input value={wpLat}   onChange={(e) => setWpLat(e.target.value)}   placeholder="Latitude"
-                           inputMode="decimal" className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
+                         inputMode="decimal" className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
                     <Input value={wpLon}   onChange={(e) => setWpLon(e.target.value)}   placeholder="Longitude"
-                           inputMode="decimal" className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
-                    <Button
-                      disabled={busy || waypointError || !wpLat || !wpLon || !wpLabel.trim()}
-                      onClick={handleSetWaypoint}
-                      className="gap-2"
-                      aria-disabled={busy || waypointError}
+                         inputMode="decimal" className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
+                  <Button
+                    disabled={busy || waypointError || !wpLat || !wpLon || !wpLabel.trim()}
+                    onClick={handleSetWaypoint}
+                    className="gap-2"
+                    aria-disabled={busy || waypointError}
                       title={waypointError ? 'Latitude must be -90 to 90, Longitude -180 to 180' : 'Add waypoint'}
-                    >
-                      <Crosshair className="h-4 w-4" /> Add
-                    </Button>
-                  </div>
-                  {waypointError && (
+                  >
+                    <Crosshair className="h-4 w-4" /> Add
+                  </Button>
+                </div>
+                {waypointError && (
                     <div className="text-[11px] text-red-300 flex items-center gap-1">
                       <Info className="h-3 w-3" /> Invalid coordinates. Latitude: -90 to 90, Longitude: -180 to 180.
                     </div>
-                  )}
+                )}
 
-                  {waypoints.length > 0 && (
+                {waypoints.length > 0 && (
                     <div className="mt-2">
                       <div className="text-xs text-neutral-400 mb-2">Saved Waypoints ({waypoints.length}):</div>
                       <div className="text-xs text-neutral-300 grid gap-1">
-                        {waypoints.map((w, i) => (
-                          <div key={`${w.label}-${i}`} className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-950 px-2 py-1">
-                            <span className="font-medium text-neutral-100">{w.label}</span>
+                    {waypoints.map((w, i) => (
+                      <div key={`${w.label}-${i}`} className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-950 px-2 py-1">
+                        <span className="font-medium text-neutral-100">{w.label}</span>
                             <span className="tabular-nums text-neutral-300 text-[10px]">{w.lat.toFixed(5)}, {w.lon.toFixed(5)}</span>
-                          </div>
-                        ))}
                       </div>
-                    </div>
+                    ))}
+                      </div>
+                  </div>
                   )}
                 </CardContent>
               </Card>
             )}
+
+            {/* Computer Vision Section */}
+            <Card className="bg-neutral-900/80 border-neutral-800">
+              <CardContent className="p-4 grid gap-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
+                  <Eye className="h-4 w-4 text-cyan-400" /> Computer Vision
+                </div>
+                <p className="text-xs text-neutral-400">
+                  Enable camera-based detection and tracking. The robot uses its camera to find and follow objects, faces, or markers.
+                </p>
+
+                <ToggleRow
+                  icon={<Eye className="h-4 w-4 text-cyan-400" />}
+                  label="Enable Computer Vision"
+                  description="Turn on camera-based detection for vision-powered autonomy"
+                  checked={params.cvEnabled}
+                  onCheckedChange={(v) => setParam('cvEnabled', v)}
+                />
+
+                {params.cvEnabled && (
+                  <>
+                    <div>
+                      <div className="flex items-center gap-1 mb-1">
+                        <label className="text-xs text-neutral-200 font-medium">Vision Mode</label>
+                        <div className="group relative">
+                          <HelpCircle className="h-3 w-3 text-neutral-400 cursor-help" />
+                          <div className="absolute left-0 top-4 w-64 bg-neutral-900 border border-neutral-700 rounded-md p-2 text-xs text-neutral-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-lg">
+                            <strong>Vision Modes:</strong><br/>
+                            • <strong>Color Track:</strong> Follow objects by color<br/>
+                            • <strong>Face Follow:</strong> Track and follow faces<br/>
+                            • <strong>Person Follow:</strong> Detect and follow people<br/>
+                            • <strong>ArUco Track:</strong> Follow ArUco marker tags<br/>
+                            • <strong>Motion Detect:</strong> React to movement<br/>
+                            • <strong>Object Detect:</strong> Detect any objects
+                          </div>
+                        </div>
+                      </div>
+                      <Select 
+                        value={params.cvMode} 
+                        onValueChange={(v) => setParam('cvMode', v as AutonomyParams['cvMode'])}
+                      >
+                        <SelectTrigger className="mt-1 bg-neutral-950 border-neutral-800 text-neutral-100">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-neutral-950 border-neutral-800 text-neutral-100">
+                          <SelectItem value="color_track">
+                            <div>
+                              <div className="font-medium">Color Track</div>
+                              <div className="text-xs text-neutral-400">Follow colored objects</div>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="face_follow">
+                            <div>
+                              <div className="font-medium">Face Follow</div>
+                              <div className="text-xs text-neutral-400">Track and follow faces</div>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="person_follow">
+                            <div>
+                              <div className="font-medium">Person Follow</div>
+                              <div className="text-xs text-neutral-400">Detect and follow people</div>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="aruco_track">
+                            <div>
+                              <div className="font-medium">ArUco Track</div>
+                              <div className="text-xs text-neutral-400">Follow ArUco markers</div>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="motion_detect">
+                            <div>
+                              <div className="font-medium">Motion Detect</div>
+                              <div className="text-xs text-neutral-400">React to movement</div>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="object_detect">
+                            <div>
+                              <div className="font-medium">Object Detect</div>
+                              <div className="text-xs text-neutral-400">Detect any objects</div>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-3 pt-2 border-t border-neutral-800/50">
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs font-medium text-neutral-200">Confidence Threshold</span>
+                            <div className="group relative">
+                              <HelpCircle className="h-3 w-3 text-neutral-400 cursor-help" />
+                              <div className="absolute left-0 top-4 w-56 bg-neutral-900 border border-neutral-700 rounded-md p-2 text-xs text-neutral-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-lg">
+                                How certain the detection must be (%). Higher = more accurate but fewer detections. Start with 70%.
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-xs font-bold text-neutral-100">{params.cvConfidenceThreshold}%</span>
+                        </div>
+                        <Slider
+                          value={[params.cvConfidenceThreshold]}
+                          onValueChange={(v: number[]) => setParam('cvConfidenceThreshold', v[0] ?? 0)}
+                          min={50}
+                          max={95}
+                          step={5}
+                          className="mt-2"
+                          aria-label="Confidence Threshold"
+                        />
+                        <div className="flex justify-between text-[10px] text-neutral-500 mt-1">
+                          <span>More Detections</span>
+                          <span>More Accurate</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <NumberField 
+                          label="Max Detections" 
+                          value={params.cvMaxDetections} 
+                          min={1} 
+                          max={10} 
+                          step={1}
+                          onChange={(n) => setParam('cvMaxDetections', n)} 
+                        />
+                        <div className="grid gap-1">
+                          <label className="text-xs text-neutral-300">Tracker Type</label>
+                          <Select 
+                            value={params.cvTrackerType} 
+                            onValueChange={(v) => setParam('cvTrackerType', v as AutonomyParams['cvTrackerType'])}
+                          >
+                            <SelectTrigger className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-neutral-950 border-neutral-800 text-neutral-100">
+                              <SelectItem value="CSRT">CSRT (Best Accuracy)</SelectItem>
+                              <SelectItem value="KCF">KCF (Fast)</SelectItem>
+                              <SelectItem value="MIL">MIL (Balance)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 pt-2 border-t border-neutral-800/50">
+                        <ToggleRow
+                          icon={<span className="inline-block h-4 w-4 rounded-sm bg-cyan-400/70" />}
+                          label="Show Bounding Boxes"
+                          description="Display detection boxes on camera feed"
+                          checked={params.cvShowBoundingBoxes}
+                          onCheckedChange={(v) => setParam('cvShowBoundingBoxes', v)}
+                        />
+                        <ToggleRow
+                          icon={<Crosshair className="h-4 w-4 text-purple-400" />}
+                          label="Object Tracking"
+                          description="Smoothly track objects across frames"
+                          checked={params.cvTrackObjects}
+                          onCheckedChange={(v) => setParam('cvTrackObjects', v)}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
             {/* Quick Actions */}
             <Card className="bg-neutral-900/80 border-neutral-800">
