@@ -367,6 +367,14 @@ export default function AutonomyModal({
             <p className="text-xs text-neutral-400 mt-1">
               Choose a mode, adjust settings, and start your robot's autonomous behavior
             </p>
+            <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded text-[11px] text-amber-200 flex items-start gap-2">
+              <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+              <div>
+                <strong>How it works:</strong> Toggles configure what features will run when you click "Start". 
+                Changes apply when autonomy starts (or immediately if live updates are enabled). 
+                Each toggle enables/disables a specific feature to save CPU and improve performance.
+              </div>
+            </div>
           </DialogHeader>
 
           {/* Status */}
@@ -515,14 +523,14 @@ export default function AutonomyModal({
                   <ToggleRow
                     icon={<Shield className="h-4 w-4 text-emerald-400" />}
                     label="Obstacle Avoidance"
-                    description="Robot will stop or turn when it detects objects in its path"
+                    description="ON: Robot avoids obstacles. OFF: Robot ignores obstacles (dangerous!)."
                     checked={params.obstacleAvoidance}
                     onCheckedChange={(v) => setParam('obstacleAvoidance', v)}
                   />
                   <ToggleRow
                     icon={<Zap className="h-4 w-4 text-yellow-400" />}
                     label="Auto-lights"
-                    description="Automatically adjust LED lighting for better visibility"
+                    description="ON: LEDs adjust automatically. OFF: Manual LED control only."
                     checked={params.headlights}
                     onCheckedChange={(v) => setParam('headlights', v)}
                   />
@@ -593,9 +601,20 @@ export default function AutonomyModal({
                 <ToggleRow
                   icon={<Eye className="h-4 w-4 text-cyan-400" />}
                   label="Enable Computer Vision"
-                  description="Turn on camera-based detection for vision-powered autonomy"
+                  description="Turn on camera-based detection. When ON: camera analyzes frames. When OFF: camera disabled (saves CPU)."
                   checked={params.cvEnabled}
-                  onCheckedChange={(v) => setParam('cvEnabled', v)}
+                  onCheckedChange={(v) => {
+                    setParam('cvEnabled', v);
+                    // If disabling CV, also disable all detection features
+                    if (!v) {
+                      setParam('cvDetectFaces', false);
+                      setParam('cvDetectPeople', false);
+                      setParam('cvDetectObjects', false);
+                      setParam('cvDetectAruco', false);
+                      setParam('cvDetectMotion', false);
+                      setParam('cvTrackColor', false);
+                    }
+                  }}
                 />
 
                 {params.cvEnabled && (
@@ -679,36 +698,42 @@ export default function AutonomyModal({
                           <ToggleRow
                             icon={<User className="h-3.5 w-3.5 text-blue-400" />}
                             label="Faces"
+                            description="ON: Detect faces in camera. OFF: Skip face detection."
                             checked={params.cvDetectFaces}
                             onCheckedChange={(v) => setParam('cvDetectFaces', v)}
                           />
                           <ToggleRow
                             icon={<Users className="h-3.5 w-3.5 text-green-400" />}
                             label="People"
+                            description="ON: Detect people. OFF: Skip person detection."
                             checked={params.cvDetectPeople}
                             onCheckedChange={(v) => setParam('cvDetectPeople', v)}
                           />
                           <ToggleRow
                             icon={<Package className="h-3.5 w-3.5 text-orange-400" />}
                             label="Objects"
+                            description="ON: Detect objects. OFF: Skip object detection."
                             checked={params.cvDetectObjects}
                             onCheckedChange={(v) => setParam('cvDetectObjects', v)}
                           />
                           <ToggleRow
                             icon={<QrCode className="h-3.5 w-3.5 text-purple-400" />}
                             label="ArUco"
+                            description="ON: Track ArUco markers. OFF: Skip marker tracking."
                             checked={params.cvDetectAruco}
                             onCheckedChange={(v) => setParam('cvDetectAruco', v)}
                           />
                           <ToggleRow
                             icon={<Move className="h-3.5 w-3.5 text-yellow-400" />}
                             label="Motion"
+                            description="ON: Detect movement. OFF: Skip motion detection."
                             checked={params.cvDetectMotion}
                             onCheckedChange={(v) => setParam('cvDetectMotion', v)}
                           />
                           <ToggleRow
                             icon={<Palette className="h-3.5 w-3.5 text-pink-400" />}
                             label="Color"
+                            description="ON: Track by color. OFF: Skip color tracking."
                             checked={params.cvTrackColor}
                             onCheckedChange={(v) => setParam('cvTrackColor', v)}
                           />
@@ -811,7 +836,7 @@ export default function AutonomyModal({
                 <ToggleRow
                   icon={<Network className="h-4 w-4 text-amber-400" />}
                   label="Enable ROS Integration"
-                  description="Connect to ROS ecosystem for advanced navigation and perception"
+                  description="ON: Connect to ROS and enable features below. OFF: Disable all ROS features (saves resources)."
                   checked={params.rosEnabled}
                   onCheckedChange={(v) => setParam('rosEnabled', v)}
                 />
@@ -836,28 +861,28 @@ export default function AutonomyModal({
                       <ToggleRow
                         icon={<Activity className="h-3.5 w-3.5 text-blue-400" />}
                         label="Publish Sensors"
-                        description="Publish sensor data (ultrasonic, line tracking) to ROS"
+                        description="ON: Send sensor data to ROS. OFF: Stop publishing sensor data."
                         checked={params.rosPublishSensors}
                         onCheckedChange={(v) => setParam('rosPublishSensors', v)}
                       />
                       <ToggleRow
                         icon={<Bot className="h-3.5 w-3.5 text-green-400" />}
                         label="Publish Movement"
-                        description="Publish robot movement commands to ROS"
+                        description="ON: Send movement commands to ROS. OFF: Stop publishing movement."
                         checked={params.rosPublishMovement}
                         onCheckedChange={(v) => setParam('rosPublishMovement', v)}
                       />
                       <ToggleRow
                         icon={<Eye className="h-3.5 w-3.5 text-cyan-400" />}
                         label="Publish Camera"
-                        description="Publish camera feed to ROS topics"
+                        description="ON: Send camera feed to ROS. OFF: Stop publishing video."
                         checked={params.rosPublishCamera}
                         onCheckedChange={(v) => setParam('rosPublishCamera', v)}
                       />
                       <ToggleRow
                         icon={<Flag className="h-3.5 w-3.5 text-purple-400" />}
                         label="Subscribe Commands"
-                        description="Receive autonomous driving commands from ROS"
+                        description="ON: Receive commands from ROS. OFF: Ignore ROS commands."
                         checked={params.rosSubscribeCommands}
                         onCheckedChange={(v) => setParam('rosSubscribeCommands', v)}
                       />
@@ -868,28 +893,28 @@ export default function AutonomyModal({
                       <ToggleRow
                         icon={<Layers className="h-3.5 w-3.5 text-yellow-400" />}
                         label="SLAM (Mapping)"
-                        description="Enable Simultaneous Localization and Mapping"
+                        description="ON: Build map while exploring. OFF: Disable mapping node."
                         checked={params.rosNodeSlam}
                         onCheckedChange={(v) => setParam('rosNodeSlam', v)}
                       />
                       <ToggleRow
                         icon={<Package className="h-3.5 w-3.5 text-orange-400" />}
                         label="Sensor Fusion"
-                        description="Combine data from multiple sensors"
+                        description="ON: Combine sensor data. OFF: Disable fusion node."
                         checked={params.rosNodeSensorFusion}
                         onCheckedChange={(v) => setParam('rosNodeSensorFusion', v)}
                       />
                       <ToggleRow
                         icon={<Crosshair className="h-3.5 w-3.5 text-red-400" />}
                         label="Path Planning"
-                        description="A* pathfinding algorithm for navigation"
+                        description="ON: Run A* pathfinding. OFF: Disable path planning."
                         checked={params.rosNodePathPlanning}
                         onCheckedChange={(v) => setParam('rosNodePathPlanning', v)}
                       />
                       <ToggleRow
                         icon={<Play className="h-3.5 w-3.5 text-emerald-400" />}
                         label="Autonomous Driving"
-                        description="ROS-based autonomous navigation system"
+                        description="ON: Enable ROS navigation. OFF: Disable autonomous node."
                         checked={params.rosNodeAutonomousDriving}
                         onCheckedChange={(v) => setParam('rosNodeAutonomousDriving', v)}
                       />
@@ -900,14 +925,14 @@ export default function AutonomyModal({
                       <ToggleRow
                         icon={<Network className="h-3.5 w-3.5 text-pink-400" />}
                         label="ROS Bridge"
-                        description="Bridge WebSocket messages to ROS topics"
+                        description="ON: Convert WebSocket ↔ ROS. OFF: Disable bridge."
                         checked={params.rosBridgeEnabled}
                         onCheckedChange={(v) => setParam('rosBridgeEnabled', v)}
                       />
                       <ToggleRow
                         icon={<Settings2 className="h-3.5 w-3.5 text-sky-400" />}
                         label="TF (Transforms)"
-                        description="Enable coordinate transform system for multi-sensor fusion"
+                        description="ON: Enable coordinate transforms. OFF: Disable TF system."
                         checked={params.rosTfEnabled}
                         onCheckedChange={(v) => setParam('rosTfEnabled', v)}
                       />
