@@ -14,7 +14,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, User, QrCode, Users, Package, Move, Palette } from 'lucide-react';
+import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, User, QrCode, Users, Package, Move, Palette, Network, Activity, Layers } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -78,6 +78,20 @@ export type AutonomyParams = {
   cvDetectAruco: boolean;
   cvDetectMotion: boolean;
   cvTrackColor: boolean;
+
+  // ROS (Robot Operating System) controls
+  rosEnabled: boolean;
+  rosMasterUri: string;
+  rosBridgeEnabled: boolean;
+  rosPublishSensors: boolean;
+  rosPublishMovement: boolean;
+  rosPublishCamera: boolean;
+  rosSubscribeCommands: boolean;
+  rosTfEnabled: boolean;
+  rosNodeSlam: boolean;
+  rosNodeSensorFusion: boolean;
+  rosNodePathPlanning: boolean;
+  rosNodeAutonomousDriving: boolean;
 };
 
 export type AutonomyModalProps = {
@@ -144,6 +158,20 @@ const defaults: AutonomyParams = {
   cvDetectAruco: false,
   cvDetectMotion: false,
   cvTrackColor: true, // default for color_track mode
+
+  // ROS defaults
+  rosEnabled: false,
+  rosMasterUri: 'http://localhost:11311',
+  rosBridgeEnabled: true,
+  rosPublishSensors: true,
+  rosPublishMovement: true,
+  rosPublishCamera: true,
+  rosSubscribeCommands: true,
+  rosTfEnabled: true,
+  rosNodeSlam: false,
+  rosNodeSensorFusion: true,
+  rosNodePathPlanning: false,
+  rosNodeAutonomousDriving: false,
 };
 
 /* -------------------------------- Component -------------------------------- */
@@ -764,6 +792,125 @@ export default function AutonomyModal({
                           onCheckedChange={(v) => setParam('cvTrackObjects', v)}
                         />
                       </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ROS Controls and Features */}
+            <Card className="bg-neutral-900/80 border-neutral-800">
+              <CardContent className="p-3 grid gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
+                  <Network className="h-4 w-4 text-amber-400" /> ROS Controls & Features
+                </div>
+                <p className="text-xs text-neutral-400">
+                  Connect to Robot Operating System (ROS) for advanced robotics features like SLAM, path planning, and sensor fusion.
+                </p>
+
+                <ToggleRow
+                  icon={<Network className="h-4 w-4 text-amber-400" />}
+                  label="Enable ROS Integration"
+                  description="Connect to ROS ecosystem for advanced navigation and perception"
+                  checked={params.rosEnabled}
+                  onCheckedChange={(v) => setParam('rosEnabled', v)}
+                />
+
+                {params.rosEnabled && (
+                  <>
+                    <div>
+                      <label className="text-xs font-medium text-neutral-200 mb-1 block">ROS Master URI</label>
+                      <Input
+                        value={params.rosMasterUri}
+                        onChange={(e) => setParam('rosMasterUri', e.target.value)}
+                        placeholder="http://localhost:11311"
+                        className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs"
+                      />
+                      <div className="text-[10px] text-neutral-500 mt-1">
+                        Default: http://localhost:11311 (local ROS master)
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 pt-2 border-t border-neutral-800/50">
+                      <div className="text-xs font-medium text-neutral-300 mb-1">Data Publishing</div>
+                      <ToggleRow
+                        icon={<Activity className="h-3.5 w-3.5 text-blue-400" />}
+                        label="Publish Sensors"
+                        description="Publish sensor data (ultrasonic, line tracking) to ROS"
+                        checked={params.rosPublishSensors}
+                        onCheckedChange={(v) => setParam('rosPublishSensors', v)}
+                      />
+                      <ToggleRow
+                        icon={<Bot className="h-3.5 w-3.5 text-green-400" />}
+                        label="Publish Movement"
+                        description="Publish robot movement commands to ROS"
+                        checked={params.rosPublishMovement}
+                        onCheckedChange={(v) => setParam('rosPublishMovement', v)}
+                      />
+                      <ToggleRow
+                        icon={<Eye className="h-3.5 w-3.5 text-cyan-400" />}
+                        label="Publish Camera"
+                        description="Publish camera feed to ROS topics"
+                        checked={params.rosPublishCamera}
+                        onCheckedChange={(v) => setParam('rosPublishCamera', v)}
+                      />
+                      <ToggleRow
+                        icon={<Flag className="h-3.5 w-3.5 text-purple-400" />}
+                        label="Subscribe Commands"
+                        description="Receive autonomous driving commands from ROS"
+                        checked={params.rosSubscribeCommands}
+                        onCheckedChange={(v) => setParam('rosSubscribeCommands', v)}
+                      />
+                    </div>
+
+                    <div className="space-y-2 pt-2 border-t border-neutral-800/50">
+                      <div className="text-xs font-medium text-neutral-300 mb-1">ROS Nodes</div>
+                      <ToggleRow
+                        icon={<Layers className="h-3.5 w-3.5 text-yellow-400" />}
+                        label="SLAM (Mapping)"
+                        description="Enable Simultaneous Localization and Mapping"
+                        checked={params.rosNodeSlam}
+                        onCheckedChange={(v) => setParam('rosNodeSlam', v)}
+                      />
+                      <ToggleRow
+                        icon={<Package className="h-3.5 w-3.5 text-orange-400" />}
+                        label="Sensor Fusion"
+                        description="Combine data from multiple sensors"
+                        checked={params.rosNodeSensorFusion}
+                        onCheckedChange={(v) => setParam('rosNodeSensorFusion', v)}
+                      />
+                      <ToggleRow
+                        icon={<Crosshair className="h-3.5 w-3.5 text-red-400" />}
+                        label="Path Planning"
+                        description="A* pathfinding algorithm for navigation"
+                        checked={params.rosNodePathPlanning}
+                        onCheckedChange={(v) => setParam('rosNodePathPlanning', v)}
+                      />
+                      <ToggleRow
+                        icon={<Play className="h-3.5 w-3.5 text-emerald-400" />}
+                        label="Autonomous Driving"
+                        description="ROS-based autonomous navigation system"
+                        checked={params.rosNodeAutonomousDriving}
+                        onCheckedChange={(v) => setParam('rosNodeAutonomousDriving', v)}
+                      />
+                    </div>
+
+                    <div className="space-y-2 pt-2 border-t border-neutral-800/50">
+                      <div className="text-xs font-medium text-neutral-300 mb-1">Advanced Features</div>
+                      <ToggleRow
+                        icon={<Network className="h-3.5 w-3.5 text-pink-400" />}
+                        label="ROS Bridge"
+                        description="Bridge WebSocket messages to ROS topics"
+                        checked={params.rosBridgeEnabled}
+                        onCheckedChange={(v) => setParam('rosBridgeEnabled', v)}
+                      />
+                      <ToggleRow
+                        icon={<Settings2 className="h-3.5 w-3.5 text-sky-400" />}
+                        label="TF (Transforms)"
+                        description="Enable coordinate transform system for multi-sensor fusion"
+                        checked={params.rosTfEnabled}
+                        onCheckedChange={(v) => setParam('rosTfEnabled', v)}
+                      />
                     </div>
                   </>
                 )}
