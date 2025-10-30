@@ -14,7 +14,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, User, QrCode, Users, Package, Move, Palette, Network, Activity, Layers, Code, CheckCircle2 } from 'lucide-react';
+import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, User, QrCode, Users, Package, Move, Palette, Network, Activity, Layers, Code, CheckCircle2, Lock, Clock, History, AlertTriangle, CheckCircle, XCircle, TrendingUp, Server, Database, FileText, UserCheck } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -95,6 +95,11 @@ export type AutonomyParams = {
 
   // Algorithm selection
   pathPlanningAlgorithm: 'a_star' | 'd_star_lite' | 'rrt' | 'none';
+
+  // Enterprise features
+  configVersion?: string;
+  lastModified?: number;
+  modifiedBy?: string;
 };
 
 export type AutonomyModalProps = {
@@ -112,6 +117,10 @@ export type AutonomyModalProps = {
   triggerLabel?: string;
   /** If true (default), param changes auto-push via debounce. If false, only "Apply Params" sends. */
   liveApply?: boolean;
+  /** Enterprise: User role for access control */
+  userRole?: 'admin' | 'operator' | 'viewer';
+  /** Enterprise: Enable audit logging */
+  enableAuditLog?: boolean;
 };
 
 /* -------------------------------- Defaults -------------------------------- */
@@ -196,6 +205,8 @@ export default function AutonomyModal({
   batteryPct = 100,
   triggerLabel = 'Autonomy',
   liveApply = true,
+  userRole = 'operator',
+  enableAuditLog = true,
 }: AutonomyModalProps) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<AutonomyMode>(initialMode);
@@ -210,7 +221,13 @@ export default function AutonomyModal({
   // UI
   const [busy, setBusy] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [configHistory, setConfigHistory] = useState<Array<{version: string, timestamp: number, user: string}>>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Enterprise: Role-based permissions
+  const isAdmin = userRole === 'admin';
+  const isOperator = userRole === 'operator' || isAdmin;
+  const isViewer = userRole === 'viewer';
 
   const statusTone = useMemo(() => {
     if (!connected) return 'bg-red-500/25 text-red-200 border-red-500/60';
@@ -240,7 +257,27 @@ export default function AutonomyModal({
   function setParam<K extends keyof AutonomyParams>(key: K, value: AutonomyParams[K]) {
     setParams(prev => {
       const next = { ...prev, [key]: value };
+      next.lastModified = Date.now();
+      next.modifiedBy = 'User'; // TODO: Get from auth context
       if (liveApply && onUpdate) debouncedPush(next);
+      
+      // Enterprise audit logging for sensitive changes
+      if (enableAuditLog) {
+        const sensitiveKeys = ['obstacleAvoidance', 'rosEnabled', 'cvEnabled', 'pathPlanningAlgorithm'];
+        if (sensitiveKeys.includes(key as string)) {
+          const auditEntry = {
+            action: 'config_change',
+            key,
+            value,
+            timestamp: new Date().toISOString(),
+            user: userRole,
+            mode,
+          };
+          console.log('[Audit]', auditEntry);
+          // TODO: Send to audit log API endpoint
+        }
+      }
+      
       return next;
     });
   }
@@ -306,13 +343,42 @@ export default function AutonomyModal({
     }
   }
 
-  // presets
+  // presets with enterprise features
   function downloadPresets() {
     try {
-      const blob = new Blob([JSON.stringify({ mode, params, waypoints }, null, 2)], { type: 'application/json' });
+      const config = {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        exportedBy: 'User', // TODO: Get from auth context
+        mode,
+        params: {
+          ...params,
+          configVersion: (params.configVersion || '1.0'),
+          lastModified: Date.now(),
+          modifiedBy: 'User',
+        },
+        waypoints,
+        metadata: {
+          robotModel: 'Omega Robot',
+          firmwareVersion: '1.0.0',
+          systemHealth: {
+            connected,
+            autonomyActive,
+            batteryPct,
+          }
+        }
+      };
+      const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = 'autonomy-preset.json'; a.click();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const a = document.createElement('a'); 
+      a.href = url; 
+      a.download = `autonomy-config-${timestamp}.json`; 
+      a.click();
       URL.revokeObjectURL(url);
+      
+      // Log export action (enterprise audit trail)
+      console.log('[Audit] Configuration exported:', { mode, timestamp, params: Object.keys(params).length });
     } catch (e) {
       console.warn('export presets failed:', e);
     }
@@ -324,17 +390,53 @@ export default function AutonomyModal({
     reader.onload = () => {
       try {
         const json = JSON.parse(String(reader.result || '{}'));
+        
+        // Validate config structure (enterprise validation)
+        if (json.version && !json.version.startsWith('1.')) {
+          console.warn('[Enterprise] Config version mismatch. Expected 1.x, got:', json.version);
+        }
+        
+        // Safety validation before applying
+        const importedParams = json.params || json; // Support both formats
+        const validationErrors: string[] = [];
+        
+        if (importedParams.speedPct > 100) {
+          validationErrors.push('Speed exceeds maximum (100%)');
+          importedParams.speedPct = Math.min(100, importedParams.speedPct);
+        }
+        if (importedParams.batteryMinPct < 0 || importedParams.batteryMinPct > 100) {
+          validationErrors.push('Invalid battery threshold');
+          importedParams.batteryMinPct = Math.max(0, Math.min(100, importedParams.batteryMinPct || 15));
+        }
+        
+        if (validationErrors.length > 0) {
+          console.warn('[Enterprise] Config validation warnings:', validationErrors);
+        }
+        
+        // Apply imported config
         if (json.mode) setMode(json.mode);
-        if (json.params) {
+        if (json.params || importedParams) {
           setParams((p) => {
-            const next = { ...p, ...json.params };
+            const next = { ...p, ...(json.params || importedParams) };
+            next.configVersion = json.version || (p.configVersion || '1.0');
+            next.lastModified = Date.now();
+            next.modifiedBy = json.exportedBy || 'User';
             if (liveApply && onUpdate) debouncedPush(next);
             return next;
           });
         }
         if (Array.isArray(json.waypoints)) setWaypoints(json.waypoints);
+        
+        // Log import action (enterprise audit trail)
+        console.log('[Audit] Configuration imported:', {
+          version: json.version,
+          exportedAt: json.exportedAt,
+          mode: json.mode,
+          validationErrors: validationErrors.length,
+        });
       } catch (err) {
-        console.warn('import presets failed:', err);
+        console.error('[Enterprise] Config import failed:', err);
+        alert('Failed to import configuration. Please check the file format.');
       }
     };
     reader.readAsText(f);
@@ -367,9 +469,22 @@ export default function AutonomyModal({
 
         <DialogContent className="sm:max-w-xl max-h-[85vh] p-0 overflow-hidden border border-neutral-800 bg-neutral-950 text-neutral-100 flex flex-col">
           <DialogHeader className="px-5 pt-5 pb-2 flex-shrink-0">
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <Settings2 className="h-5 w-5" /> Autonomy Control
-            </DialogTitle>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Settings2 className="h-5 w-5" />
+                <DialogTitle className="text-lg">Autonomy Control</DialogTitle>
+              </div>
+              {isViewer && (
+                <Badge variant="outline" className="text-[10px] border-orange-500/50 text-orange-300">
+                  <Lock className="h-3 w-3 mr-1" /> View Only
+                </Badge>
+              )}
+              {isAdmin && (
+                <Badge variant="outline" className="text-[10px] border-purple-500/50 text-purple-300">
+                  <UserCheck className="h-3 w-3 mr-1" /> Administrator
+                </Badge>
+              )}
+            </div>
             <p className="text-xs text-neutral-400 mt-1">
               Choose a mode, adjust settings, and start your robot's autonomous behavior
             </p>
@@ -456,10 +571,23 @@ export default function AutonomyModal({
                     </Select>
                   </div>
                   <div className="flex gap-2">
-                    <Button disabled={busy || !connected} onClick={handleStart} className="gap-2 flex-1" aria-busy={busy}>
+                    <Button 
+                      disabled={busy || !connected || isViewer} 
+                      onClick={handleStart} 
+                      className="gap-2 flex-1" 
+                      aria-busy={busy}
+                      title={isViewer ? 'Viewer role cannot start autonomy' : undefined}
+                    >
                       <Play className="h-4 w-4" /> Start
                     </Button>
-                    <Button disabled={busy} variant="destructive" onClick={handleStop} className="gap-2 flex-1" aria-busy={busy}>
+                    <Button 
+                      disabled={busy || isViewer} 
+                      variant="destructive" 
+                      onClick={handleStop} 
+                      className="gap-2 flex-1" 
+                      aria-busy={busy}
+                      title={isViewer ? 'Viewer role cannot stop autonomy' : undefined}
+                    >
                       <Square className="h-4 w-4" /> Stop
                     </Button>
                   </div>
@@ -1263,6 +1391,136 @@ export default function AutonomyModal({
                 </div>
               </div>
             )}
+
+            {/* Enterprise Features */}
+            <div className="grid grid-cols-1 gap-3 pt-2">
+              {/* Configuration Management */}
+              <Card className="bg-neutral-900/80 border-neutral-800">
+                <CardContent className="p-3 grid gap-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
+                    <FileText className="h-4 w-4 text-blue-400" /> Configuration Management
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button 
+                      variant="secondary" 
+                      className="gap-2 text-xs h-8" 
+                      onClick={downloadPresets}
+                      disabled={isViewer}
+                      title={isViewer ? 'Viewer role cannot export configs' : 'Export current configuration'}
+                    >
+                      <Save className="h-3 w-3" /> Save Config
+                    </Button>
+                    <Button 
+                      variant="secondary" 
+                      className="gap-2 text-xs h-8" 
+                      onClick={openFileDialog}
+                      disabled={isViewer}
+                      title={isViewer ? 'Viewer role cannot import configs' : 'Import saved configuration'}
+                    >
+                      <Upload className="h-3 w-3" /> Load Config
+                    </Button>
+                  </div>
+                  {params.configVersion && (
+                    <div className="text-[10px] text-neutral-500 flex items-center gap-2">
+                      <Clock className="h-3 w-3" />
+                      <span>v{params.configVersion} • {params.lastModified ? new Date(params.lastModified).toLocaleString() : 'Never modified'}</span>
+                      {params.modifiedBy && (
+                        <span className="ml-2 flex items-center gap-1">
+                          <UserCheck className="h-2.5 w-2.5" /> {params.modifiedBy}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {isAdmin && (
+                    <div className="pt-2 border-t border-neutral-800/50">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="gap-2 text-xs h-7 w-full"
+                        onClick={() => {
+                          // TODO: Show configuration history modal
+                          console.log('[Enterprise] View config history');
+                        }}
+                      >
+                        <History className="h-3 w-3" /> View History
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* System Health */}
+              <Card className="bg-neutral-900/80 border-neutral-800">
+                <CardContent className="p-3 grid gap-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
+                    <Activity className="h-4 w-4 text-emerald-400" /> System Health
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      {connected ? (
+                        <CheckCircle className="h-3 w-3 text-emerald-400" />
+                      ) : (
+                        <XCircle className="h-3 w-3 text-red-400" />
+                      )}
+                      <span className={connected ? 'text-emerald-300' : 'text-red-300'}>
+                        Connection: {connected ? 'Active' : 'Offline'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Gauge className="h-3 w-3 text-yellow-400" />
+                      <span>Battery: {batteryPct}%</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {autonomyActive ? (
+                        <CheckCircle className="h-3 w-3 text-emerald-400" />
+                      ) : (
+                        <Square className="h-3 w-3 text-neutral-500" />
+                      )}
+                      <span>Autonomy: {autonomyActive ? 'Running' : 'Stopped'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Server className="h-3 w-3 text-cyan-400" />
+                      <span>Services: {connected ? 'Online' : 'Offline'}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Safety Validation */}
+              <Card className="bg-neutral-900/80 border-neutral-800">
+                <CardContent className="p-3 grid gap-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
+                    <Shield className="h-4 w-4 text-emerald-400" /> Safety Validation
+                  </div>
+                  <div className="space-y-1.5">
+                    {!params.obstacleAvoidance && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-amber-300">
+                        <AlertTriangle className="h-3 w-3" />
+                        <span>Warning: Obstacle avoidance is disabled</span>
+                      </div>
+                    )}
+                    {batteryPct < params.batteryMinPct && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-red-300">
+                        <AlertTriangle className="h-3 w-3" />
+                        <span>Low battery ({batteryPct}% &lt; {params.batteryMinPct}%)</span>
+                      </div>
+                    )}
+                    {params.speedPct > 80 && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-yellow-300">
+                        <AlertTriangle className="h-3 w-3" />
+                        <span>High speed ({params.speedPct}%) - consider lowering for safety</span>
+                      </div>
+                    )}
+                    {params.obstacleAvoidance && batteryPct >= params.batteryMinPct && params.speedPct <= 80 && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-emerald-300">
+                        <CheckCircle className="h-3 w-3" />
+                        <span>All safety checks passed</span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
 
             {/* Footer tip */}
             <div className="text-[11px] text-neutral-300 flex items-start gap-2 flex-shrink-0">
