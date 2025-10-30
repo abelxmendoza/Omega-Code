@@ -150,8 +150,8 @@ def net_summary():
             }
         else:
             # Fallback to static data
-    return {
-        "linkType": os.getenv("LINK_TYPE", "wifi"),
+            return {
+                "linkType": os.getenv("LINK_TYPE", "wifi"),
                 "online": False,
                 "ssid": "No Connection",
                 "ifname": "unknown",
@@ -161,7 +161,7 @@ def net_summary():
                 "panActive": False,
                 "panDevice": {}
             }
-            
+
     except Exception as e:
         return {
             "linkType": "unknown",
@@ -174,7 +174,7 @@ def net_summary():
             "panActive": False,
             "panDevice": {},
             "error": str(e)
-    }
+        }
 
 @app.post("/api/net/pan/connect")
 async def connect_pan(payload: dict):
@@ -216,7 +216,7 @@ async def connect_pan(payload: dict):
 async def connect_wifi(payload: dict):
     """Connect to WiFi network"""
     try:
-    ssid = payload.get("ssid", "")
+        ssid = payload.get("ssid", "")
         psk = payload.get("psk", "")
         
         if not ssid:
