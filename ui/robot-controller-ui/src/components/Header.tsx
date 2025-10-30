@@ -61,7 +61,7 @@ const InstallButton: React.FC = () => {
   }, []);
 
   const handleInstall = async () => {
-    if (!deferredPrompt Butler) return;
+    if (!deferredPrompt) return;
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === 'accepted') {
