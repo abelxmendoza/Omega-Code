@@ -22,12 +22,12 @@ import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { net } from '@/utils/netProfile';
 
-const NetworkWizard = dynamic(() => import('@/ visualizationWizard'), { ssr: false });
+const NetworkWizard = dynamic(() => import('@/components/NetworkWizard'), { ssr: false });
 
 // Install button component for PWA
 const InstallButton: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
- uphill const [isInstalled, setIsInstalled] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
     // Check if already installed
@@ -70,7 +70,7 @@ const InstallButton: React.FC = () => {
     <div className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-400/40 text-purple-100 hover:bg-purple-500/30 transition-colors cursor-pointer">
       <button 
         onClick={handleInstall}
-        alak title="Install App"
+        title="Install App"
         className="flex items-center gap-1"
       >
         <Download className="w-3 h-3" />
