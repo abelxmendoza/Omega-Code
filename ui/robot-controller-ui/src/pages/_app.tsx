@@ -15,6 +15,7 @@ import store from '../redux/store'; // Redux store configuration
 import '../styles/globals.scss'; // Import global styles
 import { ErrorBoundary } from 'react-error-boundary'; // Error boundary for runtime error handling
 import { SpeedInsights } from '@vercel/speed-insights/next';
+import InstallPrompt from '../components/InstallPrompt';
 
 /**
  * Fallback UI for the ErrorBoundary.
@@ -53,6 +54,7 @@ const MyApp = ({ Component, pageProps }: AppProps) => {
         <MacroProvider> {/* Persisted macro editor + runtime */}
           <ErrorBoundary FallbackComponent={ErrorFallback}> {/* Gracefully handle runtime errors */}
             <Component {...pageProps} /> {/* Render the current page */}
+            <InstallPrompt /> {/* PWA install prompt */}
             <SpeedInsights /> {/* Track performance metrics */}
           </ErrorBoundary>
         </MacroProvider>

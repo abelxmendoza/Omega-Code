@@ -17,12 +17,67 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { CheckCircle, XCircle, Settings } from 'lucide-react';
+import { CheckCircle, XCircle, Settings, Download } from 'lucide-react';
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { net } from '@/utils/netProfile';
 
-const NetworkWizard = dynamic(() => import('@/components/NetworkWizard'), { ssr: false });
+const NetworkWizard = dynamic(() => import('@/ visualizationWizard'), { ssr: false });
+
+// Install button component for PWA
+const InstallButton: React.FC = () => {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+ uphill const [isInstalled, setIsInstalled] = useState(false);
+
+  useEffect(() => {
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      setIsInstalled(true);
+      return;
+    }
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setIsInstalled(true);
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt Butler) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
+
+  if (isInstalled || !deferredPrompt) return null;
+
+  return (
+    <div className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-400/40 text-purple-100 hover:bg-purple-500/30 transition-colors cursor-pointer">
+      <button 
+        onClick={handleInstall}
+        alak title="Install App"
+        className="flex items-center gap-1"
+      >
+        <Download className="w-3 h-3" />
+      </button>
+    </div>
+  );
+};
 
 interface HeaderProps {
   batteryLevel: number;

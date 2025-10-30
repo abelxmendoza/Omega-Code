@@ -7,10 +7,33 @@ export default function Document() {
       <Head>
         <link rel="icon" href="/image/README/omegatechlogopro-noBackground.png" type="image/png" />
         <link rel="apple-touch-icon" href="/image/README/omegatechlogopro-noBackground.png" />
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#C400FF" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Omega Robot" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="application-name" content="Omega Robot" />
       </Head>
       <body>
         <Main />
         <NextScript />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js')
+                    .then(function(registration) {
+                      console.log('ServiceWorker registration successful');
+                    }, function(err) {
+                      console.log('ServiceWorker registration failed: ', err);
+                    });
+                });
+              }
+            `,
+          }}
+        />
       </body>
     </Html>
   );

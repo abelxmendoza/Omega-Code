@@ -1,0 +1,42 @@
+{
+  "name": "Omega Technologies Robot Controller",
+  "short_name": "Omega Robot",
+  "description": "Enterprise robot control system with autonomy, computer vision, and ROS integration",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a2a",
+  "theme_color": "#C400FF",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/image/README/omegatechlogopro-noBackground.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/image/README/omegatechlogopro-noBackground.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities", "developer"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Autonomy Control",
+      "short_name": "Autonomy",
+      "description": "Open autonomy configuration",
+      "url": "/?shortcut=autonomy",
+      "icons": [
+        {
+          "src": "/image/README/omegatechlogopro-noBackground.png",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ],
+  "prefer_related_applications": false
+}
+
