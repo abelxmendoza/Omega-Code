@@ -14,7 +14,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, User, QrCode } from 'lucide-react';
+import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, User, QrCode, Users, Package, Move, Palette } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -71,6 +71,13 @@ export type AutonomyParams = {
   cvShowBoundingBoxes: boolean;
   cvTrackObjects: boolean;
   cvTrackerType: 'CSRT' | 'KCF' | 'MIL';
+  // Detection type toggles - select which features to run
+  cvDetectFaces: boolean;
+  cvDetectPeople: boolean;
+  cvDetectObjects: boolean;
+  cvDetectAruco: boolean;
+  cvDetectMotion: boolean;
+  cvTrackColor: boolean;
 };
 
 export type AutonomyModalProps = {
@@ -130,6 +137,13 @@ const defaults: AutonomyParams = {
   cvShowBoundingBoxes: true,
   cvTrackObjects: true,
   cvTrackerType: 'CSRT',
+  // Detection toggles - start with mode-based defaults
+  cvDetectFaces: false,
+  cvDetectPeople: false,
+  cvDetectObjects: false,
+  cvDetectAruco: false,
+  cvDetectMotion: false,
+  cvTrackColor: true, // default for color_track mode
 };
 
 /* -------------------------------- Component -------------------------------- */
@@ -490,7 +504,7 @@ export default function AutonomyModal({
 
             {/* BASIC: Waypoints - Only show if waypoints mode is selected */}
             {mode === 'waypoints' && (
-              <Card className="bg-neutral-900/80 border-neutral-800">
+            <Card className="bg-neutral-900/80 border-neutral-800">
                 <CardContent className="p-3 grid gap-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
                     <Flag className="h-4 w-4" /> Navigation Waypoints
@@ -623,6 +637,62 @@ export default function AutonomyModal({
                     </div>
 
                     <div className="space-y-3 pt-2 border-t border-neutral-800/50">
+                      <div>
+                        <div className="flex items-center gap-1 mb-2">
+                          <span className="text-xs font-medium text-neutral-200">Detection Features</span>
+                          <div className="group relative">
+                            <HelpCircle className="h-3 w-3 text-neutral-400 cursor-help" />
+                            <div className="absolute left-0 top-4 w-64 bg-neutral-900 border border-neutral-700 rounded-md p-2 text-xs text-neutral-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-lg">
+                              Select which detection features to enable. Only enabled features will run, reducing CPU usage. Enable only what you need for better performance.
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <ToggleRow
+                            icon={<User className="h-3.5 w-3.5 text-blue-400" />}
+                            label="Faces"
+                            checked={params.cvDetectFaces}
+                            onCheckedChange={(v) => setParam('cvDetectFaces', v)}
+                          />
+                          <ToggleRow
+                            icon={<Users className="h-3.5 w-3.5 text-green-400" />}
+                            label="People"
+                            checked={params.cvDetectPeople}
+                            onCheckedChange={(v) => setParam('cvDetectPeople', v)}
+                          />
+                          <ToggleRow
+                            icon={<Package className="h-3.5 w-3.5 text-orange-400" />}
+                            label="Objects"
+                            checked={params.cvDetectObjects}
+                            onCheckedChange={(v) => setParam('cvDetectObjects', v)}
+                          />
+                          <ToggleRow
+                            icon={<QrCode className="h-3.5 w-3.5 text-purple-400" />}
+                            label="ArUco"
+                            checked={params.cvDetectAruco}
+                            onCheckedChange={(v) => setParam('cvDetectAruco', v)}
+                          />
+                          <ToggleRow
+                            icon={<Move className="h-3.5 w-3.5 text-yellow-400" />}
+                            label="Motion"
+                            checked={params.cvDetectMotion}
+                            onCheckedChange={(v) => setParam('cvDetectMotion', v)}
+                          />
+                          <ToggleRow
+                            icon={<Palette className="h-3.5 w-3.5 text-pink-400" />}
+                            label="Color"
+                            checked={params.cvTrackColor}
+                            onCheckedChange={(v) => setParam('cvTrackColor', v)}
+                          />
+                        </div>
+                        {!params.cvDetectFaces && !params.cvDetectPeople && !params.cvDetectObjects && 
+                         !params.cvDetectAruco && !params.cvDetectMotion && !params.cvTrackColor && (
+                          <div className="text-[11px] text-amber-300 flex items-center gap-1 mt-2">
+                            <Info className="h-3 w-3" /> Enable at least one detection feature to use Computer Vision.
+                          </div>
+                        )}
+                      </div>
+
                       <div>
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-1">
@@ -870,16 +940,16 @@ function ToggleRow({
   icon, label, description, checked, onCheckedChange,
 }: { icon: React.ReactNode; label: string; description?: string; checked: boolean; onCheckedChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2.5">
+    <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-2">
       <div className="flex-1">
-        <div className="flex items-center gap-2 text-sm text-neutral-100">
+        <div className="flex items-center gap-1.5 text-xs text-neutral-100">
           {icon} <span className="font-medium">{label}</span>
         </div>
         {description && (
-          <div className="text-xs text-neutral-400 mt-0.5 ml-6">{description}</div>
+          <div className="text-[10px] text-neutral-400 mt-0.5 ml-5">{description}</div>
         )}
       </div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={label} />
+      <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={label} className="scale-75" />
     </div>
   );
 }
