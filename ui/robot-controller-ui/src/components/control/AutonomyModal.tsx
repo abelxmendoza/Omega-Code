@@ -317,8 +317,8 @@ export default function AutonomyModal({
           </Button>
         </DialogTrigger>
 
-        <DialogContent className="sm:max-w-2xl p-0 overflow-hidden border border-neutral-800 bg-neutral-950 text-neutral-100">
-          <DialogHeader className="px-5 pt-5 pb-2">
+        <DialogContent className="sm:max-w-xl max-h-[85vh] p-0 overflow-hidden border border-neutral-800 bg-neutral-950 text-neutral-100 flex flex-col">
+          <DialogHeader className="px-5 pt-5 pb-2 flex-shrink-0">
             <DialogTitle className="flex items-center gap-2 text-lg">
               <Settings2 className="h-5 w-5" /> Autonomy Control
             </DialogTitle>
@@ -328,7 +328,7 @@ export default function AutonomyModal({
           </DialogHeader>
 
           {/* Status */}
-          <div className="px-5 pb-3 flex items-center justify-between gap-2">
+          <div className="px-5 pb-3 flex items-center justify-between gap-2 flex-shrink-0">
             <Badge variant="outline" className={`${statusTone} border`} aria-live="polite">
               {connected ? (autonomyActive ? 'Active' : 'Connected') : 'Disconnected'}
             </Badge>
@@ -337,10 +337,10 @@ export default function AutonomyModal({
             </div>
           </div>
 
-          <div className="px-5 pb-5 grid grid-cols-1 gap-4">
+          <div className="px-5 pb-5 grid grid-cols-1 gap-3 overflow-y-auto flex-1 min-h-0">
             {/* BASIC: Mode + Start/Stop */}
             <Card className="bg-neutral-900/80 border-neutral-800">
-              <CardContent className="p-4 grid gap-4">
+              <CardContent className="p-3 grid gap-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
                   <div>
                     <div className="flex items-center gap-1 mb-1">
@@ -490,8 +490,8 @@ export default function AutonomyModal({
 
             {/* BASIC: Waypoints - Only show if waypoints mode is selected */}
             {mode === 'waypoints' && (
-            <Card className="bg-neutral-900/80 border-neutral-800">
-              <CardContent className="p-4 grid gap-3">
+              <Card className="bg-neutral-900/80 border-neutral-800">
+                <CardContent className="p-3 grid gap-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
                     <Flag className="h-4 w-4" /> Navigation Waypoints
                 </div>
@@ -540,7 +540,7 @@ export default function AutonomyModal({
 
             {/* Computer Vision Section */}
             <Card className="bg-neutral-900/80 border-neutral-800">
-              <CardContent className="p-4 grid gap-4">
+              <CardContent className="p-3 grid gap-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
                   <Eye className="h-4 w-4 text-cyan-400" /> Computer Vision
                 </div>
@@ -702,7 +702,7 @@ export default function AutonomyModal({
 
             {/* Quick Actions */}
             <Card className="bg-neutral-900/80 border-neutral-800">
-              <CardContent className="p-4 grid gap-3">
+              <CardContent className="p-3 grid gap-2">
                 <div className="text-xs font-medium text-neutral-300">Quick Actions</div>
                 <div className="flex gap-2">
                   <Button disabled={busy} variant="secondary" onClick={handleDock} className="gap-2 flex-1" aria-busy={busy}>
@@ -731,10 +731,10 @@ export default function AutonomyModal({
 
             {/* ADVANCED content */}
             {showAdvanced && (
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 gap-3">
                 {/* Navigation tuning */}
                 <Card className="bg-neutral-900/80 border-neutral-800">
-                  <CardContent className="p-4 grid gap-4">
+                  <CardContent className="p-3 grid gap-3">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <NumberField label="Stop Distance (m)" value={params.avoidStopDistM} step={0.05} min={0.05} max={1.5}
                         onChange={(n) => setParam('avoidStopDistM', n)} />
@@ -754,7 +754,7 @@ export default function AutonomyModal({
 
                 {/* Vision */}
                 <Card className="bg-neutral-900/80 border-neutral-800">
-                  <CardContent className="p-4 grid gap-4">
+                  <CardContent className="p-3 grid gap-3">
                     <p className="text-xs text-neutral-300">
                       Color/Object tracking uses HSV thresholds; steering centers the blob, speed scales by area.
                     </p>
@@ -784,7 +784,7 @@ export default function AutonomyModal({
 
                 {/* Behavior priorities */}
                 <Card className="bg-neutral-900/80 border-neutral-800">
-                  <CardContent className="p-4 grid gap-4">
+                  <CardContent className="p-3 grid gap-3">
                     <p className="text-xs text-neutral-300">Priority (top preempts lower). Use arrows to reorder.</p>
                     <PriorityEditor
                       items={params.priorities}
@@ -795,7 +795,7 @@ export default function AutonomyModal({
 
                 {/* Mapping + Safety */}
                 <Card className="bg-neutral-900/80 border-neutral-800">
-                  <CardContent className="p-4 grid gap-4">
+                  <CardContent className="p-3 grid gap-3">
                     <ToggleRow
                       icon={<span className="inline-block h-4 w-4 rounded-sm bg-neutral-400" />}
                       label="Enable Grid Mapping"
@@ -818,7 +818,7 @@ export default function AutonomyModal({
 
                 {/* Presets */}
                 <Card className="bg-neutral-900/80 border-neutral-800">
-                  <CardContent className="p-4 grid gap-3">
+                  <CardContent className="p-3 grid gap-2">
                     <div className="flex flex-wrap gap-2">
                       <Button variant="secondary" className="gap-2" onClick={downloadPresets}>
                         <Save className="h-4 w-4" /> Export JSON
@@ -843,12 +843,12 @@ export default function AutonomyModal({
             )}
 
             {/* Footer tip */}
-            <div className="text-[11px] text-neutral-300 flex items-start gap-2">
+            <div className="text-[11px] text-neutral-300 flex items-start gap-2 flex-shrink-0">
               <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-neutral-500/70" />
               Hook these handlers to your WS/ROS bridge. The modal sends commands/params; stream telemetry elsewhere.
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end flex-shrink-0 sticky bottom-0 bg-neutral-950 pt-2 pb-2">
               <Button onClick={() => setOpen(false)}>Close</Button>
             </div>
           </div>
