@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  telemetry_publisher:
+    build:
+      context: ../..
+      dockerfile: docker/ros2_robot/Dockerfile
+    image: omega_robot:latest
+    network_mode: host
+    environment:
+      - ROS_DOMAIN_ID=0
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///root/omega_ws/config/cyclonedds.xml
+    command: ros2 run omega_robot telemetry_publisher
+    restart: unless-stopped
+
+  telemetry_listener:
+    build:
+      context: ../..
+      dockerfile: docker/ros2_robot/Dockerfile
+    image: omega_robot:latest
+    network_mode: host
+    environment:
+      - ROS_DOMAIN_ID=0
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///root/omega_ws/config/cyclonedds.xml
+    command: ros2 run omega_robot telemetry_listener
+    restart: unless-stopped
+

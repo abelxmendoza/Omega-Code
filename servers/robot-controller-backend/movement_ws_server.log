@@ -1,0 +1,8 @@
+2025-11-04 15:28:46,545 - movement.motor_telemetry - ERROR - No PCA9685 driver available - motor telemetry will not work
+2025-11-04 15:28:46,546 - movement.movement_ws_server - WARNING - MotorTelemetryController not available - telemetry disabled
+2025-11-04 15:28:46,546 - movement.movement_ws_server - WARNING - Optimization utilities not available
+2025-11-04 15:28:47,530 - motor_telemetry - INFO - Using MockPCA9685 for motor telemetry
+2025-11-04 15:28:47,531 - motor_telemetry - ERROR - minimal_motor_control not available
+2025-11-04 15:28:47,532 - __main__ - WARNING - MotorTelemetryController not available - telemetry disabled
+2025-11-04 15:28:47,532 - __main__ - WARNING - Optimization utilities not available
+2025-11-04 15:28:47,676 - websockets.server - INFO - server listening on 0.0.0.0:8081

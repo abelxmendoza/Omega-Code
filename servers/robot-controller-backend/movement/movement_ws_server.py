@@ -110,7 +110,11 @@ except Exception:  # pragma: no cover - fallback for script execution
 try:
     from .motor_telemetry import MotorTelemetryController
 except Exception:  # pragma: no cover - fallback for script execution
-    from motor_telemetry import MotorTelemetryController
+    try:
+        from motor_telemetry import MotorTelemetryController
+    except Exception:
+        logger.warning("MotorTelemetryController not available - telemetry disabled")
+        MotorTelemetryController = None
 
 # Import optimization utilities
 try:
@@ -240,8 +244,11 @@ else:
         from controllers.servo_control import Servo as _Servo
         from controllers.buzzer import setup_buzzer, buzz_on as _buzz_on, buzz_off as _buzz_off
 
-        # Use MotorTelemetryController instead of basic Motor
-        motor = MotorTelemetryController()
+        # Use MotorTelemetryController instead of basic Motor if available
+        if MotorTelemetryController:
+            motor = MotorTelemetryController()
+        else:
+            motor = _Motor()  # Fallback to basic Motor
         servo = _Servo()
         buzz_on = _buzz_on
         buzz_off = _buzz_off
@@ -268,13 +275,19 @@ AUTONOMY = build_default_controller(context={
 
 STRAIGHT_ASSIST = StraightDriveAssist(motor)
 # Initialize motor telemetry with caching
-if OPTIMIZATION_AVAILABLE:
-    @cached(ttl=1, key_prefix="motor_telemetry:")  # Cache for 1 second
-    def get_cached_motor_telemetry():
-        return MOTOR_TELEMETRY.get_telemetry()
+if motor and hasattr(motor, 'get_telemetry'):
+    MOTOR_TELEMETRY = motor
+    if OPTIMIZATION_AVAILABLE:
+        @cached(ttl=1, key_prefix="motor_telemetry:")  # Cache for 1 second
+        def get_cached_motor_telemetry():
+            return MOTOR_TELEMETRY.get_telemetry()
+    else:
+        def get_cached_motor_telemetry():
+            return MOTOR_TELEMETRY.get_telemetry()
 else:
+    MOTOR_TELEMETRY = None
     def get_cached_motor_telemetry():
-        return MOTOR_TELEMETRY.get_telemetry()
+        return {}  # Return empty dict if telemetry not available
 
 # ---------- server state ----------
 
@@ -866,6 +879,9 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     else:
                         await send_json(ws, err(f"unknown-command:{cmd}"))
 
+            except Exception as e:
+                log_error(e, "Error processing message", ws)
+                await send_json(ws, err(f"error: {str(e)}"))
 
     except websockets.exceptions.ConnectionClosed as e:
         log(f"DISCONNECTED {peer} code={e.code} reason={e.reason or ''}")
