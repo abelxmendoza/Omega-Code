@@ -775,6 +775,82 @@ async def get_cache_stats():
     except Exception as e:
         return JSONResponse(content={"error": f"Failed to get cache stats: {str(e)}"}, status_code=500)
 
+# ---------- ROS 2 Docker Management Proxy ----------
+@app.get("/api/ros/status")
+def ros_status():
+    """Proxy ROS 2 container status"""
+    import httpx
+    try:
+        api_url = os.getenv("MAIN_API_URL", "http://127.0.0.1:8000/api/ros/status")
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(api_url)
+            return JSONResponse(response.json())
+    except Exception as e:
+        return JSONResponse({"error": str(e), "containers": [], "topics": []}, status_code=500)
+
+@app.post("/api/ros/control")
+async def ros_control(action: dict):
+    """Proxy ROS 2 container control"""
+    import httpx
+    try:
+        api_url = os.getenv("MAIN_API_URL", "http://127.0.0.1:8000/api/ros/control")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(api_url, json=action)
+            return JSONResponse(response.json())
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+@app.get("/api/ros/logs/{service}")
+def ros_logs(service: str, tail: int = 50):
+    """Proxy ROS 2 container logs"""
+    import httpx
+    try:
+        api_url = os.getenv("MAIN_API_URL", f"http://127.0.0.1:8000/api/ros/logs/{service}")
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(api_url, params={"tail": tail})
+            return JSONResponse(response.json())
+    except Exception as e:
+        return JSONResponse({"error": str(e), "logs": []}, status_code=500)
+
+@app.get("/api/ros/topics")
+def ros_topics():
+    """Proxy ROS 2 topics list"""
+    import httpx
+    try:
+        api_url = os.getenv("MAIN_API_URL", "http://127.0.0.1:8000/api/ros/topics")
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(api_url)
+            return JSONResponse(response.json())
+    except Exception as e:
+        return JSONResponse({"topics": [], "error": str(e)})
+
+@app.websocket("/ws/ros/telemetry")
+async def ws_ros_telemetry(ws: WebSocket):
+    """WebSocket proxy for ROS 2 telemetry topic"""
+    await ws.accept()
+    try:
+        api_ws_url = os.getenv("MAIN_API_WS_URL", "ws://127.0.0.1:8000/api/ros/telemetry")
+        async with websockets.connect(api_ws_url) as api_ws:
+            async def forward_to_client():
+                try:
+                    async for message in api_ws:
+                        await ws.send_text(message)
+                except:
+                    pass
+            
+            async def forward_to_api():
+                try:
+                    while True:
+                        message = await ws.receive_text()
+                        await api_ws.send(message)
+                except:
+                    pass
+            
+            await asyncio.gather(forward_to_client(), forward_to_api(), return_exceptions=True)
+    except Exception as e:
+        await ws.send_json({"error": str(e)})
+        await ws.close()
+
 @app.get("/api/performance/system")
 async def get_system_info():
     """Get system information"""

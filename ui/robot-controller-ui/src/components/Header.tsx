@@ -518,6 +518,16 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
               <Settings className="w-3 h-3" />
             </Link>
           </div>
+          
+          {/* ROS Dashboard Link */}
+          <div className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-400/40 text-purple-100 hover:bg-purple-500/30 transition-colors">
+            <Link 
+              href="/ros"
+              title="ROS 2 Dashboard (with Debug Tools)"
+            >
+              ROS
+            </Link>
+          </div>
         </div>
 
         {/* Overall status + battery */}
