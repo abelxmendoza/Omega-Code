@@ -90,6 +90,7 @@ performanceMonitor.measureRender('MyComponent', () => {
 | `src/lib/` | Small shared utilities (date/time helpers, etc.). |
 | `src/redux/` | Redux Toolkit slices, actions, and the store configuration. |
 | `src/utils/` | Network profile resolvers, WebSocket connectors, debounce helpers, autonomy API client, and profile persistence. |
+| `src/config/` | Centralized configuration modules (`gateway.ts` for profile-aware gateway URL resolution, `environment.ts` for environment variable handling). |
 | `src/styles/` | Global Tailwind styles and theme tokens. |
 | `tests/` | Jest + Testing Library suites with MSW handlers, mocks, and helpers. |
 | `cypress/` | End-to-end specs (headless by default; UI runner available via `npx cypress open`). |
@@ -114,16 +115,22 @@ npm install
 Copy the example file and customise it for your deployment:
 
 ```bash
-cp .env.local.example .env.local
+cp env.example .env.local
 ```
+
+The UI uses a **centralized gateway configuration system** (`src/config/gateway.ts`) that
+automatically resolves URLs based on the active network profile. All API routes use this
+centralized config for consistent profile-aware URL resolution.
 
 Key variables include:
 
 - `NEXT_PUBLIC_NETWORK_PROFILE` – default profile (`local`, `lan`, `tailscale`). The UI
   persists profile changes from the header/wizard via `localStorage` and the `?profile`
   query parameter.
+- `NEXT_PUBLIC_ROBOT_HOST_*` / `NEXT_PUBLIC_GATEWAY_HOST_*` – robot host addresses per profile
+  (used by gateway API routes). `NEXT_PUBLIC_ROBOT_HOST_*` takes precedence over `NEXT_PUBLIC_GATEWAY_HOST_*`.
 - `NEXT_PUBLIC_GATEWAY_HOST` / `NEXT_PUBLIC_GATEWAY_PORT` – base host + port for the
-  FastAPI gateway (`servers/gateway_api.py`).
+  FastAPI gateway (fallback when profile-specific hosts aren't set).
 - `NEXT_PUBLIC_VIDEO_STREAM_URL_*` – per-profile MJPEG endpoints (used by
   `/api/video-proxy` and the video component).
 - `NEXT_PUBLIC_BACKEND_WS_URL_*` – per-profile WebSocket URLs for movement, lighting,
@@ -134,7 +141,11 @@ Key variables include:
   lifecycle events.
 
 The resolvers in `src/utils/netProfile.ts` and `src/utils/resolveWsUrl.ts` automatically
-select the best URL for the active profile and expose ordered fallbacks for logging.
+select the best URL for the active profile and expose ordered fallbacks for logging. The
+centralized gateway config (`src/config/gateway.ts`) ensures all API routes use consistent
+profile-aware URL resolution.
+
+See `env.example` for a complete list of all environment variables with documentation.
 
 ## Running the app
 
@@ -177,6 +188,9 @@ Launch the Cypress UI locally with `npx cypress open` if you prefer an interacti
 - The header status bar uses `src/hooks/useWsStatus`, `useHttpStatus`, and
   `useNetSummary` to monitor gateway reachability. REST calls are routed through
   `src/pages/api/net/*` to avoid CORS headaches during development.
+- API routes (`src/pages/api/net/*`, `src/pages/api/performance-proxy/*`) use the
+  centralized gateway configuration (`src/config/gateway.ts`) for consistent profile-aware
+  URL resolution across all endpoints.
 - API routes `video-proxy.ts` and `video-health.ts` proxy MJPEG and health checks so
   browsers only ever talk to the Next.js origin.
 
@@ -188,6 +202,8 @@ Launch the Cypress UI locally with `npx cypress open` if you prefer an interacti
   transitions in the browser console.
 - The WebSocket connectors in `src/utils/connect*Ws.ts` handle exponential back-off,
   heartbeats, and JSON parsing. Use them when wiring new services.
+- Use `src/config/gateway.ts`'s `buildGatewayUrl()` function for all gateway API calls to
+  ensure consistent profile-aware URL resolution.
 - Tests under `tests/` use MSW (`tests/mswServer.ts`) to stub backend responses; mirror
   new routes there when you add API features.
 - `find_unused_components.py` is handy during refactors to locate components that are no

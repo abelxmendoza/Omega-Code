@@ -101,12 +101,15 @@ Install the tooling required for the parts you plan to work on:
 3. Configure the UI environment:
    ```bash
    cd ../../ui/robot-controller-ui
-   cp .env.local.example .env.local
-   # Set NEXT_PUBLIC_GATEWAY_HOST, per-profile WebSocket URLs, and video stream targets.
+   cp env.example .env.local
+   # Configure network profiles, gateway URLs, WebSocket endpoints, and video streams.
    ```
-   The UI supports `local`, `lan`, and `tailscale` profiles. Profile-specific URLs are
-   derived from the `NEXT_PUBLIC_*` variables and can be overridden at runtime via the
-   `?profile=` query parameter.
+   The UI uses a **centralized gateway configuration system** (`src/config/gateway.ts`) that
+   automatically resolves URLs based on the active profile (`local`, `lan`, `tailscale`).
+   Profile-specific URLs are derived from `NEXT_PUBLIC_ROBOT_HOST_*` or `NEXT_PUBLIC_GATEWAY_HOST_*`
+   variables and can be overridden at runtime via the `?profile=` query parameter.
+   
+   See `ui/robot-controller-ui/env.example` for a complete list of environment variables.
 
 Optional: create `scripts/.env` if you want the Makefile helpers to preload operator
 values such as `PHONE_MAC` or SSH hosts.
@@ -186,7 +189,7 @@ environment files automatically).
 | Lighting control | `cd servers/robot-controller-backend/controllers/lighting && go run main_lighting.go` | Proxies lighting commands to the privileged `run_led.sh` wrapper / Python LED controller. |
 | Video server | `cd servers/robot-controller-backend && python video/video_server.py` | Flask + OpenCV MJPEG server with watchdog and placeholder frames. Configure with `VIDEO_PORT`, `CAMERA_*`, `STARTUP_RETRY_SEC`, etc. |
 | FastAPI REST API | `cd servers/robot-controller-backend && uvicorn main_api:app --host 0.0.0.0 --port 8000 --reload` | Exposes `/lighting` and `/autonomy` routes composed from `api/`. |
-| Gateway proxy | `cd servers/robot-controller-backend && uvicorn servers.gateway_api:app --host 0.0.0.0 --port 7070` | Aggregates `/ws/*`, `/video_feed`, and `/api/net/*` endpoints. Configure downstreams with `DS_MOVE`, `DS_ULTRA`, `DS_LIGHT`, `DS_LINE`, and `VIDEO_UPSTREAM`. |
+| Gateway proxy | `cd servers/robot-controller-backend && uvicorn servers.gateway_api:app --host 0.0.0.0 --port 7070` | Aggregates `/ws/*`, `/video_feed`, and `/api/net/*` endpoints. Configure downstreams with `DS_MOVE`, `DS_ULTRA`, `DS_LIGHT`, `DS_LINE`, and `VIDEO_UPSTREAM`. The UI uses a centralized gateway config (`src/config/gateway.ts`) that resolves URLs based on network profiles. |
 
 ### Makefile helpers
 
