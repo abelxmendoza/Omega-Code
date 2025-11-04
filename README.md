@@ -228,6 +228,95 @@ ROS launch files live under `ros/launch`, and example packages live in
 launch Pi nodes over SSH, run `main_combined.go`, and start the UI on a MacBook in one
 shot. Adjust the script to point at your actual package names and hosts.
 
+### Running Omega Robot ROS 2 in Docker (Raspberry Pi)
+
+The Omega-Code repository includes ROS 2 Humble Docker support for running nodes in a
+containerized environment on Raspberry Pi OS. This setup uses CycloneDDS for reliable
+inter-container and host ↔ container communication.
+
+**Prerequisites:**
+- Docker installed on Raspberry Pi OS
+- Network access configured for CycloneDDS peer discovery
+
+**Build the ROS 2 Docker image:**
+
+```bash
+cd docker/ros2_robot
+sudo docker build -t omega_robot:latest -f Dockerfile ../..
+```
+
+**Run nodes individually:**
+
+```bash
+# Publisher node
+sudo docker run -it --rm --network host \
+  -e ROS_DOMAIN_ID=0 \
+  -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
+  -e CYCLONEDDS_URI=file:///root/omega_ws/config/cyclonedds.xml \
+  omega_robot:latest \
+  ros2 run omega_robot telemetry_publisher
+
+# Listener node (in another terminal)
+sudo docker run -it --rm --network host \
+  -e ROS_DOMAIN_ID=0 \
+  -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
+  -e CYCLONEDDS_URI=file:///root/omega_ws/config/cyclonedds.xml \
+  omega_robot:latest \
+  ros2 run omega_robot telemetry_listener
+```
+
+**Or use docker-compose:**
+
+```bash
+cd docker/ros2_robot
+sudo docker-compose up -d
+```
+
+**Check telemetry:**
+
+```bash
+# Get container ID
+sudo docker ps | grep omega_robot
+
+# Execute commands inside container
+sudo docker exec -it <container_id> bash
+source /opt/ros/humble/setup.bash
+source /root/omega_ws/install/setup.bash
+ros2 topic list
+ros2 topic echo /omega/telemetry
+```
+
+**Environment Variables:**
+
+The Docker setup uses the following environment variables:
+- `ROS_DOMAIN_ID` (default: `0`) – ROS 2 domain ID for topic isolation
+- `RMW_IMPLEMENTATION` (default: `rmw_cyclonedds_cpp`) – ROS 2 middleware implementation
+- `CYCLONEDDS_URI` – Path to CycloneDDS configuration XML file
+
+**Configuration:**
+
+Update `docker/ros2_robot/config/cyclonedds.xml` with your network IPs for peer discovery:
+- Raspberry Pi IP (default: `192.168.1.107`)
+- MacBook IP (default: `192.168.1.202`)
+
+**Development Mode (Live Editing):**
+
+To mount the local workspace for live editing without rebuilding:
+
+```yaml
+# Add to docker-compose.yml volumes section
+volumes:
+  - ../../ros/src:/root/omega_ws/src
+```
+
+**Package Structure:**
+
+The ROS 2 package `omega_robot` is located at `ros/src/omega_robot/` and includes:
+- `telemetry_publisher` – Publishes heartbeat messages on `/omega/telemetry`
+- `telemetry_listener` – Subscribes to `/omega/telemetry` and logs messages
+
+See `docker/ros2_robot/README.md` for detailed setup instructions.
+
 ## Diagnostics and field utilities
 
 - `scripts/check_endpoints.sh` – Profile-aware reachability checker for movement,

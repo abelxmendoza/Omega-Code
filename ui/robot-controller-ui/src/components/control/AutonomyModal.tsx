@@ -486,12 +486,12 @@ export default function AutonomyModal({
               )}
             </div>
             <p className="text-xs text-neutral-400 mt-1">
-              Choose a mode, adjust settings, and start your robot's autonomous behavior
+              Choose a mode, adjust settings, and start your robot&apos;s autonomous behavior
             </p>
             <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded text-[11px] text-amber-200 flex items-start gap-2">
               <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
               <div>
-                <strong>How it works:</strong> Toggles configure what features will run when you click "Start". 
+                <strong>How it works:</strong> Toggles configure what features will run when you click &quot;Start&quot;. 
                 Changes apply when autonomy starts (or immediately if live updates are enabled). 
                 Each toggle enables/disables a specific feature to save CPU and improve performance.
               </div>
@@ -1260,7 +1260,7 @@ export default function AutonomyModal({
                   </Button>
                 </div>
                 <p className="text-xs text-neutral-400">
-                  Use "Return to Dock" to send your robot back to its charging/home position.
+                  Use &quot;Return to Dock&quot; to send your robot back to its charging/home position.
                 </p>
               </CardContent>
             </Card>
