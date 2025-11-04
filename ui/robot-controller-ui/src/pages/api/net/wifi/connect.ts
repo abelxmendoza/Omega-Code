@@ -8,29 +8,14 @@
 */
 
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { buildGatewayUrl } from '@/config/gateway';
 
 export const config = { api: { bodyParser: true } };
 
-const MOCK   = process.env.MOCK_BACKEND === '1';
-const SCHEME = (process.env.NEXT_PUBLIC_GATEWAY_SCHEME || 'http').toLowerCase();
-const HOST   = process.env.NEXT_PUBLIC_GATEWAY_HOST || 'localhost';
-const PORT   = String(process.env.NEXT_PUBLIC_GATEWAY_PORT || '7070');
+const MOCK = process.env.MOCK_BACKEND === '1';
 
 function clamp(n: number, lo: number, hi: number) {
   return Math.min(hi, Math.max(lo, n));
-}
-
-function buildGatewayUrl(path: string): string {
-  try {
-    const hasScheme = /^https?:\/\//i.test(HOST);
-    const base = hasScheme ? new URL(HOST) : new URL(`${SCHEME}://${HOST}`);
-    if (!base.port && PORT) base.port = PORT;
-    if (!path.startsWith('/')) path = `/${path}`;
-    base.pathname = path;
-    return base.toString();
-  } catch {
-    return `http://localhost:7070${path.startsWith('/') ? '' : '/'}${path}`;
-  }
 }
 
 function cleanErr(e: unknown) {

@@ -24,25 +24,7 @@
 */
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-
-const HOST   = process.env.NEXT_PUBLIC_GATEWAY_HOST || '';
-const PORT   = process.env.NEXT_PUBLIC_GATEWAY_PORT || '7070';
-const SCHEME = (process.env.NEXT_PUBLIC_GATEWAY_SCHEME || 'http').toLowerCase();
-
-/** Build a safe URL to the gateway, honoring SCHEME/HOST/PORT (HOST may include scheme/port). */
-function buildGatewayUrl(path = '/api/net/summary'): string {
-  try {
-    if (!HOST) return '';
-    const hasScheme = /^https?:\/\//i.test(HOST);
-    const base = hasScheme ? new URL(HOST) : new URL(`${SCHEME}://${HOST}`);
-    if (!base.port && PORT) base.port = String(PORT);
-    if (!path.startsWith('/')) path = `/${path}`;
-    base.pathname = path;
-    return base.toString();
-  } catch {
-    return '';
-  }
-}
+import { buildGatewayUrl } from '@/config/gateway';
 
 /** Small fetch timeout helper (AbortController pattern). */
 async function fetchWithTimeout(url: string, ms: number) {
@@ -87,10 +69,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
 
   const upstreamUrl = buildGatewayUrl('/api/net/summary');
-  if (!upstreamUrl) {
+  if (!upstreamUrl || upstreamUrl.includes('localhost') && process.env.NEXT_PUBLIC_GATEWAY_HOST === '') {
     return res.status(502).json({
       error: 'gateway_unconfigured',
-      detail: 'NEXT_PUBLIC_GATEWAY_HOST is missing or invalid.',
+      detail: 'NEXT_PUBLIC_GATEWAY_HOST or NEXT_PUBLIC_ROBOT_HOST_* is missing or invalid.',
       upstream: '(unset)',
     });
   }

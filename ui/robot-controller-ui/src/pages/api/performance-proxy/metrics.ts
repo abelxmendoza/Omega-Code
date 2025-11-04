@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { getActiveProfile } from '@/utils/resolveWsUrl';
+import { buildGatewayUrl } from '@/config/gateway';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -7,23 +7,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const profile = getActiveProfile();
-    
-    // Build the gateway URL based on the active profile
-    let gatewayUrl: string;
-    switch (profile) {
-      case 'tailscale':
-        gatewayUrl = `http://${process.env.NEXT_PUBLIC_ROBOT_HOST_TAILSCALE}:7070/api/performance/metrics`;
-        break;
-      case 'lan':
-        gatewayUrl = `http://${process.env.NEXT_PUBLIC_ROBOT_HOST_LAN}:7070/api/performance/metrics`;
-        break;
-      case 'local':
-        gatewayUrl = `http://${process.env.NEXT_PUBLIC_ROBOT_HOST_LOCAL}:7070/api/performance/metrics`;
-        break;
-      default:
-        gatewayUrl = `http://omega1.local:7070/api/performance/metrics`;
-    }
+    const gatewayUrl = buildGatewayUrl('/api/performance/metrics');
 
     console.log(`[performance-proxy] Fetching metrics from: ${gatewayUrl}`);
     
