@@ -26,6 +26,9 @@ setup(
             'robot_controller = omega_robot.robot_controller:main',
             'enhanced_telemetry = omega_robot.enhanced_telemetry:main',
             'camera_publisher = omega_robot.camera_publisher:main',
+            'navigate_to_goal_action_server = omega_robot.navigate_to_goal_action:main',
+            'follow_line_action_server = omega_robot.follow_line_action:main',
+            'obstacle_avoidance_action_server = omega_robot.obstacle_avoidance_action:main',
         ],
     },
 )

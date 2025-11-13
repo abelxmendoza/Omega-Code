@@ -303,6 +303,43 @@ class ROS2WebBridge:
                 "type": "topics_list",
                 "topics": topics
             })
+        
+        elif msg_type == "send_action_goal":
+            # Send ROS2 action goal
+            from .ros_action_bridge import get_ros2_action_bridge
+            from .ros_native_bridge import get_bridge
+            
+            action_name = message.get("action")
+            goal_data = message.get("goal", {})
+            
+            bridge = get_bridge()
+            ros_node = bridge._node if bridge and hasattr(bridge, '_node') else None
+            action_bridge = get_ros2_action_bridge(ros_node)
+            
+            if action_bridge:
+                await action_bridge.send_goal(action_name, goal_data, websocket)
+            else:
+                await websocket.send_json({
+                    "type": "action_error",
+                    "action": action_name,
+                    "error": "Action bridge not available"
+                })
+        
+        elif msg_type == "cancel_action":
+            # Cancel ROS2 action goal
+            from .ros_action_bridge import get_ros2_action_bridge
+            
+            goal_id = message.get("goal_id")
+            action_bridge = get_ros2_action_bridge()
+            
+            if action_bridge:
+                await action_bridge.cancel_goal(goal_id, websocket)
+            else:
+                await websocket.send_json({
+                    "type": "action_error",
+                    "goal_id": goal_id,
+                    "error": "Action bridge not available"
+                })
 
 
 # Global bridge instance

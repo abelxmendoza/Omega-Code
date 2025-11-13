@@ -61,5 +61,36 @@ def generate_launch_description():
                 'publish_compressed': True
             }]
         ),
+        
+        # Action Servers
+        Node(
+            package='omega_robot',
+            executable='navigate_to_goal_action_server',
+            name='navigate_to_goal_action_server',
+            output='screen',
+            parameters=[{
+                'use_sim_time': False
+            }]
+        ),
+        
+        Node(
+            package='omega_robot',
+            executable='follow_line_action_server',
+            name='follow_line_action_server',
+            output='screen',
+            parameters=[{
+                'use_sim_time': False
+            }]
+        ),
+        
+        Node(
+            package='omega_robot',
+            executable='obstacle_avoidance_action_server',
+            name='obstacle_avoidance_action_server',
+            output='screen',
+            parameters=[{
+                'use_sim_time': False
+            }]
+        ),
     ])
 
