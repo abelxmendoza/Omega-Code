@@ -25,6 +25,7 @@ setup(
             'sensor_data_publisher = omega_robot.sensor_data_publisher:main',
             'robot_controller = omega_robot.robot_controller:main',
             'enhanced_telemetry = omega_robot.enhanced_telemetry:main',
+            'camera_publisher = omega_robot.camera_publisher:main',
         ],
     },
 )

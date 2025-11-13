@@ -100,6 +100,12 @@ class ROS2WebBridge:
                 elif msg_type == "Int32MultiArray":
                     from std_msgs.msg import Int32MultiArray
                     self.bridge.subscribe_topic(topic, Int32MultiArray, self._create_topic_callback(topic))
+                elif msg_type == "Image":
+                    from sensor_msgs.msg import Image
+                    self.bridge.subscribe_topic(topic, Image, self._create_topic_callback(topic))
+                elif msg_type == "CompressedImage":
+                    from sensor_msgs.msg import CompressedImage
+                    self.bridge.subscribe_topic(topic, CompressedImage, self._create_topic_callback(topic))
                 
                 log.info(f"Subscribed to ROS2 topic: {topic}")
             except Exception as e:
@@ -153,6 +159,22 @@ class ROS2WebBridge:
         try:
             # Handle different message types
             if hasattr(msg, 'data'):
+                # Check if it's CompressedImage (has format attribute)
+                if hasattr(msg, 'format') and hasattr(msg, 'header'):
+                    # CompressedImage - return base64 encoded JPEG
+                    import base64
+                    return {
+                        "format": msg.format,
+                        "data": base64.b64encode(msg.data).decode('utf-8'),
+                        "header": {
+                            "stamp": {
+                                "sec": msg.header.stamp.sec,
+                                "nanosec": msg.header.stamp.nanosec
+                            },
+                            "frame_id": msg.header.frame_id
+                        }
+                    }
+                # Regular data field
                 return {"data": msg.data}
             elif hasattr(msg, 'linear') and hasattr(msg, 'angular'):
                 return {
@@ -175,6 +197,22 @@ class ROS2WebBridge:
                 }
             elif hasattr(msg, 'data') and isinstance(msg.data, list):
                 return {"data": list(msg.data)}
+            elif hasattr(msg, 'encoding') and hasattr(msg, 'data'):
+                # Image message - convert to base64
+                import base64
+                return {
+                    "encoding": msg.encoding,
+                    "width": msg.width,
+                    "height": msg.height,
+                    "data": base64.b64encode(bytes(msg.data)).decode('utf-8'),
+                    "header": {
+                        "stamp": {
+                            "sec": msg.header.stamp.sec,
+                            "nanosec": msg.header.stamp.nanosec
+                        },
+                        "frame_id": msg.header.frame_id
+                    }
+                }
             else:
                 return {"raw": str(msg)}
         except Exception as e:

@@ -25,8 +25,8 @@ try:
     import rclpy
     from rclpy.node import Node
     from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
-    from std_msgs.msg import String, Float32, Int32
-    from sensor_msgs.msg import Image
+    from std_msgs.msg import String, Float32, Int32, Int32MultiArray
+    from sensor_msgs.msg import Image, CompressedImage, BatteryState
     from geometry_msgs.msg import Twist
     _rclpy_available = True
 except ImportError as e:

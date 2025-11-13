@@ -46,5 +46,20 @@ def generate_launch_description():
                 'use_sim_time': False
             }]
         ),
+        
+        # Camera Publisher
+        Node(
+            package='omega_robot',
+            executable='camera_publisher',
+            name='camera_publisher',
+            output='screen',
+            parameters=[{
+                'use_sim_time': False,
+                'width': 640,
+                'height': 480,
+                'fps': 30,
+                'publish_compressed': True
+            }]
+        ),
     ])
 
