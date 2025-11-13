@@ -1,0 +1,21 @@
+<CycloneDDS>
+  <Domain id="any">
+    <General>
+      <NetworkInterfaceAddress>auto</NetworkInterfaceAddress>
+      <AllowMulticast>true</AllowMulticast>
+    </General>
+    <Discovery>
+      <Peers>
+        <!-- Laptop (Ubuntu) - Development cockpit -->
+        <Peer address="${LAPTOP_IP}"/>
+        
+        <!-- Raspberry Pi 4B - Hardware IO controller -->
+        <Peer address="${PI_IP}"/>
+        
+        <!-- Jetson Orin Nano - AI compute engine -->
+        <Peer address="${ORIN_IP}"/>
+      </Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>
+

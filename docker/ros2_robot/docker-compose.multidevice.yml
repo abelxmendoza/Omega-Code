@@ -1,0 +1,85 @@
+version: "3.8"
+
+# Multi-device ROS2 Docker Compose
+# Orchestrates ROS2 nodes across Laptop, Pi 4B, and Jetson Orin Nano
+# Usage: docker-compose -f docker-compose.multidevice.yml up -d
+
+services:
+  # Laptop: Development & visualization nodes
+  laptop_rviz:
+    build:
+      context: ../..
+      dockerfile: docker/ros2_robot/Dockerfile
+    image: omega_robot:latest
+    network_mode: host
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///root/omega_ws/config/cyclonedds.xml
+      - DISPLAY=${DISPLAY:-:0}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${HOME}/.Xauthority:/root/.Xauthority:rw
+    command: rviz2
+    restart: unless-stopped
+    profiles:
+      - laptop
+
+  # Laptop: Telemetry listener (monitors all devices)
+  laptop_listener:
+    build:
+      context: ../..
+      dockerfile: docker/ros2_robot/Dockerfile
+    image: omega_robot:latest
+    network_mode: host
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///root/omega_ws/config/cyclonedds.xml
+    command: ros2 run omega_robot telemetry_listener
+    restart: unless-stopped
+    profiles:
+      - laptop
+
+  # Pi 4B: Hardware IO nodes (run on Pi, not laptop)
+  # These are examples - actual deployment should be on Pi via SSH
+  pi_telemetry_publisher:
+    build:
+      context: ../..
+      dockerfile: docker/ros2_robot/Dockerfile
+    image: omega_robot:latest
+    network_mode: host
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///root/omega_ws/config/cyclonedds.xml
+    command: ros2 run omega_robot telemetry_publisher
+    restart: unless-stopped
+    profiles:
+      - pi
+    deploy:
+      placement:
+        constraints:
+          - node.hostname == pi4b
+
+  # Jetson Orin: AI/vision nodes (run on Orin, not laptop)
+  orin_vision_node:
+    build:
+      context: ../..
+      dockerfile: docker/ros2_robot/Dockerfile
+    image: omega_robot:latest
+    network_mode: host
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///root/omega_ws/config/cyclonedds.xml
+      - CUDA_VISIBLE_DEVICES=0
+    command: ros2 run omega_robot vision_processor
+    restart: unless-stopped
+    profiles:
+      - orin
+    deploy:
+      placement:
+        constraints:
+          - node.hostname == orin-nano
+

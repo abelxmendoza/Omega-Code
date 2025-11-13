@@ -1,4 +1,10 @@
 <CycloneDDS>
+  <!-- 
+    CycloneDDS Configuration for Multi-Device ROS2
+    For multi-device setup (Laptop + Pi + Orin), use:
+      ./scripts/setup_multidevice_ros2.sh
+    This will generate a config with all device IPs from .env.ros2.multidevice
+  -->
   <Domain id="any">
     <General>
       <NetworkInterfaceAddress>auto</NetworkInterfaceAddress>
@@ -7,7 +13,8 @@
     <Discovery>
       <Peers>
         <Peer address="192.168.1.107"/> <!-- Raspberry Pi - Update as needed -->
-        <Peer address="192.168.1.202"/> <!-- MacBook - Update as needed -->
+        <Peer address="192.168.1.202"/> <!-- MacBook/Laptop - Update as needed -->
+        <!-- Add Jetson Orin Nano IP when available -->
       </Peers>
     </Discovery>
   </Domain>

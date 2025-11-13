@@ -11,8 +11,13 @@ adafruit-circuitpython-tsl2561>=3.2.0
 
 # Camera libraries
 opencv-python>=4.8.0
+opencv-contrib-python>=4.8.0
 picamera2>=0.3.12
 Pillow>=10.0.0
+
+# ROS2 Python bindings (for native ROS2 integration)
+# Note: rclpy is typically installed with ROS2, but we list it here for reference
+# Install via: sudo apt install ros-rolling-rclpy
 
 # Sensor libraries
 w1thermsensor>=2.0.0

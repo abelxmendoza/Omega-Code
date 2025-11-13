@@ -317,6 +317,54 @@ The ROS 2 package `omega_robot` is located at `ros/src/omega_robot/` and include
 
 See `docker/ros2_robot/README.md` for detailed setup instructions.
 
+### Multi-Device ROS2 Setup (Laptop + Pi 4B + Jetson Orin Nano)
+
+For distributed ROS2 development across multiple devices, see the comprehensive guide:
+
+**[ROS2_MULTIDEVICE_SETUP.md](ROS2_MULTIDEVICE_SETUP.md)**
+
+**Quick Start:**
+
+```bash
+# 1. Configure environment
+cp .env.ros2.multidevice.example .env.ros2.multidevice
+# Edit with your device IPs
+
+# 2. Run setup on each device
+./scripts/setup_multidevice_ros2.sh
+
+# 3. Test communication
+# Terminal 1 (Laptop):
+ros2 run demo_nodes_cpp talker
+
+# Terminal 2 (Pi or Orin):
+ros2 run demo_nodes_cpp listener
+```
+
+**Architecture:**
+- **Laptop (Ubuntu)**: Development cockpit (colcon, RViz, SSH, Docker management)
+- **Pi 4B**: Hardware IO controller (motors, GPIO, sensors)
+- **Jetson Orin Nano**: AI compute engine (vision, SLAM, ML models)
+
+**Setup Scripts:**
+- `scripts/setup_ros2_laptop.sh` - Install ROS2 Humble on Ubuntu
+- `scripts/setup_ros2_rolling.sh` - Setup ROS2 Rolling (for Ubuntu 24.04)
+- `scripts/optimize_laptop_ros2.sh` - Optimize laptop for ROS2 development
+- `scripts/setup_multidevice_ros2.sh` - Complete multi-device setup
+- `scripts/verify_ros2_opencv_setup.sh` - Verify ROS2 and OpenCV integration
+
+**ROS2 Integration:**
+- **Docker Mode** (default): ROS2 nodes in containers (Pi)
+- **Native Mode**: Direct rclpy integration (`ROS_NATIVE_MODE=true`) - Lenovo only
+- **MacBook Support**: Backend works without ROS2 (graceful fallback)
+- **ROS2-Web Bridge**: Real-time bidirectional communication (`/api/ros/bridge`)
+- **New Nodes**: Sensor data publisher, robot controller, enhanced telemetry
+- Auto-detects paths (works from Lenovo, MacBook, or Pi)
+- See [ROS2_OPENCV_INTEGRATION.md](ROS2_OPENCV_INTEGRATION.md) for details
+- See [ROS2_MULTI_LAPTOP_SETUP.md](ROS2_MULTI_LAPTOP_SETUP.md) for multi-laptop setup
+- See [ROS2_EXPANSION_PLAN.md](ROS2_EXPANSION_PLAN.md) for expansion roadmap
+- See [ROS2_QUICK_START.md](ROS2_QUICK_START.md) for quick start guide
+
 ## Diagnostics and field utilities
 
 - `scripts/check_endpoints.sh` – Profile-aware reachability checker for movement,

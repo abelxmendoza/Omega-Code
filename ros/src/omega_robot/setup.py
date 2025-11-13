@@ -22,6 +22,9 @@ setup(
         'console_scripts': [
             'telemetry_publisher = omega_robot.telemetry_publisher:main',
             'telemetry_listener = omega_robot.telemetry_listener:main',
+            'sensor_data_publisher = omega_robot.sensor_data_publisher:main',
+            'robot_controller = omega_robot.robot_controller:main',
+            'enhanced_telemetry = omega_robot.enhanced_telemetry:main',
         ],
     },
 )
