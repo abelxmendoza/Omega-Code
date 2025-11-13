@@ -106,6 +106,12 @@ class ROS2WebBridge:
                 elif msg_type == "CompressedImage":
                     from sensor_msgs.msg import CompressedImage
                     self.bridge.subscribe_topic(topic, CompressedImage, self._create_topic_callback(topic))
+                elif msg_type == "Odometry":
+                    from nav_msgs.msg import Odometry
+                    self.bridge.subscribe_topic(topic, Odometry, self._create_topic_callback(topic))
+                elif msg_type == "Path":
+                    from nav_msgs.msg import Path
+                    self.bridge.subscribe_topic(topic, Path, self._create_topic_callback(topic))
                 
                 log.info(f"Subscribed to ROS2 topic: {topic}")
             except Exception as e:
@@ -205,6 +211,71 @@ class ROS2WebBridge:
                     "width": msg.width,
                     "height": msg.height,
                     "data": base64.b64encode(bytes(msg.data)).decode('utf-8'),
+                    "header": {
+                        "stamp": {
+                            "sec": msg.header.stamp.sec,
+                            "nanosec": msg.header.stamp.nanosec
+                        },
+                        "frame_id": msg.header.frame_id
+                    }
+                }
+            elif hasattr(msg, 'pose') and hasattr(msg, 'twist'):
+                # Odometry message
+                return {
+                    "pose": {
+                        "position": {
+                            "x": msg.pose.pose.position.x,
+                            "y": msg.pose.pose.position.y,
+                            "z": msg.pose.pose.position.z
+                        },
+                        "orientation": {
+                            "x": msg.pose.pose.orientation.x,
+                            "y": msg.pose.pose.orientation.y,
+                            "z": msg.pose.pose.orientation.z,
+                            "w": msg.pose.pose.orientation.w
+                        }
+                    },
+                    "twist": {
+                        "linear": {
+                            "x": msg.twist.twist.linear.x,
+                            "y": msg.twist.twist.linear.y,
+                            "z": msg.twist.twist.linear.z
+                        },
+                        "angular": {
+                            "x": msg.twist.twist.angular.x,
+                            "y": msg.twist.twist.angular.y,
+                            "z": msg.twist.twist.angular.z
+                        }
+                    },
+                    "header": {
+                        "stamp": {
+                            "sec": msg.header.stamp.sec,
+                            "nanosec": msg.header.stamp.nanosec
+                        },
+                        "frame_id": msg.header.frame_id
+                    }
+                }
+            elif hasattr(msg, 'poses') and isinstance(msg.poses, list):
+                # Path message
+                return {
+                    "poses": [
+                        {
+                            "pose": {
+                                "position": {
+                                    "x": p.pose.position.x,
+                                    "y": p.pose.position.y,
+                                    "z": p.pose.position.z
+                                },
+                                "orientation": {
+                                    "x": p.pose.orientation.x,
+                                    "y": p.pose.orientation.y,
+                                    "z": p.pose.orientation.z,
+                                    "w": p.pose.orientation.w
+                                }
+                            }
+                        }
+                        for p in msg.poses
+                    ],
                     "header": {
                         "stamp": {
                             "sec": msg.header.stamp.sec,

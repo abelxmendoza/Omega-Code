@@ -27,7 +27,8 @@ try:
     from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
     from std_msgs.msg import String, Float32, Int32, Int32MultiArray
     from sensor_msgs.msg import Image, CompressedImage, BatteryState
-    from geometry_msgs.msg import Twist
+    from geometry_msgs.msg import Twist, PoseStamped
+    from nav_msgs.msg import Odometry, Path
     _rclpy_available = True
 except ImportError as e:
     log.warning(f"rclpy not available: {e}. Native ROS2 features disabled.")

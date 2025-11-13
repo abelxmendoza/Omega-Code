@@ -92,5 +92,30 @@ def generate_launch_description():
                 'use_sim_time': False
             }]
         ),
+        
+        # Navigation Nodes
+        Node(
+            package='omega_robot',
+            executable='odometry_publisher',
+            name='odometry_publisher',
+            output='screen',
+            parameters=[{
+                'use_sim_time': False,
+                'wheel_radius': 0.05,
+                'wheel_base': 0.20,
+                'ticks_per_revolution': 360
+            }]
+        ),
+        
+        Node(
+            package='omega_robot',
+            executable='path_planner',
+            name='path_planner',
+            output='screen',
+            parameters=[{
+                'use_sim_time': False,
+                'algorithm': 'astar'
+            }]
+        ),
     ])
 
