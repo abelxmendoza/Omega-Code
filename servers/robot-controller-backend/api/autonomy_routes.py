@@ -21,7 +21,27 @@ __all__ = [
 ]
 
 logger = logging.getLogger("autonomy.api")
-controller = build_default_controller()
+
+# Build controller with ROS2 context if available
+def get_controller():
+    """Get autonomy controller with ROS2 context if available."""
+    context = {}
+    
+    # Add ROS2 bridge to context if available
+    try:
+        from .ros_native_bridge import get_bridge, _rclpy_available
+        if _rclpy_available:
+            bridge = get_bridge()
+            if bridge:
+                context['ros2_bridge'] = bridge
+                context['ros2_available'] = True
+                logger.info("ROS2 bridge available for autonomy modes")
+    except ImportError:
+        pass
+    
+    return build_default_controller(context=context)
+
+controller = get_controller()
 
 router = APIRouter(prefix="/autonomy", tags=["Autonomy"])
 
@@ -66,6 +86,10 @@ async def get_status() -> Dict[str, Any]:
 @router.post("/start")
 async def start(payload: StartPayload) -> Dict[str, Any]:
     try:
+        # Ensure controller has latest ROS2 context
+        global controller
+        controller = get_controller()
+        
         status = await controller.start(payload.mode, payload.params)
     except AutonomyError as exc:
         _handle_autonomy_error(exc)

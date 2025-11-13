@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { useDebouncedCallback } from '@/utils/debounce';
+import { useROS2Status } from '@/hooks/useROS2Status';
 
 /* ------------------------------ Types ------------------------------ */
 
@@ -228,6 +229,9 @@ export default function AutonomyModal({
   const isAdmin = userRole === 'admin';
   const isOperator = userRole === 'operator' || isAdmin;
   const isViewer = userRole === 'viewer';
+
+  // ROS2 status check
+  const { status: ros2Status } = useROS2Status(params.rosEnabled, 3000);
 
   const statusTone = useMemo(() => {
     if (!connected) return 'bg-red-500/25 text-red-200 border-red-500/60';
@@ -500,9 +504,24 @@ export default function AutonomyModal({
 
           {/* Status */}
           <div className="px-5 pb-3 flex items-center justify-between gap-2 flex-shrink-0">
-            <Badge variant="outline" className={`${statusTone} border`} aria-live="polite">
-              {connected ? (autonomyActive ? 'Active' : 'Connected') : 'Disconnected'}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className={`${statusTone} border`} aria-live="polite">
+                {connected ? (autonomyActive ? 'Active' : 'Connected') : 'Disconnected'}
+              </Badge>
+              {params.rosEnabled && (
+                <Badge 
+                  variant="outline" 
+                  className={`border ${
+                    ros2Status.available 
+                      ? 'bg-emerald-600/25 text-emerald-200 border-emerald-500/70' 
+                      : 'bg-red-500/25 text-red-200 border-red-500/60'
+                  }`}
+                  title={ros2Status.available ? `ROS2 ${ros2Status.mode}` : 'ROS2 not available'}
+                >
+                  ROS2 {ros2Status.available ? '✓' : '✗'}
+                </Badge>
+              )}
+            </div>
             <div className="flex items-center gap-2 text-xs text-neutral-100">
               <Gauge className="h-4 w-4" aria-hidden /> {batteryPct}%
             </div>
@@ -541,14 +560,22 @@ export default function AutonomyModal({
                         </SelectItem>
                         <SelectItem value="line_follow">
                           <div>
-                            <div className="font-medium">Line Follow</div>
-                            <div className="text-xs text-neutral-400">Follows marked lines</div>
+                            <div className="font-medium">Line Follow {params.rosEnabled && ros2Status.available && '🚀'}</div>
+                            <div className="text-xs text-neutral-400">
+                              {params.rosEnabled && ros2Status.available 
+                                ? 'Uses ROS2 follow_line action server' 
+                                : 'Follows marked lines'}
+                            </div>
                           </div>
                         </SelectItem>
                         <SelectItem value="avoid_obstacles">
                           <div>
-                            <div className="font-medium">Avoid Obstacles</div>
-                            <div className="text-xs text-neutral-400">Drives safely around objects</div>
+                            <div className="font-medium">Avoid Obstacles {params.rosEnabled && ros2Status.available && '🚀'}</div>
+                            <div className="text-xs text-neutral-400">
+                              {params.rosEnabled && ros2Status.available 
+                                ? 'Uses ROS2 obstacle_avoidance action server' 
+                                : 'Drives safely around objects'}
+                            </div>
                           </div>
                         </SelectItem>
                         <SelectItem value="patrol">
@@ -559,8 +586,12 @@ export default function AutonomyModal({
                         </SelectItem>
                         <SelectItem value="waypoints">
                           <div>
-                            <div className="font-medium">Waypoints</div>
-                            <div className="text-xs text-neutral-400">Navigate to specific locations</div>
+                            <div className="font-medium">Waypoints {params.rosEnabled && ros2Status.available && '🚀'}</div>
+                            <div className="text-xs text-neutral-400">
+                              {params.rosEnabled && ros2Status.available 
+                                ? 'Uses ROS2 navigate_to_goal action server' 
+                                : 'Navigate to specific locations'}
+                            </div>
                           </div>
                         </SelectItem>
                         <SelectItem value="line_track">Line Track (Legacy)</SelectItem>
@@ -1105,29 +1136,72 @@ export default function AutonomyModal({
                   <Network className="h-4 w-4 text-amber-400" /> ROS Controls & Features
                 </div>
                 <p className="text-xs text-neutral-400">
-                  Connect to Robot Operating System (ROS) for advanced robotics features like SLAM, path planning, and sensor fusion.
+                  Connect to ROS2 for advanced robotics features like SLAM, path planning, sensor fusion, and autonomous navigation.
+                  {ros2Status.available && (
+                    <span className="block mt-1 text-emerald-300">
+                      ✓ ROS2 {ros2Status.mode} mode active
+                    </span>
+                  )}
                 </p>
 
                 <ToggleRow
                   icon={<Network className="h-4 w-4 text-amber-400" />}
-                  label="Enable ROS Integration"
-                  description="ON: Connect to ROS and enable features below. OFF: Disable all ROS features (saves resources)."
+                  label="Enable ROS2 Integration"
+                  description={
+                    ros2Status.available 
+                      ? `ON: ROS2 ${ros2Status.mode} mode active. ${ros2Status.topics.length} topics available.`
+                      : "ON: Connect to ROS2 and enable features below. OFF: Disable all ROS2 features (saves resources)."
+                  }
                   checked={params.rosEnabled}
                   onCheckedChange={(v) => setParam('rosEnabled', v)}
                 />
+                
+                {params.rosEnabled && (
+                  <div className="ml-6 space-y-1 text-xs">
+                    {ros2Status.available ? (
+                      <>
+                        <div className="flex items-center gap-2 text-emerald-300">
+                          <CheckCircle className="h-3 w-3" />
+                          <span>ROS2 {ros2Status.mode} mode connected</span>
+                        </div>
+                        {ros2Status.topics.length > 0 && (
+                          <div className="text-neutral-400">
+                            {ros2Status.topics.length} topic{ros2Status.topics.length !== 1 ? 's' : ''} available
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-2 text-amber-300">
+                        <AlertTriangle className="h-3 w-3" />
+                        <span>ROS2 not available. Enable ROS_NATIVE_MODE or connect to Pi Docker.</span>
+                      </div>
+                    )}
+                    {ros2Status.error && (
+                      <div className="text-red-300 text-[10px]">
+                        Error: {ros2Status.error}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {params.rosEnabled && (
                   <>
                     <div>
-                      <label className="text-xs font-medium text-neutral-200 mb-1 block">ROS Master URI</label>
+                      <label className="text-xs font-medium text-neutral-200 mb-1 block">ROS2 Domain ID</label>
                       <Input
-                        value={params.rosMasterUri}
-                        onChange={(e) => setParam('rosMasterUri', e.target.value)}
-                        placeholder="http://localhost:11311"
+                        value={params.rosMasterUri.replace('http://localhost:', '').replace('11311', '') || '0'}
+                        onChange={(e) => {
+                          const domainId = e.target.value || '0';
+                          setParam('rosMasterUri', `http://localhost:${domainId}`);
+                        }}
+                        placeholder="0"
+                        type="number"
+                        min="0"
+                        max="232"
                         className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs"
                       />
                       <div className="text-[10px] text-neutral-500 mt-1">
-                        Default: http://localhost:11311 (local ROS master)
+                        ROS2 Domain ID (0-232). Default: 0. Devices with same ID can communicate.
                       </div>
                     </div>
 
