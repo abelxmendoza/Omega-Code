@@ -7,6 +7,7 @@ and implements an error boundary for better runtime error handling and user expe
 */
 
 import React from 'react';
+import Head from 'next/head';
 import { AppProps } from 'next/app'; // Import Next.js App component props type
 import { Provider } from 'react-redux'; // Redux Provider for global state management
 import { CommandProvider } from '../context/CommandContext'; // Provides WebSocket and command state management
@@ -14,7 +15,6 @@ import { MacroProvider } from '../context/MacroContext'; // Macro builder + auto
 import store from '../redux/store'; // Redux store configuration
 import '../styles/globals.scss'; // Import global styles
 import { ErrorBoundary } from 'react-error-boundary'; // Error boundary for runtime error handling
-import { SpeedInsights } from '@vercel/speed-insights/next';
 import InstallPrompt from '../components/InstallPrompt';
 
 /**
@@ -49,17 +49,24 @@ Props:
 */
 const MyApp = ({ Component, pageProps }: AppProps) => {
   return (
-    <Provider store={store}> {/* Wrap all components with Redux state management */}
-      <CommandProvider> {/* Provide WebSocket and command logging functionality */}
-        <MacroProvider> {/* Persisted macro editor + runtime */}
-          <ErrorBoundary FallbackComponent={ErrorFallback}> {/* Gracefully handle runtime errors */}
-            <Component {...pageProps} /> {/* Render the current page */}
-            <InstallPrompt /> {/* PWA install prompt */}
-            <SpeedInsights /> {/* Track performance metrics */}
-          </ErrorBoundary>
-        </MacroProvider>
-      </CommandProvider>
-    </Provider>
+    <>
+      <Head>
+        <link rel="icon" type="image/png" href="/image/README/omegatechlogopro-noBackground.png" />
+        <link rel="shortcut icon" type="image/png" href="/image/README/omegatechlogopro-noBackground.png" />
+        <link rel="apple-touch-icon" href="/image/README/omegatechlogopro-noBackground.png" />
+      </Head>
+      <Provider store={store}> {/* Wrap all components with Redux state management */}
+        <CommandProvider> {/* Provide WebSocket and command logging functionality */}
+          <MacroProvider> {/* Persisted macro editor + runtime */}
+            <ErrorBoundary FallbackComponent={ErrorFallback}> {/* Gracefully handle runtime errors */}
+              <Component {...pageProps} /> {/* Render the current page */}
+              <InstallPrompt /> {/* PWA install prompt */}
+              {/* SpeedInsights removed - install @vercel/speed-insights package to enable */}
+            </ErrorBoundary>
+          </MacroProvider>
+        </CommandProvider>
+      </Provider>
+    </>
   );
 };
 

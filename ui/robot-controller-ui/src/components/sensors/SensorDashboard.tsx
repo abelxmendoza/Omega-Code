@@ -18,6 +18,16 @@ import {
   parseLineTrackingPayload,
 } from '@/utils/connectLineTrackerWs';
 import { resolveWsUrl } from '@/utils/resolveWsUrl';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Radar } from 'lucide-react';
+import UltrasonicVisualization from './UltrasonicVisualization';
 
 interface LineTrackingData {
   IR01: number;
@@ -213,6 +223,31 @@ const SensorDashboard: React.FC = () => {
           <p>{ultrasonicData.distance_m.toFixed(2)} m</p>
           <p>{ultrasonicData.distance_inch.toFixed(2)} inches</p>
           <p>{ultrasonicData.distance_feet.toFixed(2)} feet</p>
+          
+          {/* Ultrasonic Visualization Button */}
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                className="mt-3 w-full gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                variant="default"
+              >
+                <Radar className="h-4 w-4" />
+                View Visualization
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-700 bg-gray-900">
+              <DialogHeader>
+                <DialogTitle className="text-white flex items-center gap-2">
+                  <Radar className="h-5 w-5 text-blue-400" />
+                  Ultrasonic Sensor Visualization
+                </DialogTitle>
+              </DialogHeader>
+              <UltrasonicVisualization
+                data={ultrasonicData}
+                isConnected={ultraStatus === 'connected'}
+              />
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </div>
