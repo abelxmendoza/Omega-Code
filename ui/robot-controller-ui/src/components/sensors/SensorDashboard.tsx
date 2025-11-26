@@ -422,7 +422,7 @@ const SensorDashboard: React.FC = () => {
                 View Visualization
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-700 bg-gray-900">
+            <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto border border-gray-700 bg-gray-900">
               <DialogHeader>
                 <DialogTitle className="text-white flex items-center gap-2">
                   <Radar className="h-5 w-5 text-blue-400" />

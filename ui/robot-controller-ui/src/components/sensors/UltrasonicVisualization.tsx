@@ -38,7 +38,7 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({
   const MAX_DISTANCE_CM = 400; // Maximum detection range
   const MIN_DISTANCE_CM = 2; // Minimum detection range
   const FIELD_OF_VIEW_DEGREES = 15; // Typical field of view angle
-  const FORWARD_ARC_DEGREES = 120; // Forward-facing arc to display
+  const FORWARD_ARC_DEGREES = 180; // Forward-facing arc to display (wider view)
 
   // Safely get distance values with defaults
   const safeData = {
@@ -359,13 +359,13 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-gray-900 rounded-lg">
-      <div className="w-full max-w-2xl">
+    <div className="w-full h-full flex flex-col items-center justify-center p-2 bg-gray-900 rounded-lg">
+      <div className="w-full">
         {/* Header with status */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <Radar className="h-5 w-5 text-green-400" />
-            <h3 className="text-lg font-semibold text-white">Forward Sensor Display</h3>
+            <Radar className="h-4 w-4 text-green-400" />
+            <h3 className="text-base font-semibold text-white">Forward Sensor Display</h3>
           </div>
           <div className={`flex items-center gap-2 ${getStatusColor()}`}>
             {safeData.distance_cm < 30 && safeData.distance_cm > 0 && (
@@ -378,44 +378,44 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({
         </div>
 
         {/* Canvas visualization */}
-        <div className="relative bg-black rounded-lg border-2 border-green-500 p-4 flex items-center justify-center shadow-lg shadow-green-500/20">
+        <div className="relative bg-black rounded-lg border-2 border-green-500 p-2 flex items-center justify-center shadow-lg shadow-green-500/20">
           <canvas
             ref={canvasRef}
             className="w-full h-auto rounded"
-            style={{ maxWidth: '600px', maxHeight: '600px', aspectRatio: '1' }}
+            style={{ maxWidth: '500px', maxHeight: '500px', aspectRatio: '1' }}
           />
         </div>
 
         {/* Distance info panel */}
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-gray-800 p-3 rounded-lg text-center border border-green-500/30">
-            <div className="text-xs text-gray-400 mb-1">Centimeters</div>
-            <div className="text-lg font-mono font-bold text-green-400">
+        <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="bg-gray-800 p-2 rounded-lg text-center border border-green-500/30">
+            <div className="text-xs text-gray-400 mb-0.5">Centimeters</div>
+            <div className="text-base font-mono font-bold text-green-400">
               {safeData.distance_cm.toFixed(1)}
             </div>
           </div>
-          <div className="bg-gray-800 p-3 rounded-lg text-center border border-green-500/30">
-            <div className="text-xs text-gray-400 mb-1">Meters</div>
-            <div className="text-lg font-mono font-bold text-green-400">
+          <div className="bg-gray-800 p-2 rounded-lg text-center border border-green-500/30">
+            <div className="text-xs text-gray-400 mb-0.5">Meters</div>
+            <div className="text-base font-mono font-bold text-green-400">
               {safeData.distance_m.toFixed(2)}
             </div>
           </div>
-          <div className="bg-gray-800 p-3 rounded-lg text-center border border-green-500/30">
-            <div className="text-xs text-gray-400 mb-1">Inches</div>
-            <div className="text-lg font-mono font-bold text-green-400">
+          <div className="bg-gray-800 p-2 rounded-lg text-center border border-green-500/30">
+            <div className="text-xs text-gray-400 mb-0.5">Inches</div>
+            <div className="text-base font-mono font-bold text-green-400">
               {safeData.distance_inch.toFixed(2)}
             </div>
           </div>
-          <div className="bg-gray-800 p-3 rounded-lg text-center border border-green-500/30">
-            <div className="text-xs text-gray-400 mb-1">Feet</div>
-            <div className="text-lg font-mono font-bold text-green-400">
+          <div className="bg-gray-800 p-2 rounded-lg text-center border border-green-500/30">
+            <div className="text-xs text-gray-400 mb-0.5">Feet</div>
+            <div className="text-base font-mono font-bold text-green-400">
               {safeData.distance_feet.toFixed(2)}
             </div>
           </div>
         </div>
 
         {/* Status info */}
-        <div className="mt-4 text-xs text-gray-400 text-center">
+        <div className="mt-2 text-xs text-gray-400 text-center">
           {isConnected ? (
             <>
               <span className="text-green-400 inline-block w-2 h-2 rounded-full bg-green-400 mr-1"></span>
