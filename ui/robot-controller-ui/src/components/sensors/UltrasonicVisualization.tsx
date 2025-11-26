@@ -1,16 +1,16 @@
 /*
 # File: /src/components/sensors/UltrasonicVisualization.tsx
 # Summary:
-#   Radar-style visual display of ultrasonic sensor data showing:
-#   - Circular radar display with distance rings
-#   - Sweeping beam animation
-#   - Target blips at detected obstacles
+#   Forward-facing radar display of ultrasonic sensor data showing:
+#   - Forward-facing arc (sensor pointing ahead)
+#   - Green for free space, red for obstacles
+#   - Rotates only when robot rotates (not continuously)
 #   - Real-time distance readings
 */
 
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Radar, AlertTriangle } from 'lucide-react';
 
 interface UltrasonicData {
@@ -23,18 +23,22 @@ interface UltrasonicData {
 interface UltrasonicVisualizationProps {
   data: UltrasonicData;
   isConnected: boolean;
+  robotHeading?: number; // Optional: robot's heading in radians (0 = forward/up)
 }
 
-const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data, isConnected }) => {
+const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ 
+  data, 
+  isConnected,
+  robotHeading = -Math.PI / 2 // Default: pointing forward (up)
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number>();
-  const sweepAngleRef = useRef<number>(0);
-  const [sweepAngle, setSweepAngle] = useState(0);
 
   // HC-SR04 typical specifications
   const MAX_DISTANCE_CM = 400; // Maximum detection range
   const MIN_DISTANCE_CM = 2; // Minimum detection range
   const FIELD_OF_VIEW_DEGREES = 15; // Typical field of view angle
+  const FORWARD_ARC_DEGREES = 120; // Forward-facing arc to display
 
   // Safely get distance values with defaults
   const safeData = {
@@ -63,7 +67,7 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
     };
 
     // Define draw function
-    const draw = (timestamp: number) => {
+    const draw = () => {
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -72,32 +76,36 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
       const centerY = size / 2;
       const radius = Math.min(centerX, centerY) - 40;
 
-      // Draw dark green radar background
+      // Draw dark background
       const bgGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-      bgGradient.addColorStop(0, 'rgba(0, 20, 0, 0.8)');
-      bgGradient.addColorStop(0.5, 'rgba(0, 30, 0, 0.6)');
-      bgGradient.addColorStop(1, 'rgba(0, 40, 0, 0.4)');
+      bgGradient.addColorStop(0, 'rgba(0, 0, 0, 0.9)');
+      bgGradient.addColorStop(0.5, 'rgba(0, 0, 0, 0.7)');
+      bgGradient.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
       ctx.fillStyle = bgGradient;
       ctx.beginPath();
       ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Draw concentric distance rings
-      ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+      // Draw concentric distance rings (only in forward arc)
+      ctx.strokeStyle = 'rgba(100, 100, 100, 0.3)';
       ctx.lineWidth = 1;
       const numRings = 5;
+      const arcStart = robotHeading - (FORWARD_ARC_DEGREES * Math.PI) / 360;
+      const arcEnd = robotHeading + (FORWARD_ARC_DEGREES * Math.PI) / 360;
+      
       for (let i = 1; i <= numRings; i++) {
         const ringRadius = (radius * i) / numRings;
         ctx.beginPath();
-        ctx.arc(centerX, centerY, ringRadius, 0, Math.PI * 2);
+        ctx.arc(centerX, centerY, ringRadius, arcStart, arcEnd);
         ctx.stroke();
       }
 
-      // Draw radial lines (like clock face)
-      ctx.strokeStyle = 'rgba(0, 255, 0, 0.2)';
+      // Draw radial lines within forward arc
+      ctx.strokeStyle = 'rgba(100, 100, 100, 0.2)';
       ctx.lineWidth = 0.5;
-      for (let i = 0; i < 12; i++) {
-        const angle = (i * Math.PI * 2) / 12 - Math.PI / 2; // Start from top
+      const numLines = 8;
+      for (let i = 0; i <= numLines; i++) {
+        const angle = arcStart + ((arcEnd - arcStart) * i) / numLines;
         ctx.beginPath();
         ctx.moveTo(centerX, centerY);
         ctx.lineTo(
@@ -108,16 +116,17 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
       }
 
       // Draw distance labels
-      ctx.fillStyle = 'rgba(0, 255, 0, 0.7)';
+      ctx.fillStyle = 'rgba(200, 200, 200, 0.7)';
       ctx.font = '10px monospace';
       ctx.textAlign = 'center';
       for (let i = 1; i <= numRings; i++) {
         const distance = (MAX_DISTANCE_CM * i) / numRings;
         const labelRadius = (radius * i) / numRings;
+        const labelAngle = robotHeading;
         ctx.fillText(
           `${distance.toFixed(0)}cm`,
-          centerX + labelRadius * 0.7,
-          centerY - labelRadius * 0.7 + 3
+          centerX + Math.cos(labelAngle) * labelRadius * 0.8,
+          centerY + Math.sin(labelAngle) * labelRadius * 0.8 + 3
         );
       }
 
@@ -131,123 +140,187 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
         return;
       }
 
-      // Update sweep angle (rotating beam)
-      sweepAngleRef.current += 0.02; // Rotation speed
-      if (sweepAngleRef.current > Math.PI * 2) {
-        sweepAngleRef.current = 0;
-      }
-      setSweepAngle(sweepAngleRef.current);
-
-      // Draw sweep trail (fading effect)
-      const sweepAngle = sweepAngleRef.current;
-      const fovRadians = (FIELD_OF_VIEW_DEGREES * Math.PI) / 180;
+      // Determine if obstacle detected
+      const obstacleDistance = Math.min(safeData.distance_cm, MAX_DISTANCE_CM);
+      const hasObstacle = obstacleDistance >= MIN_DISTANCE_CM && obstacleDistance <= MAX_DISTANCE_CM;
       
-      // Create sweep gradient
-      const sweepGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-      sweepGradient.addColorStop(0, 'rgba(0, 255, 0, 0.1)');
-      sweepGradient.addColorStop(0.5, 'rgba(0, 255, 0, 0.05)');
-      sweepGradient.addColorStop(1, 'rgba(0, 255, 0, 0)');
+      // Color coding: Green for free space (far), Red for obstacles (close)
+      const isObstacle = safeData.distance_cm < 100; // Obstacle threshold: < 100cm
+      const isCloseObstacle = safeData.distance_cm < 30; // Close obstacle: < 30cm
+      
+      // Draw forward-facing detection arc
+      const fovRadians = (FIELD_OF_VIEW_DEGREES * Math.PI) / 180;
+      const detectionRadius = hasObstacle ? (obstacleDistance / MAX_DISTANCE_CM) * radius : radius;
+      
+      // Create gradient based on obstacle status
+      let arcColor: string;
+      if (isCloseObstacle) {
+        arcColor = 'rgba(255, 0, 0, 0.6)'; // Red for close obstacles
+      } else if (isObstacle) {
+        arcColor = 'rgba(255, 100, 0, 0.5)'; // Orange for medium obstacles
+      } else {
+        arcColor = 'rgba(0, 255, 0, 0.4)'; // Green for free space
+      }
 
-      // Draw sweep sector
-      ctx.fillStyle = sweepGradient;
+      // Draw detection arc (forward-facing)
+      ctx.fillStyle = arcColor;
       ctx.beginPath();
       ctx.moveTo(centerX, centerY);
       ctx.arc(
         centerX,
         centerY,
-        radius,
-        sweepAngle - fovRadians / 2,
-        sweepAngle + fovRadians / 2
+        detectionRadius,
+        robotHeading - fovRadians / 2,
+        robotHeading + fovRadians / 2
       );
       ctx.closePath();
       ctx.fill();
 
-      // Draw active sweep line
-      ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+      // Draw free space arc (green) beyond obstacle if obstacle detected
+      if (hasObstacle && obstacleDistance < MAX_DISTANCE_CM) {
+        const freeSpaceStartRadius = detectionRadius;
+        const freeSpaceEndRadius = radius;
+        
+        const freeSpaceGradient = ctx.createRadialGradient(
+          centerX + Math.cos(robotHeading) * freeSpaceStartRadius,
+          centerY + Math.sin(robotHeading) * freeSpaceStartRadius,
+          0,
+          centerX + Math.cos(robotHeading) * freeSpaceEndRadius,
+          centerY + Math.sin(robotHeading) * freeSpaceEndRadius,
+          freeSpaceEndRadius - freeSpaceStartRadius
+        );
+        freeSpaceGradient.addColorStop(0, 'rgba(0, 255, 0, 0.2)');
+        freeSpaceGradient.addColorStop(1, 'rgba(0, 255, 0, 0.05)');
+        
+        ctx.fillStyle = freeSpaceGradient;
+        ctx.beginPath();
+        ctx.moveTo(
+          centerX + Math.cos(robotHeading - fovRadians / 2) * freeSpaceStartRadius,
+          centerY + Math.sin(robotHeading - fovRadians / 2) * freeSpaceStartRadius
+        );
+        ctx.lineTo(
+          centerX + Math.cos(robotHeading - fovRadians / 2) * freeSpaceEndRadius,
+          centerY + Math.sin(robotHeading - fovRadians / 2) * freeSpaceEndRadius
+        );
+        ctx.arc(
+          centerX,
+          centerY,
+          freeSpaceEndRadius,
+          robotHeading - fovRadians / 2,
+          robotHeading + fovRadians / 2
+        );
+        ctx.lineTo(
+          centerX + Math.cos(robotHeading + fovRadians / 2) * freeSpaceStartRadius,
+          centerY + Math.sin(robotHeading + fovRadians / 2) * freeSpaceStartRadius
+        );
+        ctx.closePath();
+        ctx.fill();
+      } else if (!hasObstacle) {
+        // No obstacle detected - show all green (free space)
+        const freeSpaceGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+        freeSpaceGradient.addColorStop(0, 'rgba(0, 255, 0, 0.3)');
+        freeSpaceGradient.addColorStop(0.5, 'rgba(0, 255, 0, 0.2)');
+        freeSpaceGradient.addColorStop(1, 'rgba(0, 255, 0, 0.05)');
+        
+        ctx.fillStyle = freeSpaceGradient;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(
+          centerX,
+          centerY,
+          radius,
+          robotHeading - fovRadians / 2,
+          robotHeading + fovRadians / 2
+        );
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Draw center line (forward direction)
+      ctx.strokeStyle = isObstacle ? 'rgba(255, 0, 0, 0.8)' : 'rgba(0, 255, 0, 0.8)';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(centerX, centerY);
       ctx.lineTo(
-        centerX + Math.cos(sweepAngle) * radius,
-        centerY + Math.sin(sweepAngle) * radius
+        centerX + Math.cos(robotHeading) * detectionRadius,
+        centerY + Math.sin(robotHeading) * detectionRadius
       );
       ctx.stroke();
 
-      // Draw target blip if obstacle detected
-      const obstacleDistance = Math.min(safeData.distance_cm, MAX_DISTANCE_CM);
-      if (obstacleDistance >= MIN_DISTANCE_CM && obstacleDistance <= MAX_DISTANCE_CM) {
-        const blipRadius = (obstacleDistance / MAX_DISTANCE_CM) * radius;
-        const blipX = centerX + Math.cos(sweepAngle) * blipRadius;
-        const blipY = centerY + Math.sin(sweepAngle) * blipRadius;
-
-        // Draw blip with pulsing effect
+      // Draw obstacle indicator if detected
+      if (hasObstacle) {
+        const obstacleX = centerX + Math.cos(robotHeading) * detectionRadius;
+        const obstacleY = centerY + Math.sin(robotHeading) * detectionRadius;
+        
+        // Draw obstacle blip
         const pulse = Math.sin(Date.now() / 200) * 0.3 + 0.7;
-        const blipSize = safeData.distance_cm < 30 ? 8 : safeData.distance_cm < 100 ? 6 : 4;
+        const blipSize = isCloseObstacle ? 10 : 8;
+        const blipColor = isCloseObstacle ? '255, 0, 0' : '255, 100, 0';
         
         // Outer glow
-        const glowGradient = ctx.createRadialGradient(blipX, blipY, 0, blipX, blipY, blipSize * 2);
-        const color = safeData.distance_cm < 30 ? '255, 0, 0' : safeData.distance_cm < 100 ? '255, 200, 0' : '0, 255, 0';
-        glowGradient.addColorStop(0, `rgba(${color}, ${0.6 * pulse})`);
-        glowGradient.addColorStop(0.5, `rgba(${color}, ${0.3 * pulse})`);
-        glowGradient.addColorStop(1, `rgba(${color}, 0)`);
+        const glowGradient = ctx.createRadialGradient(obstacleX, obstacleY, 0, obstacleX, obstacleY, blipSize * 2);
+        glowGradient.addColorStop(0, `rgba(${blipColor}, ${0.8 * pulse})`);
+        glowGradient.addColorStop(0.5, `rgba(${blipColor}, ${0.4 * pulse})`);
+        glowGradient.addColorStop(1, `rgba(${blipColor}, 0)`);
         
         ctx.fillStyle = glowGradient;
         ctx.beginPath();
-        ctx.arc(blipX, blipY, blipSize * 2, 0, Math.PI * 2);
+        ctx.arc(obstacleX, obstacleY, blipSize * 2, 0, Math.PI * 2);
         ctx.fill();
 
         // Inner blip
-        ctx.fillStyle = `rgba(${color}, ${pulse})`;
+        ctx.fillStyle = `rgba(${blipColor}, ${pulse})`;
         ctx.beginPath();
-        ctx.arc(blipX, blipY, blipSize, 0, Math.PI * 2);
+        ctx.arc(obstacleX, obstacleY, blipSize, 0, Math.PI * 2);
         ctx.fill();
 
-        // Draw line from center to blip
-        ctx.strokeStyle = `rgba(${color}, 0.4)`;
-        ctx.lineWidth = 1;
-        ctx.setLineDash([2, 2]);
-        ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(blipX, blipY);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Draw distance label near blip
-        ctx.fillStyle = `rgba(${color}, 0.9)`;
-        ctx.font = 'bold 11px monospace';
+        // Draw distance label
+        ctx.fillStyle = `rgba(${blipColor}, 0.9)`;
+        ctx.font = 'bold 12px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(
           `${safeData.distance_cm.toFixed(0)}cm`,
-          blipX,
-          blipY - blipSize - 8
+          obstacleX,
+          obstacleY - blipSize - 10
         );
       }
 
-      // Draw center point (sensor)
-      ctx.fillStyle = '#00ff00';
+      // Draw sensor (at center)
+      ctx.fillStyle = isObstacle ? '#ff0000' : '#00ff00';
       ctx.beginPath();
-      ctx.arc(centerX, centerY, 4, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#00ff00';
+      ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Draw crosshair at center
-      ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
-      ctx.lineWidth = 1;
+      // Draw forward indicator arrow
+      ctx.strokeStyle = isObstacle ? 'rgba(255, 0, 0, 0.6)' : 'rgba(0, 255, 0, 0.6)';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(centerX - 10, centerY);
-      ctx.lineTo(centerX + 10, centerY);
-      ctx.moveTo(centerX, centerY - 10);
-      ctx.lineTo(centerX, centerY + 10);
+      const arrowLength = 20;
+      const arrowX = centerX + Math.cos(robotHeading) * arrowLength;
+      const arrowY = centerY + Math.sin(robotHeading) * arrowLength;
+      ctx.moveTo(centerX, centerY);
+      ctx.lineTo(arrowX, arrowY);
+      // Arrow head
+      ctx.lineTo(
+        arrowX - Math.cos(robotHeading + Math.PI * 0.8) * 8,
+        arrowY - Math.sin(robotHeading + Math.PI * 0.8) * 8
+      );
+      ctx.moveTo(arrowX, arrowY);
+      ctx.lineTo(
+        arrowX - Math.cos(robotHeading - Math.PI * 0.8) * 8,
+        arrowY - Math.sin(robotHeading - Math.PI * 0.8) * 8
+      );
       ctx.stroke();
 
       // Draw warning if too close
-      if (safeData.distance_cm < 30 && safeData.distance_cm > 0) {
+      if (isCloseObstacle) {
         ctx.fillStyle = '#ff0000';
-        ctx.font = 'bold 14px monospace';
+        ctx.font = 'bold 16px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('⚠ TOO CLOSE', centerX, 30);
+        ctx.fillText('⚠ OBSTACLE DETECTED', centerX, 30);
       }
 
       animationFrameRef.current = requestAnimationFrame(draw);
@@ -266,7 +339,7 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
       resizeObserver.observe(canvas.parentElement);
     }
 
-    draw(0);
+    draw();
 
     return () => {
       if (animationFrameRef.current) {
@@ -274,7 +347,7 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
       }
       resizeObserver.disconnect();
     };
-  }, [safeData.distance_cm, safeData.distance_m, safeData.distance_inch, safeData.distance_feet, isConnected]);
+  }, [safeData.distance_cm, safeData.distance_m, safeData.distance_inch, safeData.distance_feet, isConnected, robotHeading]);
 
   // Determine status color
   const getStatusColor = () => {
@@ -291,8 +364,8 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
         {/* Header with status */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Radar className="h-5 w-5 text-green-400 animate-spin" style={{ animationDuration: '3s' }} />
-            <h3 className="text-lg font-semibold text-white">Radar Display</h3>
+            <Radar className="h-5 w-5 text-green-400" />
+            <h3 className="text-lg font-semibold text-white">Forward Sensor Display</h3>
           </div>
           <div className={`flex items-center gap-2 ${getStatusColor()}`}>
             {safeData.distance_cm < 30 && safeData.distance_cm > 0 && (
@@ -345,10 +418,14 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
         <div className="mt-4 text-xs text-gray-400 text-center">
           {isConnected ? (
             <>
-              <span className="text-green-400">●</span> Active • Range: {MIN_DISTANCE_CM}-{MAX_DISTANCE_CM} cm • FOV: {FIELD_OF_VIEW_DEGREES}°
+              <span className="text-green-400 inline-block w-2 h-2 rounded-full bg-green-400 mr-1"></span>
+              Active • Range: {MIN_DISTANCE_CM}-{MAX_DISTANCE_CM} cm • FOV: {FIELD_OF_VIEW_DEGREES}° • Forward-facing
             </>
           ) : (
-            <span className="text-red-400">●</span> Waiting for sensor connection...
+            <>
+              <span className="text-red-400 inline-block w-2 h-2 rounded-full bg-red-400 mr-1"></span>
+              Waiting for sensor connection...
+            </>
           )}
         </div>
       </div>
