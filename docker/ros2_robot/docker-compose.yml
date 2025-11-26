@@ -1,11 +1,16 @@
 version: "3.8"
 
+# Project name for consistent container naming
+# Matches COMPOSE_PROJECT_NAME env var used by backend
+name: ros2_robot
+
 services:
   telemetry_publisher:
     build:
       context: ../..
       dockerfile: docker/ros2_robot/Dockerfile
     image: omega_robot:latest
+    container_name: ros2_robot_telemetry_publisher
     network_mode: host
     environment:
       - ROS_DOMAIN_ID=0
@@ -19,6 +24,7 @@ services:
       context: ../..
       dockerfile: docker/ros2_robot/Dockerfile
     image: omega_robot:latest
+    container_name: ros2_robot_telemetry_listener
     network_mode: host
     environment:
       - ROS_DOMAIN_ID=0

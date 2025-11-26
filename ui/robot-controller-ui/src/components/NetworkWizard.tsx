@@ -409,77 +409,122 @@ const NetworkWizard: React.FC = () => {
       </div>
 
       {/* Join / Forget (full controls) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-        <input
-          className={field}
-          placeholder="SSID"
-          value={ssid}
-          onChange={(e) => setSsid(e.target.value)}
-          autoCapitalize="none" autoCorrect="off" spellCheck={false}
-        />
-        <input
-          className={field}
-          placeholder="Password"
-          value={pass}
-          onChange={(e) => setPass(e.target.value)}
-          type="password"
-        />
-        <div className="flex gap-2">
+      <div className="bg-black/20 border border-white/10 rounded-md p-3 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-semibold">Connect to Wi-Fi Network</div>
           <button
-            onClick={() => join(ssid.trim(), pass)}
-            disabled={busy || !ssid}
-            className={`px-3 py-1 rounded text-sm ${busy ? 'bg-emerald-900' : 'bg-emerald-600 hover:bg-emerald-500'}`}
-            title="Join network"
+            onClick={doScan}
+            disabled={busy}
+            className={`px-2 py-1 rounded text-xs ${busy ? 'bg-zinc-700' : 'bg-blue-600 hover:bg-blue-500'}`}
+            title="Scan for nearby Wi-Fi networks"
           >
-            Join
+            🔍 Scan Networks
           </button>
-          <button
-            onClick={() => forget(ssid.trim())}
-            disabled={busy || !ssid}
-            className={`px-3 py-1 rounded text-sm ${busy ? 'bg-rose-900' : 'bg-rose-600 hover:bg-rose-500'}`}
-            title="Forget network"
-          >
-            Forget
-          </button>
+        </div>
+        
+        <div className="text-xs text-white/60 mb-2">
+          <strong>💡 What is SSID?</strong> SSID is your Wi-Fi network name (the name you see when connecting your phone/laptop to Wi-Fi).
+          Click "Scan Networks" above to see available networks, then click "Use" on any network to auto-fill it.
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <div>
+            <label className="text-xs text-white/70 mb-1 block">Network Name (SSID)</label>
+            <input
+              className={field}
+              placeholder="Select from list below or type network name"
+              value={ssid}
+              onChange={(e) => setSsid(e.target.value)}
+              autoCapitalize="none" autoCorrect="off" spellCheck={false}
+              title="Wi-Fi network name (or select from scanned list below)"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/70 mb-1 block">Password</label>
+            <input
+              className={field}
+              placeholder="Wi-Fi password (if required)"
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
+              type="password"
+              title="Wi-Fi password (leave empty for open networks)"
+            />
+          </div>
+          <div className="flex gap-2 items-end">
+            <button
+              onClick={() => join(ssid.trim(), pass)}
+              disabled={busy || !ssid}
+              className={`px-3 py-2 rounded text-sm flex-1 ${busy ? 'bg-emerald-900' : 'bg-emerald-600 hover:bg-emerald-500'}`}
+              title="Connect to this Wi-Fi network"
+            >
+              Join
+            </button>
+            <button
+              onClick={() => forget(ssid.trim())}
+              disabled={busy || !ssid}
+              className={`px-3 py-2 rounded text-sm ${busy ? 'bg-rose-900' : 'bg-rose-600 hover:bg-rose-500'}`}
+              title="Forget saved network"
+            >
+              Forget
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Scan list */}
-      <div className="bg-black/15 p-2 rounded border border-white/10">
+      <div className="bg-black/15 p-3 rounded border border-white/10">
         <div className="flex items-center justify-between mb-2">
-          <div className="text-sm font-semibold">Nearby Networks</div>
+          <div className="text-sm font-semibold">Nearby Wi-Fi Networks</div>
           <button
             onClick={doScan}
             disabled={busy}
-            className={`px-2 py-1 rounded text-xs ${busy ? 'bg-zinc-700' : 'bg-zinc-600 hover:bg-zinc-500'}`}
-            title="Scan Wi-Fi"
+            className={`px-3 py-1.5 rounded text-xs font-medium ${busy ? 'bg-zinc-700' : 'bg-blue-600 hover:bg-blue-500'}`}
+            title="Scan for nearby Wi-Fi networks"
           >
-            Scan
+            {busy ? 'Scanning...' : '🔍 Scan'}
           </button>
         </div>
         {scan.length === 0 ? (
-          <div className="text-xs text-white/50">No results yet.</div>
+          <div className="text-xs text-white/50 py-4 text-center">
+            No networks found. Click &quot;Scan&quot; to search for nearby Wi-Fi networks.
+          </div>
         ) : (
-          <ul className="space-y-1 max-h-44 overflow-auto pr-1">
+          <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
             {scan.map((n, idx) => (
-              <li key={`${n.ssid}-${idx}`} className="flex items-center justify-between gap-2">
-                <div className="truncate">
-                  <span className="text-sm">{n.ssid || '(hidden)'}</span>
-                  <span className="text-xs text-white/50 ml-2">
-                    {n.secure ? '🔒' : '🔓'}{' '}
-                    {typeof n.rssi === 'number' ? `${n.rssi} dBm` : ''}
-                  </span>
+              <button
+                key={`${n.ssid}-${idx}`}
+                onClick={() => { 
+                  setSsid(n.ssid); 
+                  setMsg(`Selected: ${n.ssid}${n.secure ? ' (password required)' : ' (open network)'}`);
+                }}
+                className="w-full flex items-center justify-between gap-3 p-2 rounded bg-black/20 hover:bg-black/40 border border-white/10 hover:border-blue-500/50 transition-all text-left"
+                title={`Click to select "${n.ssid}"${n.secure ? ' (requires password)' : ' (open network)'}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium truncate">{n.ssid || '(hidden)'}</span>
+                    {n.secure ? (
+                      <span className="text-xs text-amber-400" title="Password required">🔒</span>
+                    ) : (
+                      <span className="text-xs text-green-400" title="Open network (no password)">🔓</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-white/50 mt-0.5">
+                    {typeof n.rssi === 'number' ? (
+                      <span className={n.rssi > -60 ? 'text-green-400' : n.rssi > -75 ? 'text-yellow-400' : 'text-red-400'}>
+                        Signal: {n.rssi} dBm {n.rssi > -60 ? '(Strong)' : n.rssi > -75 ? '(Good)' : '(Weak)'}
+                      </span>
+                    ) : (
+                      <span>Signal strength unknown</span>
+                    )}
+                  </div>
                 </div>
-                <button
-                  onClick={() => { setSsid(n.ssid); }}
-                  className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-xs shrink-0"
-                  title="Use this SSID"
-                >
-                  Use
-                </button>
-              </li>
+                <div className="text-xs text-blue-400 font-medium shrink-0">
+                  Use →
+                </div>
+              </button>
             ))}
-          </ul>
+          </div>
         )}
       </div>
 
@@ -572,31 +617,41 @@ const QuickActionsRow: React.FC<{
         </button>
 
         <form onSubmit={doWifi} className="flex flex-wrap items-center gap-2 grow">
-          <input
-            className="bg-zinc-900 border border-white/10 rounded px-2 py-1 text-xs min-w-[10rem] grow"
-            placeholder="SSID"
-            value={ssid}
-            onChange={(e) => setSsid(e.target.value)}
-            autoCapitalize="none" autoCorrect="off" spellCheck={false}
-          />
-          <input
-            className="bg-zinc-900 border border-white/10 rounded px-2 py-1 text-xs min-w-[10rem] grow"
-            placeholder="Wi-Fi password"
-            type="password"
-            value={pass}
-            onChange={(e) => setPass(e.target.value)}
-          />
-          <button
-            type="submit"
-            disabled={!!busy}
-            className={cx(
-              'text-xs px-2 py-1 rounded text-white',
-              busy === 'wifi' ? 'bg-slate-700' : 'bg-sky-600 hover:bg-sky-500'
-            )}
-            title="Connect to Wi-Fi"
-          >
-            Wi-Fi →
-          </button>
+          <div className="flex-1 min-w-[10rem]">
+            <label className="text-xs text-white/70 mb-1 block">Network Name (SSID)</label>
+            <input
+              className="bg-zinc-900 border border-white/10 rounded px-2 py-1 text-xs w-full"
+              placeholder="Select from list below or type network name"
+              value={ssid}
+              onChange={(e) => setSsid(e.target.value)}
+              autoCapitalize="none" autoCorrect="off" spellCheck={false}
+              title="Wi-Fi network name (select from scanned list or type manually)"
+            />
+          </div>
+          <div className="flex-1 min-w-[10rem]">
+            <label className="text-xs text-white/70 mb-1 block">Password</label>
+            <input
+              className="bg-zinc-900 border border-white/10 rounded px-2 py-1 text-xs w-full"
+              placeholder="Wi-Fi password (if required)"
+              type="password"
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
+              title="Wi-Fi password (leave empty for open networks)"
+            />
+          </div>
+          <div className="flex items-end">
+            <button
+              type="submit"
+              disabled={!!busy}
+              className={cx(
+                'text-xs px-3 py-1 rounded text-white h-7',
+                busy === 'wifi' ? 'bg-slate-700' : 'bg-sky-600 hover:bg-sky-500'
+              )}
+              title="Connect to Wi-Fi network"
+            >
+              Connect
+            </button>
+          </div>
         </form>
       </div>
     </div>

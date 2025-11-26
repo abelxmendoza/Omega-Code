@@ -34,7 +34,10 @@ except ImportError as e:
     log.warning(f"rclpy not available: {e}. Native ROS2 features disabled.")
     log.warning("Install with: sudo apt install ros-rolling-rclpy")
     rclpy = None
-    Node = None
+    # Create a dummy base class when Node is not available
+    class _DummyNode:
+        pass
+    Node = _DummyNode
 
 
 class ROS2NativeBridge(Node):

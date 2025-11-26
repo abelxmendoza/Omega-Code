@@ -382,33 +382,43 @@ const QuickActions: React.FC<{
           className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3"
           onSubmit={(e) => { e.preventDefault(); connectWifi(ssid, psk); }}
         >
-          <input
-            className="px-2 py-1.5 rounded bg-zinc-800 text-white border border-white/10"
-            placeholder="SSID"
-            value={ssid}
-            onChange={(e) => setSsid(e.target.value)}
-            required
-            autoComplete="off"
-          />
-          <input
-            className="px-2 py-1.5 rounded bg-zinc-800 text-white border border-white/10"
-            placeholder="Password"
-            value={psk}
-            onChange={(e) => setPsk(e.target.value)}
-            required
-            autoComplete="off"
-            type="password"
-          />
-          <button
-            type="submit"
-            className={`px-3 py-1.5 rounded text-sm text-white ${
-              busy === 'wifi' ? 'bg-amber-600' : 'bg-green-600 hover:bg-green-700'
-            }`}
-            disabled={!!busy}
-            title="Send Wi-Fi connect request"
-          >
-            Connect Wi-Fi
-          </button>
+          <div>
+            <label className="text-xs text-white/70 mb-1 block">Network Name (SSID)</label>
+            <input
+              className="px-2 py-1.5 rounded bg-zinc-800 text-white border border-white/10 w-full"
+              placeholder="Your Wi-Fi network name"
+              value={ssid}
+              onChange={(e) => setSsid(e.target.value)}
+              required
+              autoComplete="off"
+              title="SSID = Wi-Fi network name (the name you see when connecting your phone/laptop)"
+            />
+            <div className="text-[10px] text-white/50 mt-0.5">💡 SSID = Your Wi-Fi network name</div>
+          </div>
+          <div>
+            <label className="text-xs text-white/70 mb-1 block">Password</label>
+            <input
+              className="px-2 py-1.5 rounded bg-zinc-800 text-white border border-white/10 w-full"
+              placeholder="Wi-Fi password"
+              value={psk}
+              onChange={(e) => setPsk(e.target.value)}
+              required
+              autoComplete="off"
+              type="password"
+            />
+          </div>
+          <div className="flex items-end">
+            <button
+              type="submit"
+              className={`px-3 py-1.5 rounded text-sm text-white w-full ${
+                busy === 'wifi' ? 'bg-amber-600' : 'bg-green-600 hover:bg-green-700'
+              }`}
+              disabled={!!busy}
+              title="Connect robot to Wi-Fi network"
+            >
+              Connect Wi-Fi
+            </button>
+          </div>
         </form>
       )}
 
@@ -532,6 +542,20 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
 
         {/* Overall status + battery */}
         <div className="flex items-center space-x-4">
+          {/* Pi Connection Status Indicator */}
+          <div className="flex items-center text-sm">
+            <span className="opacity-80">Pi:</span>
+            {allGood ? (
+              <CheckCircle aria-label="Connected to Pi" className="text-green-500 ml-2" title="Connected to Pi - All services online" />
+            ) : upCount > 0 ? (
+              <div className="ml-2 flex items-center gap-1" title={`Partially connected - ${upCount}/${states.length} services online`}>
+                <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
+                <span className="text-yellow-400 text-xs">{upCount}/{states.length}</span>
+              </div>
+            ) : (
+              <XCircle aria-label="Not connected to Pi" className="text-red-500 ml-2" title="Not connected to Pi - Check network settings" />
+            )}
+          </div>
           <div className="flex items-center text-sm">
             <span className="opacity-80">Status:</span>
             {allGood ? (

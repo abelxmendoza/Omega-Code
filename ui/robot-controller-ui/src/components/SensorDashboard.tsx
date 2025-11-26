@@ -41,7 +41,14 @@ const SensorDashboard: React.FC<SensorDashboardProps> = ({
   const ultrasonicWs = useRobustWebSocket({
     url: fallbackConfig.wsUrls.ultrasonic[0] || 'ws://localhost:8080/ultrasonic',
     onMessage: (data) => {
-      if (data?.distance !== undefined) {
+      // Handle Go server format: {status, distance_cm, distance_m, distance_inch, distance_feet}
+      if (data?.distance_cm !== undefined) {
+        setUltrasonicData({ 
+          distance: data.distance_cm, 
+          status: data.status === 'success' ? 'connected' : 'error' 
+        });
+      } else if (data?.distance !== undefined) {
+        // Fallback for other formats
         setUltrasonicData({ distance: data.distance, status: 'connected' });
       } else if (data?.type === 'sample' && data?.distance !== undefined) {
         setUltrasonicData({ distance: data.distance, status: 'connected' });
