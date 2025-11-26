@@ -14,10 +14,9 @@ import type { ColorResult } from 'react-color';
 import { SketchPicker } from 'react-color';
 import { connectLightingWs } from '../../utils/connectLightingWs';
 
-const LIGHTING_MODES = ['single', 'rainbow'] as const;
-const LIGHTING_PATTERNS = ['static', 'pulse', 'blink', 'music'] as const;
-
-//const LIGHTING_PATTERNS = ['static', 'pulse', 'blink', 'lightshow'] as const;
+// Updated to match backend capabilities
+const LIGHTING_MODES = ['single', 'rainbow', 'dual'] as const;
+const LIGHTING_PATTERNS = ['static', 'pulse', 'blink', 'fade', 'chase', 'rainbow', 'lightshow', 'music'] as const;
 
 type LightingMode = (typeof LIGHTING_MODES)[number];
 type LightingPattern = (typeof LIGHTING_PATTERNS)[number];
@@ -247,20 +246,25 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     }
 
     if (!newState) {
+      // Send complete command with pattern='off' to turn off LEDs
       send({
-        type: 'lighting_command',
-        command: 'SET_LED',
-        color: 'off',
+        color: '#000000',
+        mode: 'single',
+        pattern: 'off',
+        interval: 0,
+        brightness: 0,
       });
       console.log('LED OFF command sent!');
     } else {
-      // Send hex color directly to backend
+      // Send complete command with current settings to turn on LEDs
       send({
-        type: 'lighting_command',
-        command: 'SET_LED',
-        color: color1, // Send hex color directly
+        color: color1,
+        mode: mode,
+        pattern: pattern,
+        interval: pattern !== 'static' ? intervalMs : 0,
+        brightness: brightness / 100, // Convert 0-100 to 0-1
       });
-      console.log('LED ON command sent with color:', color1);
+      console.log('LED ON command sent with color:', color1, 'mode:', mode, 'pattern:', pattern);
     }
   };
 
@@ -274,11 +278,20 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       return;
     }
     
-    // Send hex color directly to backend
+    // Validate interval for dynamic patterns
+    if (pattern !== 'static' && intervalMs <= 0) {
+      console.error('Interval must be greater than 0 for dynamic patterns.');
+      return;
+    }
+    
+    // Send complete command payload matching backend LightingCommand struct
+    // Backend expects: { color, mode, pattern, interval, brightness }
     const commandData = {
-      type: 'lighting_command',
-      command: 'SET_LED',
-      color: color1, // Send hex color directly
+      color: color1, // Hex string like "#ff0000"
+      mode: mode,
+      pattern: pattern,
+      interval: pattern !== 'static' ? intervalMs : 0,
+      brightness: brightness / 100, // Convert 0-100% to 0-1.0
     };
     send(commandData);
     console.log('LED settings applied:', commandData);
@@ -413,6 +426,26 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
               <p className="mt-2 text-sm text-green-200">
                 Music mode listens to the default microphone when available and generates a
                 beat-reactive light show. Reduce the interval for faster reaction times.
+              </p>
+            )}
+            {pattern === 'fade' && (
+              <p className="mt-2 text-sm text-green-200">
+                Fade creates smooth color transitions. Adjust interval to control fade speed.
+              </p>
+            )}
+            {pattern === 'chase' && (
+              <p className="mt-2 text-sm text-green-200">
+                Chase creates a moving light effect across the LED strip. Lower interval = faster chase.
+              </p>
+            )}
+            {pattern === 'lightshow' && (
+              <p className="mt-2 text-sm text-green-200">
+                Lightshow creates a multi-stage animated display with rotating color bands and sparkles.
+              </p>
+            )}
+            {pattern === 'rainbow' && (
+              <p className="mt-2 text-sm text-green-200">
+                Rainbow displays a full spectrum sweep across all LEDs. Interval controls animation speed.
               </p>
             )}
           </div>

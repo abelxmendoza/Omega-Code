@@ -12,6 +12,7 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   connectLineTrackerWs,
   startJsonHeartbeat,
@@ -334,23 +335,23 @@ const SensorDashboard: React.FC = () => {
     : `Ultrasonic: ${ultraStatus}${ultraLastSuccess ? ` • Last success: ${ultraLastSuccess.toLocaleTimeString()}` : ''}${ultraErrorCount > 0 ? ` • Errors: ${ultraErrorCount}` : ''}`;
 
   return (
-    <div className="sensor-dashboard bg-gray-800 text-white p-4 rounded-lg shadow-md max-w-6xl mx-auto">
+    <div className="sensor-dashboard bg-gray-800 text-white p-4 rounded-lg shadow-md w-full max-w-full mx-auto overflow-hidden">
       <h2 className="text-lg font-bold mb-4 text-center">Sensor Dashboard</h2>
 
-      <div className="sensor-container grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <div className="sensor-container grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
         {/* Line Tracking */}
-        <div className="line-tracking bg-gray-900 p-4 rounded-lg shadow-lg">
+        <div className="line-tracking bg-gray-900 p-4 rounded-lg shadow-lg overflow-hidden">
           <div className="flex items-center justify-between mb-2">
-            <strong className="block text-sm underline">Line Tracking Sensor</strong>
+            <strong className="block text-sm underline truncate">Line Tracking Sensor</strong>
             <StatusDot status={lineStatus} title={lineTitle} />
           </div>
-          <p>IR01: {lineTrackingData.IR01}</p>
-          <p>IR02: {lineTrackingData.IR02}</p>
-          <p>IR03: {lineTrackingData.IR03}</p>
+          <p className="truncate">IR01: {lineTrackingData.IR01}</p>
+          <p className="truncate">IR02: {lineTrackingData.IR02}</p>
+          <p className="truncate">IR03: {lineTrackingData.IR03}</p>
         </div>
 
         {/* Ultrasonic */}
-        <div className="ultrasonic-distance bg-gray-900 p-4 rounded-lg shadow-lg">
+        <div className="ultrasonic-distance bg-gray-900 p-4 rounded-lg shadow-lg overflow-hidden">
           <div className="flex items-center justify-between mb-2">
             <strong className="block text-sm underline">Ultrasonic Distance</strong>
             <StatusDot 
@@ -420,8 +421,8 @@ const SensorDashboard: React.FC = () => {
               <Radar className="h-4 w-4" />
               {showUltraVisualization ? 'Hide Visualization' : 'Show Visualization'}
             </Button>
-            {/* Popup - shows when clicked */}
-            {showUltraVisualization && (
+            {/* Popup - shows when clicked - using portal to avoid overflow */}
+            {showUltraVisualization && typeof window !== 'undefined' && createPortal(
               <>
                 {/* Backdrop */}
                 <div 
@@ -432,8 +433,9 @@ const SensorDashboard: React.FC = () => {
                 <div 
                   className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[380px] max-w-[90vw] max-h-[85vh] overflow-auto transition-all duration-200 z-[9999]"
                   onClick={(e) => e.stopPropagation()}
+                  style={{ maxWidth: 'min(380px, 90vw)', maxHeight: 'min(85vh, 600px)' }}
                 >
-                  <div className="bg-gray-900 border-2 border-green-500 rounded-lg shadow-xl p-2 relative">
+                  <div className="bg-gray-900 border-2 border-green-500 rounded-lg shadow-xl p-2 relative overflow-hidden">
                     <button
                       onClick={() => setShowUltraVisualization(false)}
                       className="absolute top-1 right-1 text-white bg-red-500 hover:bg-red-600 z-[10000] text-xl leading-none w-7 h-7 flex items-center justify-center rounded-full font-bold shadow-lg"
@@ -448,7 +450,8 @@ const SensorDashboard: React.FC = () => {
                     />
                   </div>
                 </div>
-              </>
+              </>,
+              document.body
             )}
           </div>
         </div>

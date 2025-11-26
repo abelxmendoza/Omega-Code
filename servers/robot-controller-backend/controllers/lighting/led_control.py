@@ -21,7 +21,14 @@ import traceback
 from functools import lru_cache
 from rpi_ws281x import Adafruit_NeoPixel, Color, WS2811_STRIP_GRB
 
-from controllers.lighting.patterns import music_visualizer
+from controllers.lighting.patterns import (
+    music_visualizer,
+    fade,
+    chase,
+    blink,
+    color_wipe as pattern_color_wipe,
+    dual_color,
+)
 
 # Cache common Color objects to reduce allocations
 _COLOR_CACHE = {
@@ -273,11 +280,18 @@ class LedController:
             elif pattern == "static":
                 self.color_wipe(Color(r, g, b), wait_ms=10)
             elif pattern == "blink":
-                for _ in range(5):
-                    self.color_wipe(Color(r, g, b), wait_ms=10)
-                    time.sleep(interval / 1000)
-                    self.clear_strip()
-                    time.sleep(interval / 1000)
+                # Use pattern function for consistency
+                from rpi_ws281x import Color as WsColor
+                blink(self.strip, WsColor(r, g, b), WsColor(0, 0, 0), delay=interval / 1000.0)
+                self.is_on = True
+            elif pattern == "fade":
+                # Fade pattern - smooth color transitions
+                fade(self.strip, (r, g, b), None, steps=50, delay=interval / 1000.0 / 50)
+                self.is_on = True
+            elif pattern == "chase":
+                # Chase pattern - moving chase effect
+                from rpi_ws281x import Color as WsColor
+                chase(self.strip, WsColor(r, g, b), WsColor(0, 0, 0), delay=interval / 1000.0 / self.num_pixels)
                 self.is_on = True
             elif pattern == "pulse":
                 for _ in range(5):
@@ -304,7 +318,7 @@ class LedController:
                 )
                 self.is_on = True
             else:
-                raise ValueError(f"Unknown pattern: {pattern} (supported: static, blink, pulse, rainbow, lightshow, music, off)")
+                raise ValueError(f"Unknown pattern: {pattern} (supported: static, blink, pulse, fade, chase, rainbow, lightshow, music, off)")
 
             self.is_on = True
 

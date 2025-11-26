@@ -305,18 +305,24 @@ export default function Home() {
     MOCK_WS || (ws.current?.readyState === WebSocket.OPEN);
 
   return (
-    <div className="cyber-theme min-h-screen">
+    <div className="cyber-theme min-h-screen overflow-x-hidden">
       <Head>
         <title>Robot Controller</title>
         <meta name="description" content="Control your robot" />
         <link rel="icon" href="/favicon.ico" />
+        <style jsx global>{`
+          html, body {
+            overflow-x: hidden;
+            max-width: 100vw;
+          }
+        `}</style>
       </Head>
 
       {/* Header computes live service dots internally; passing battery for now */}
       <Header batteryLevel={75} />
 
-      <main className="cyber-content p-4 space-y-4">
-        <div className="flex justify-center items-center space-x-8">
+      <main className="cyber-content p-4 space-y-4 overflow-x-hidden">
+        <div className="flex flex-wrap justify-center items-start gap-4 lg:gap-8">
           <div className="flex-shrink-0">
             <CarControlPanel />
 
@@ -369,33 +375,33 @@ export default function Home() {
           </div>
 
           {/* Framed camera (via proxy to avoid mixed content/CORS) */}
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 w-full lg:w-auto">
             <CameraFrame
               src={cameraProxyUrl}
               title="Front Camera"
-              className="w-[720px] max-w-[42vw]"
+              className="w-full max-w-[720px] lg:max-w-[42vw]"
             />
           </div>
 
-          <div className="flex-shrink-0 flex flex-col items-center">
+          <div className="flex-shrink-0 flex flex-col items-center w-full lg:w-auto">
             <CameraControlPanel />
           </div>
         </div>
 
-        <div className="flex justify-center items-center space-x-6 mt-6">
-          <div className="w-1/3">
+        <div className="flex flex-wrap justify-center items-start gap-4 lg:gap-6 mt-6">
+          <div className="w-full lg:w-1/3 max-w-full">
             <ErrorBoundary>
               <SensorDashboard />
             </ErrorBoundary>
           </div>
-          <div className="flex space-x-4">
-            <div className="w-64">
+          <div className="flex flex-wrap gap-4 lg:gap-4 flex-1 min-w-0">
+            <div className="w-full sm:w-64 min-w-0">
               <SpeedControl />
             </div>
-            <div className="w-72">
+            <div className="w-full sm:w-72 min-w-0">
               <MotorTelemetryPanel />
             </div>
-            <div className="w-72">
+            <div className="w-full sm:w-72 min-w-0">
               <EnhancedServoTelemetryPanel />
             </div>
           </div>
