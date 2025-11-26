@@ -18,7 +18,7 @@ Supported Colors:
 - RGB: three integer values from 0–255
 """
 
-from led_control import LedController
+from controllers.lighting.led_control import LedController
 from rpi_ws281x import Color
 import sys
 

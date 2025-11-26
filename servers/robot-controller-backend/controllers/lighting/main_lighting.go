@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -31,10 +32,23 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Path to your privileged wrapper that runs the Python script via sudo.
-// Make sure this exists and is executable:
-//   /home/omega1/Omega-Code/servers/robot-controller-backend/controllers/lighting/run_led.sh
-const RUN_LED = "/home/omega1/Omega-Code/servers/robot-controller-backend/controllers/lighting/run_led.sh"
+// getRunLedPath returns the path to the privileged wrapper script.
+// Can be overridden via RUN_LED_PATH environment variable.
+func getRunLedPath() string {
+	if path := os.Getenv("RUN_LED_PATH"); path != "" {
+		return path
+	}
+	// Default: assume script is in same directory as this Go binary
+	// Try to resolve relative to current working directory
+	if wd, err := os.Getwd(); err == nil {
+		scriptPath := wd + "/run_led.sh"
+		if _, err := os.Stat(scriptPath); err == nil {
+			return scriptPath
+		}
+	}
+	// Fallback to absolute path (for Raspberry Pi)
+	return "/home/omega1/Omega-Code/servers/robot-controller-backend/controllers/lighting/run_led.sh"
+}
 
 // LightingCommand supports both string and int color fields for compatibility.
 // Brightness is a *float64 so we can tell if it was omitted (nil) vs provided (including 0).
@@ -150,11 +164,12 @@ func handleLighting(ws *websocket.Conn) {
 			fmt.Sprintf("%.3f", brightness),
 		}
 
-		log.Printf("Executing: %s %v", RUN_LED, args)
+		runLedPath := getRunLedPath()
+		log.Printf("Executing: %s %v", runLedPath, args)
 
 		// Run the wrapper with a short timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		cmd := exec.CommandContext(ctx, RUN_LED, args...)
+		cmd := exec.CommandContext(ctx, runLedPath, args...)
 		output, err := cmd.CombinedOutput()
 		cancel()
 
@@ -184,9 +199,25 @@ func handleLighting(ws *websocket.Conn) {
 	}
 }
 
-// main function starts the lighting WebSocket server on port 8082
+// main function starts the lighting WebSocket server
 func main() {
-	http.HandleFunc("/lighting", func(w http.ResponseWriter, r *http.Request) {
+	// Get configuration from environment variables
+	port := os.Getenv("PORT_LIGHTING")
+	if port == "" {
+		port = "8082"
+	}
+	path := os.Getenv("LIGHTING_PATH")
+	if path == "" {
+		path = "/lighting"
+	}
+
+	// Verify run_led.sh exists
+	runLedPath := getRunLedPath()
+	if _, err := os.Stat(runLedPath); os.IsNotExist(err) {
+		log.Fatalf("ERROR: run_led.sh not found at %s. Set RUN_LED_PATH environment variable or ensure run_led.sh exists.", runLedPath)
+	}
+
+	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Printf("WebSocket upgrade failed: %v", err)
@@ -196,6 +227,7 @@ func main() {
 		handleLighting(conn)
 	})
 
-	log.Println("Lighting WebSocket server is running on port 8082")
-	log.Fatal(http.ListenAndServe(":8082", nil))
+	log.Printf("Lighting WebSocket server is running on port %s at path %s", port, path)
+	log.Printf("Using LED script: %s", runLedPath)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
