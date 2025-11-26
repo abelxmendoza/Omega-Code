@@ -149,6 +149,7 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
 
         wsObj.onopen = () => {
           if (!mounted.current) return;
+          console.log('[LedModal] ✅ WebSocket opened successfully');
           setServerStatus('connected');
           setLatencyMs(null);
           startHeartbeat();
@@ -176,7 +177,9 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
           if (!mounted.current) return;
           try {
             const data = JSON.parse(event.data);
+            console.log('[LedModal] 📥 Received message:', data);
             if (data?.status === 'connected' && data?.service === 'lighting') {
+              console.log('[LedModal] ✅ Welcome message received, status set to connected');
               setServerStatus('connected');
             }
             if (data?.type === 'pong' && typeof data?.ts === 'number') {
@@ -185,8 +188,16 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
               setLatencyMs(Math.max(0, Math.round(end - start)));
               heartbeatInFlightAt.current = null;
             }
-          } catch {
-            // ignore non-JSON messages
+            if (data?.type === 'lighting_result') {
+              console.log('[LedModal] 📨 Lighting result:', data);
+              if (data?.ok === false) {
+                console.error('[LedModal] ❌ Lighting command failed:', data?.error);
+              } else {
+                console.log('[LedModal] ✅ Lighting command succeeded');
+              }
+            }
+          } catch (error) {
+            console.error('[LedModal] ❌ Failed to parse message:', error, 'Raw:', event.data);
           }
         };
       } catch (err) {
@@ -244,41 +255,75 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
 
   const send = (payload: Record<string, unknown>) => {
     if (!wsOpen()) {
-      console.error('Lighting WS not open.');
-      return;
+      console.error('[LedModal] ❌ Cannot send: WebSocket not open');
+      console.error('[LedModal] WebSocket state:', ws.current?.readyState);
+      throw new Error('WebSocket not open');
     }
-    ws.current!.send(JSON.stringify(payload));
+    
+    const jsonPayload = JSON.stringify(payload);
+    console.log('[LedModal] 📤 Sending message:', jsonPayload);
+    console.log('[LedModal] Message length:', jsonPayload.length, 'bytes');
+    
+    try {
+      ws.current!.send(jsonPayload);
+      console.log('[LedModal] ✅ Message sent successfully');
+    } catch (error) {
+      console.error('[LedModal] ❌ Failed to send message:', error);
+      throw error;
+    }
   };
 
   const handleTogglePower = () => {
     const newState = !ledOn;
-    setLedOn(newState);
-
+    console.log(`[LedModal] 🔄 Toggle power: ${ledOn} -> ${newState}`);
+    console.log(`[LedModal] WebSocket readyState: ${ws.current?.readyState} (OPEN=${WebSocket.OPEN}, CONNECTING=${WebSocket.CONNECTING})`);
+    console.log(`[LedModal] Server status: ${serverStatus}`);
+    
     if (!wsOpen()) {
-      console.error('Lighting WS not open.');
+      console.error('[LedModal] ⚠️ Lighting WS not open! Cannot toggle.');
+      console.error('[LedModal] WebSocket object:', ws.current);
+      console.error('[LedModal] ReadyState:', ws.current?.readyState);
+      setServerStatus('disconnected');
       return;
     }
 
+    // Update UI state immediately for responsive feedback
+    setLedOn(newState);
+
     if (!newState) {
       // Send complete command with pattern='off' to turn off LEDs
-      send({
+      const offCommand = {
         color: '#000000',
         mode: 'single',
         pattern: 'off',
         interval: 0,
         brightness: 0,
-      });
-      console.log('LED OFF command sent!');
+      };
+      console.log('[LedModal] 🔴 Sending LED OFF command:', JSON.stringify(offCommand));
+      try {
+        send(offCommand);
+        console.log('[LedModal] ✅ OFF command sent successfully');
+      } catch (error) {
+        console.error('[LedModal] ❌ Failed to send OFF command:', error);
+        setLedOn(true); // Revert state on error
+      }
     } else {
       // Send complete command with current settings to turn on LEDs
-      send({
+      const onCommand = {
         color: color1,
         mode: mode,
         pattern: pattern,
         interval: pattern !== 'static' ? intervalMs : 0,
         brightness: brightness / 100, // Convert 0-100 to 0-1
-      });
-      console.log('LED ON command sent with color:', color1, 'mode:', mode, 'pattern:', pattern);
+      };
+      console.log('[LedModal] 🟢 Sending LED ON command:', JSON.stringify(onCommand));
+      try {
+        send(onCommand);
+        console.log('[LedModal] ✅ ON command sent successfully');
+      } catch (error) {
+        console.error('[LedModal] ❌ Failed to send ON command:', error);
+        setLedOn(false); // Revert state on error
+      }
     }
   };
 
