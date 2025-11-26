@@ -378,10 +378,6 @@ const SensorDashboard: React.FC = () => {
               return null;
             })()
           )}
-                </div>
-              </div>
-            </div>
-          )}
           
           {/* Success/Status Indicator */}
           {!ultraError && ultraStatus === 'connected' && (
