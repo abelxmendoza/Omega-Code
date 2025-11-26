@@ -4,6 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Set PYTHONPATH to include the parent directory so Python can find the 'controllers' module
+# The parent directory is: servers/robot-controller-backend
+PARENT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+export PYTHONPATH="${PARENT_DIR}:${PYTHONPATH:-}"
+
 # hex mode pattern interval brightness
 sudo -E /home/omega1/Omega-Code/servers/robot-controller-backend/venv/bin/python \
   led_control.py "$1" "$2" "$3" "$4" "$5"
