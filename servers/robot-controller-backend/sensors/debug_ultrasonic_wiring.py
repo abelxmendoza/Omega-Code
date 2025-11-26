@@ -2,8 +2,13 @@
 # File: sensors/debug_ultrasonic_wiring.py
 
 """
-Ultrasonic Sensor Wiring Debugger
----------------------------------
+Ultrasonic Sensor Wiring Debugger (Python)
+-------------------------------------------
+🔍 Purpose: Quick Python diagnostic tool for ultrasonic sensor wiring issues
+   - Alternative to test_ultrasonic_hardware.go (Go version)
+   - Use this for: Quick wiring checks, Python-based debugging
+   - See test_ultrasonic_hardware.go for comprehensive hardware testing
+
 Tests the responsiveness of an HC-SR04 ultrasonic sensor wired to GPIO.
 
 ✅ Purpose:
@@ -49,15 +54,24 @@ try:
 
     print("⏱️ Watching ECHO pin for 100ms...")
     start_ns = time.monotonic_ns()
-    changes = []
+    deadline_ns = start_ns + 100_000_000  # 100ms in ns
+    changes = []  # List of (time_ms, state) tuples
     last_state = idle
+    poll_interval = 100e-6  # 100µs polling interval (optimized)
 
-    while (time.monotonic_ns() - start_ns) < 100_000_000:  # 100ms in ns
+    # Optimized polling loop - cache deadline and reduce time calls
+    while True:
+        now_ns = time.monotonic_ns()
+        if now_ns >= deadline_ns:
+            break
+        
         current_state = lgpio.gpio_read(h, ECHO)
         if current_state != last_state:
-            delta_ms = (time.monotonic_ns() - start_ns) / 1e6
+            delta_ms = (now_ns - start_ns) / 1e6
             changes.append((delta_ms, current_state))
             last_state = current_state
+        
+        time.sleep(poll_interval)
 
     if changes:
         print("✅ ECHO changed during pulse:")

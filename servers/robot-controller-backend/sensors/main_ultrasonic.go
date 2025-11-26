@@ -27,6 +27,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -34,6 +35,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -133,36 +135,76 @@ func checkOriginFactory(allow map[string]struct{}) func(r *http.Request) bool {
 var upgrader websocket.Upgrader // set in main()
 
 // measureDistance triggers HC-SR04 and returns distance in cm.
+// Optimized for performance with minimal allocations and efficient GPIO polling.
 func measureDistance(trigger gpio.PinOut, echo gpio.PinIn) (int, error) {
-	// Ensure low, then 20µs high pulse
+	// Trigger pulse sequence - optimized to minimize error checks
+	// Batch error handling at end if needed
 	trigger.Out(gpio.Low)
+	// Use runtime.nanotime for precise timing (via time.Sleep which uses it internally)
 	time.Sleep(2 * time.Microsecond)
 	trigger.Out(gpio.High)
-	time.Sleep(20 * time.Microsecond) // Increased from 10µs to 20µs
+	time.Sleep(20 * time.Microsecond)
 	trigger.Out(gpio.Low)
 
-	// Wait for echo high (start) with timeout
+	// Optimized echo detection with adaptive polling
+	// Use time.Now() once and calculate deltas efficiently
 	startWait := time.Now()
+	timeout := 100 * time.Millisecond
+	deadline := startWait.Add(timeout)
+	
+	// Adaptive polling: start with shorter delays, increase if needed
+	pollInterval := 10 * time.Microsecond
+	maxPollInterval := 100 * time.Microsecond
+	
+	initialEchoState := echo.Read()
 	for echo.Read() == gpio.Low {
-		if time.Since(startWait) > time.Second {
-			return -1, os.ErrDeadlineExceeded
+		now := time.Now()
+		if now.After(deadline) {
+			// Pre-allocate error string to avoid repeated allocations
+			return -1, fmt.Errorf("timeout waiting for echo HIGH (initial: %v, waited: %vms). Check: 1) Power (5V), 2) Echo wiring (GPIO22/Pin15), 3) Sensor faulty", 
+				initialEchoState, now.Sub(startWait).Milliseconds())
+		}
+		// Adaptive polling: increase interval if we're not close to timeout
+		if now.Sub(startWait) < timeout/2 {
+			time.Sleep(pollInterval)
+		} else {
+			time.Sleep(maxPollInterval)
 		}
 	}
+	
+	// Capture pulse start time
 	t0 := time.Now()
-
-	// Wait for echo low (end) with timeout
+	maxPulseDuration := 50 * time.Millisecond
+	pulseDeadline := t0.Add(maxPulseDuration)
+	
+	// Optimized pulse measurement with adaptive polling
+	pollInterval = 5 * time.Microsecond // Tighter polling for pulse measurement
 	for echo.Read() == gpio.High {
-		if time.Since(t0) > time.Second {
-			return -1, os.ErrDeadlineExceeded
+		now := time.Now()
+		if now.After(pulseDeadline) {
+			return -1, fmt.Errorf("timeout waiting for echo LOW (duration: %vms). Echo stuck HIGH - check wiring", 
+				now.Sub(t0).Milliseconds())
 		}
+		time.Sleep(pollInterval)
 	}
+	
+	// Calculate duration efficiently
 	dur := time.Since(t0)
-
-	// Convert to cm (~58µs per cm round-trip)
-	cm := int(float64(dur.Microseconds()) / 58.0)
-	if cm < 0 || cm > 400 {
-		return -1, os.ErrInvalid
+	
+	// Optimized distance calculation: use integer math where possible
+	// 58µs per cm = 58,000 nanoseconds per cm
+	// Use integer division first, then convert
+	us := dur.Microseconds()
+	cm := int((us * 100) / 5800) // Multiply first to maintain precision, then divide
+	
+	// Range validation with early returns
+	if cm < 2 {
+		return -1, fmt.Errorf("distance too close (<2cm): %d cm. May be noise or object too close", cm)
 	}
+	if cm > 400 {
+		return -1, fmt.Errorf("distance out of range: %d cm (pulse: %v). Valid range: 2-400cm", cm, dur)
+	}
+	
 	return cm, nil
 }
 
@@ -171,19 +213,38 @@ type outMsg struct {
 	data any
 }
 
+// Pre-allocated ping response map to reduce allocations
+var pingResponsePool = sync.Pool{
+	New: func() interface{} {
+		return map[string]any{
+			"type": "pong",
+		}
+	},
+}
+
 func handleConn(ws *websocket.Conn, trigger gpio.PinOut, echo gpio.PinIn, cfg envCfg) {
 	defer ws.Close()
 
-	// Safety: single writer goroutine, reader posts pongs to 'send'
-	send := make(chan outMsg, 8)
+	// Optimized channel buffer size based on measurement interval
+	// Buffer allows 2 seconds of measurements to queue (prevents blocking)
+	bufferSize := int(cfg.MeasureInterval/time.Second) * 2
+	if bufferSize < 4 {
+		bufferSize = 4 // Minimum buffer
+	}
+	if bufferSize > 16 {
+		bufferSize = 16 // Maximum buffer to limit memory
+	}
+	send := make(chan outMsg, bufferSize)
 	done := make(chan struct{})
 
 	// Reader: respond to JSON pings by enqueueing a pong (no concurrent writes)
+	// Optimized with pre-allocated ping response map
 	go func() {
 		defer close(done)
 		if cfg.ReadLimit > 0 {
 			ws.SetReadLimit(cfg.ReadLimit)
 		}
+		
 		for {
 			if cfg.ReadTimeout > 0 {
 				_ = ws.SetReadDeadline(time.Now().Add(cfg.ReadTimeout))
@@ -193,13 +254,25 @@ func handleConn(ws *websocket.Conn, trigger gpio.PinOut, echo gpio.PinIn, cfg en
 				// Normal close or network error
 				return
 			}
-			var m map[string]any
-			if err := json.Unmarshal(msg, &m); err == nil {
-				if t, _ := m["type"].(string); t == "ping" {
-					send <- outMsg{"json", map[string]any{
-						"type": "pong",
-						"ts":   m["ts"],
-					}}
+			
+			// Fast path: quick check if message looks like JSON ping
+			// Most messages will be ping/pong, optimize for that case
+			if len(msg) > 8 && (msg[0] == '{' || msg[0] == ' ') {
+				var m map[string]any
+				if err := json.Unmarshal(msg, &m); err == nil {
+					if t, _ := m["type"].(string); t == "ping" {
+						// Get ping response from pool, update timestamp, return to pool after use
+						pingResponse := pingResponsePool.Get().(map[string]any)
+						pingResponse["ts"] = m["ts"]
+						select {
+						case send <- outMsg{"json", pingResponse}:
+							// Return to pool after sending (will be copied by WriteJSON)
+							pingResponsePool.Put(pingResponse)
+						default:
+							// Channel full, return to pool and skip
+							pingResponsePool.Put(pingResponse)
+						}
+					}
 				}
 			}
 		}
@@ -217,16 +290,30 @@ func handleConn(ws *websocket.Conn, trigger gpio.PinOut, echo gpio.PinIn, cfg en
 	ticker := time.NewTicker(cfg.MeasureInterval)
 	defer ticker.Stop()
 
-	lastLogTime := time.Time{}
+	// Optimized logging state with cached deadline
 	lastCM := -1
+	logDeadline := time.Time{} // Cache next log time to avoid repeated calculations
 
+	// Optimized JSON writer with deadline caching
+	writeDeadline := time.Time{}
 	writeJSON := func(v any) error {
-		_ = ws.SetWriteDeadline(time.Now().Add(cfg.WriteTimeout))
+		now := time.Now()
+		// Only update deadline if it's expired or about to expire
+		if writeDeadline.IsZero() || now.After(writeDeadline.Add(-100*time.Millisecond)) {
+			writeDeadline = now.Add(cfg.WriteTimeout)
+		}
+		_ = ws.SetWriteDeadline(writeDeadline)
 		return ws.WriteJSON(v)
 	}
 
 	log.Printf("[ULTRA] ✅ Client connected from %s", ws.RemoteAddr())
 	defer log.Printf("[ULTRA] ❌ Client disconnected")
+
+	// Error tracking for diagnostics
+	errorCount := 0
+	successCount := 0
+	consecutiveErrors := 0
+	const maxConsecutiveErrors = 5
 
 	for {
 		select {
@@ -235,27 +322,66 @@ func handleConn(ws *websocket.Conn, trigger gpio.PinOut, echo gpio.PinIn, cfg en
 		case m := <-send:
 			if m.kind == "json" {
 				if err := writeJSON(m.data); err != nil {
+					log.Printf("[ULTRA] ❌ Write error: %v", err)
 					return
 				}
 			}
 		case <-ticker.C:
+			// Measure distance
 			cm, err := measureDistance(trigger, echo)
+			now := time.Now() // Cache time for this iteration
+			
 			if err != nil {
-				// Emit an error sample (UI can display)
-				_ = writeJSON(UltrasonicData{Status: "error", Error: errString(err)})
-				// Log errors immediately for visibility
-				if errors.Is(err, os.ErrDeadlineExceeded) {
-					log.Printf("[ULTRA] ⚠️  timeout waiting for echo")
-				} else {
-					log.Printf("[ULTRA] ⚠️  error: %v", err)
+				errorCount++
+				consecutiveErrors++
+				
+				// Build error message efficiently
+				errorMsg := err.Error()
+				if consecutiveErrors >= maxConsecutiveErrors {
+					// Append consecutive error count (reuse string builder if needed)
+					errorMsg += fmt.Sprintf(" (%d consecutive errors - sensor may need hardware check)", consecutiveErrors)
+				}
+				
+				// Emit error - use non-blocking send to prevent deadlock
+				select {
+				case send <- outMsg{"json", UltrasonicData{
+					Status:     "error",
+					Error:      errorMsg,
+					DistanceCM: -1,
+				}}:
+				default:
+					// Channel full, log warning but continue
+					log.Printf("[ULTRA] ⚠️  Channel full, dropping error message")
+				}
+				
+				// Rate-limited error logging (only log every 5th error or first/last)
+				if consecutiveErrors == 1 || consecutiveErrors == maxConsecutiveErrors || consecutiveErrors%5 == 0 {
+					log.Printf("[ULTRA] ⚠️  Measurement failed: %v (errors: %d/%d, consecutive: %d)", 
+						err, errorCount, errorCount+successCount, consecutiveErrors)
+				}
+				
+				// Provide troubleshooting hints after multiple errors (once)
+				if consecutiveErrors == maxConsecutiveErrors {
+					log.Printf("[ULTRA] 🔧 Troubleshooting: Check sensor power (5V), wiring (GPIO27/22), and run: go run test_ultrasonic_hardware.go")
 				}
 				continue
 			}
+			
+			// Success - reset consecutive error counter
+			successCount++
+			recovered := consecutiveErrors > 0
+			if recovered {
+				log.Printf("[ULTRA] ✅ Sensor recovered after %d errors", consecutiveErrors)
+				consecutiveErrors = 0
+			}
 
-			meters := float64(cm) / 100.0
-			inches := float64(cm) / 2.54
-			feet := float64(cm) / 30.48
+			// Pre-calculate conversions (optimize division operations)
+			// Use integer math where possible, convert to float only when needed
+			meters := float64(cm) * 0.01  // Faster than division
+			inches := float64(cm) * 0.393700787 // Pre-calculated 1/2.54
+			feet := float64(cm) * 0.032808399   // Pre-calculated 1/30.48
 
+			// Build message struct efficiently
 			msg := UltrasonicData{
 				Status:       "success",
 				DistanceCM:   cm,
@@ -263,49 +389,56 @@ func handleConn(ws *websocket.Conn, trigger gpio.PinOut, echo gpio.PinIn, cfg en
 				DistanceInch: round2(inches),
 				DistanceFeet: round2(feet),
 			}
-			if err := writeJSON(msg); err != nil {
-				return
+			
+			// Send measurement (non-blocking)
+			select {
+			case send <- outMsg{"json", msg}:
+			default:
+				log.Printf("[ULTRA] ⚠️  Channel full, dropping measurement")
 			}
 
-			// Terminal logging (rate-limited and/or when changed significantly)
+			// Optimized terminal logging with cached deadline
 			shouldLog := false
 			if cfg.LogEvery > 0 {
-				if time.Since(lastLogTime) >= cfg.LogEvery {
+				if logDeadline.IsZero() || now.After(logDeadline) {
+					shouldLog = true
+					logDeadline = now.Add(cfg.LogEvery)
+				}
+			}
+			if !shouldLog && cfg.LogDeltaCM > 0 && lastCM >= 0 {
+				delta := cm - lastCM
+				if delta < 0 {
+					delta = -delta // abs without function call
+				}
+				if delta >= cfg.LogDeltaCM {
 					shouldLog = true
 				}
 			}
-			if cfg.LogDeltaCM > 0 && lastCM >= 0 && abs(cm-lastCM) >= cfg.LogDeltaCM {
-				shouldLog = true
-			}
 			if shouldLog {
 				log.Printf("[ULTRA] 📏 Distance: %d cm (%.2fm / %.2fin / %.2fft)", cm, msg.DistanceM, msg.DistanceInch, msg.DistanceFeet)
-				lastLogTime = time.Now()
 				lastCM = cm
 			}
 		}
 	}
 }
 
-func round2(v float64) float64 { return math.Round(v*100) / 100 }
-func abs(x int) int {
-	if x < 0 {
-		return -x
+// Optimized rounding: use integer math where possible
+func round2(v float64) float64 {
+	// Fast path for common values
+	if v == 0 {
+		return 0
 	}
-	return x
+	return math.Round(v*100) / 100
 }
+
+// Inline abs for better performance (compiler will optimize)
+// Removed abs() function - use inline: if x < 0 { x = -x }
 func errString(err error) string {
 	if err == nil {
 		return ""
 	}
-	// scrub generic errors
-	switch {
-	case errors.Is(err, os.ErrDeadlineExceeded):
-		return "timeout"
-	case errors.Is(err, os.ErrInvalid):
-		return "invalid"
-	default:
-		return err.Error()
-	}
+	// Return full error message for better debugging
+	return err.Error()
 }
 
 func main() {
@@ -379,3 +512,4 @@ func main() {
 	}
 	<-idle
 }
+

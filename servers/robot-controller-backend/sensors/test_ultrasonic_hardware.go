@@ -1,11 +1,16 @@
 // File: test_ultrasonic_hardware.go
 // Quick hardware diagnostic for HC-SR04 ultrasonic sensor
+//
+// 🔍 Purpose: Comprehensive Go diagnostic tool for ultrasonic sensor hardware
+//    - Alternative to debug_ultrasonic_wiring.py (Python version)
+//    - Use this for: Comprehensive hardware testing, Go-based debugging
+//    - Tests: Pin config, echo response, pulse measurement, continuous readings
+//
 // Run: go run test_ultrasonic_hardware.go
 
 package main
 
 import (
-	"fmt"
 	"log"
 	"time"
 
@@ -67,18 +72,26 @@ func main() {
 
 	log.Println("   Trigger pulse sent (20µs HIGH)")
 
-	// Check echo response
+	// Check echo response with optimized polling
 	startTime := time.Now()
 	timeout := 100 * time.Millisecond
+	deadline := startTime.Add(timeout)
 	echoWentHigh := false
+	pollInterval := 10 * time.Microsecond  // Start with faster polling
 
-	for time.Since(startTime) < timeout {
+	for time.Now().Before(deadline) {
 		if echo.Read() == gpio.High {
 			echoWentHigh = true
 			log.Println("   ✅ Echo pin went HIGH (sensor responding!)")
 			break
 		}
-		time.Sleep(100 * time.Microsecond)
+		// Adaptive polling: faster initially, slower as we approach timeout
+		elapsed := time.Since(startTime)
+		if elapsed < timeout/2 {
+			time.Sleep(pollInterval)
+		} else {
+			time.Sleep(pollInterval * 5)  // Slower polling near timeout
+		}
 	}
 
 	if !echoWentHigh {
@@ -96,21 +109,23 @@ func main() {
 		return
 	}
 
-	// Test 3: Measure echo pulse duration
+	// Test 3: Measure echo pulse duration with optimized polling
 	log.Println("\n🔬 Test 3: Measuring Echo Pulse Duration")
 	pulseStart := time.Now()
-	pulseEnd := pulseStart
-	timeout = 50 * time.Millisecond // Max ~8.5 meters
+	var pulseEnd time.Time
+	pulseTimeout := 50 * time.Millisecond // Max ~8.5 meters
+	pulseDeadline := pulseStart.Add(pulseTimeout)
+	pulsePollInterval := 10 * time.Microsecond
 
-	for time.Since(pulseStart) < timeout {
+	for time.Now().Before(pulseDeadline) {
 		if echo.Read() == gpio.Low {
 			pulseEnd = time.Now()
 			break
 		}
-		time.Sleep(10 * time.Microsecond)
+		time.Sleep(pulsePollInterval)
 	}
 
-	if pulseEnd == pulseStart {
+	if pulseEnd.IsZero() {
 		log.Println("   ⚠️  Echo pulse did not return LOW (might be out of range)")
 	} else {
 		duration := pulseEnd.Sub(pulseStart)

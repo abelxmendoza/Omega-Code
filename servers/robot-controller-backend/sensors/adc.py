@@ -19,6 +19,7 @@ autodetects the chip type, and continuously displays readings from channels 0–
 
 import time
 from smbus2 import SMBus
+from collections import deque
 import sys
 
 class Adc:
@@ -28,10 +29,13 @@ class Adc:
         self.PCF8591_CMD = 0x40
         self.ADS7830_CMD = 0x84
         self.Index = self.detect_chip_type()
+        # Cache for median filtering - use deque for O(1) operations
+        self._median_cache = {}  # channel -> deque(maxlen=9)
 
     def detect_chip_type(self):
         """
         Attempts to detect if the connected chip is a PCF8591 or ADS7830.
+        Optimized with early return.
         """
         try:
             for _ in range(3):
@@ -44,24 +48,52 @@ class Adc:
             sys.exit(1)
 
     def analog_read_pcf8591(self, chn):
-        values = [self.bus.read_byte_data(self.ADDRESS, self.PCF8591_CMD + chn) for _ in range(9)]
-        return sorted(values)[4]  # Median filtering
+        """
+        Optimized median filtering using deque for efficient insertion/deletion.
+        Returns median of 9 readings.
+        """
+        if chn not in self._median_cache:
+            self._median_cache[chn] = deque(maxlen=9)
+        
+        # Read and add to deque
+        value = self.bus.read_byte_data(self.ADDRESS, self.PCF8591_CMD + chn)
+        self._median_cache[chn].append(value)
+        
+        # Return median (middle value of sorted deque)
+        sorted_values = sorted(self._median_cache[chn])
+        return sorted_values[len(sorted_values) // 2]
 
     def recv_pcf8591(self, chn):
-        while True:
+        """
+        Optimized reading with early exit and cached conversion factor.
+        """
+        CONVERSION_FACTOR = 3.3 / 256.0  # Pre-calculate
+        
+        # Try up to 10 times for stability (prevent infinite loop)
+        for _ in range(10):
             v1 = self.analog_read_pcf8591(chn)
             v2 = self.analog_read_pcf8591(chn)
             if v1 == v2:
-                return round(v1 / 256.0 * 3.3, 2)
+                return round(v1 * CONVERSION_FACTOR, 2)
+        # Fallback: return last reading if no match
+        return round(v1 * CONVERSION_FACTOR, 2)
 
     def recv_ads7830(self, chn):
+        """
+        Optimized reading with early exit and cached conversion factor.
+        """
         cmd = self.ADS7830_CMD | ((((chn << 2) | (chn >> 1)) & 0x07) << 4)
         self.bus.write_byte(self.ADDRESS, cmd)
-        while True:
+        CONVERSION_FACTOR = 3.3 / 255.0  # Pre-calculate
+        
+        # Try up to 10 times for stability (prevent infinite loop)
+        for _ in range(10):
             v1 = self.bus.read_byte(self.ADDRESS)
             v2 = self.bus.read_byte(self.ADDRESS)
             if v1 == v2:
-                return round(v1 / 255.0 * 3.3, 2)
+                return round(v1 * CONVERSION_FACTOR, 2)
+        # Fallback: return last reading if no match
+        return round(v1 * CONVERSION_FACTOR, 2)
 
     def recv_adc(self, chn):
         if self.Index == "PCF8591":

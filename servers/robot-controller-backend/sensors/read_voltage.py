@@ -42,27 +42,52 @@ MODE = 0x0100
 DR = 0x0080
 COMP = 0x0003
 
+# Cache bus instance for better performance
+_bus_cache = None
+VOLTAGE_CONVERSION_FACTOR = 6.144 / 32768.0  # Pre-calculate constant
+
+def get_bus():
+    """Get or create cached bus instance"""
+    global _bus_cache
+    if _bus_cache is None:
+        _bus_cache = SMBus(1)
+    return _bus_cache
+
 def find_valid_address():
+    """
+    Optimized address detection with cached bus instance.
+    """
+    bus = get_bus()
     for addr in POSSIBLE_ADDRESSES:
         try:
-            with SMBus(1) as bus:
-                bus.read_byte(addr)
+            bus.read_byte(addr)
             return addr
         except:
             continue
     raise IOError("No valid ADS1115 I2C device found.")
 
 def read_channel(ch, addr):
+    """
+    Optimized channel reading with cached bus and pre-calculated constants.
+    """
     config = 0x8000 | MUX[ch] | PGA | MODE | DR | COMP
-    with SMBus(1) as bus:
-        bus.write_i2c_block_data(addr, CONFIG_REG, [(config >> 8) & 0xFF, config & 0xFF])
-        time.sleep(0.1)
-        data = bus.read_i2c_block_data(addr, CONVERSION_REG, 2)
-        raw = (data[0] << 8) | data[1]
-        if raw > 32767:
-            raw -= 65536
-        voltage = raw * 6.144 / 32768.0
-        return round(voltage, 3)
+    bus = get_bus()
+    
+    # Write config
+    bus.write_i2c_block_data(addr, CONFIG_REG, [(config >> 8) & 0xFF, config & 0xFF])
+    time.sleep(0.1)
+    
+    # Read data
+    data = bus.read_i2c_block_data(addr, CONVERSION_REG, 2)
+    raw = (data[0] << 8) | data[1]
+    
+    # Handle two's complement (optimized)
+    if raw > 32767:
+        raw -= 65536
+    
+    # Use pre-calculated conversion factor
+    voltage = raw * VOLTAGE_CONVERSION_FACTOR
+    return round(voltage, 3)
 
 if __name__ == "__main__":
     try:
