@@ -311,13 +311,13 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     console.log('LED settings applied:', commandData);
   };
 
-  // STATUS PILL COLORS
+  // STATUS PILL COLORS - Matching Omega theme
   const statusColor =
     serverStatus === 'connected'
-      ? 'bg-emerald-500'
+      ? 'bg-[#00FF88] text-black'
       : serverStatus === 'connecting'
-      ? 'bg-slate-600'
-      : 'bg-rose-600';
+      ? 'bg-[#FFAA00] text-black'
+      : 'bg-[#FF0066] text-white';
 
   const statusLabel =
     serverStatus === 'connected'
@@ -337,17 +337,25 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
 
   return createPortal(
     <div
-      className="fixed inset-0 bg-gray-800/75 backdrop-blur-sm flex justify-center items-center z-[9999] p-4"
+      className="fixed inset-0 bg-black/80 backdrop-blur-md flex justify-center items-center z-[9999] p-4"
       style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="led-config-title"
     >
-      <div className="bg-gray-900 rounded-lg p-8 w-full max-w-2xl relative text-white shadow-2xl border-2 border-purple-500/50 animate-in zoom-in-95 duration-200" style={{ position: 'relative', zIndex: 10000 }}>
+      <div 
+        className="bg-[#0A0A0A] rounded-lg p-8 w-full max-w-2xl relative text-[#E0E0E0] shadow-2xl border-2 border-[#C400FF]/70 backdrop-blur-xl animate-in zoom-in-95 duration-200"
+        style={{ 
+          position: 'relative', 
+          zIndex: 10000,
+          boxShadow: '0 0 40px rgba(196, 0, 255, 0.3), 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 40px rgba(196, 0, 255, 0.1)',
+          fontFamily: "'Rajdhani', 'Exo 2', sans-serif"
+        }}
+      >
         {/* Close Button (absolute) */}
         <button
           type="button"
-          className="absolute top-3 right-3 text-white bg-red-500 hover:bg-red-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-red-400 z-[10001]"
+          className="absolute top-3 right-3 text-white bg-[#FF0066] hover:bg-[#FF0048] p-2 rounded focus:outline-none focus:ring-2 focus:ring-[#FF0066]/50 z-[10001] transition-all shadow-lg hover:shadow-[#FF0066]/50"
           style={{ position: 'absolute', zIndex: 10001 }}
           onClick={onClose}
           aria-label="Close LED configuration"
@@ -356,34 +364,41 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         </button>
 
         {/* Title + Connection Status */}
-        <div className="flex items-center justify-between border-b-2 border-green-400 pb-2 mb-4 pr-20">
-          <h2 id="led-config-title" className="text-lg font-bold text-green-400">
+        <div className="flex items-center justify-between border-b-2 border-[#00FF88]/70 pb-2 mb-4 pr-20">
+          <h2 id="led-config-title" className="text-xl font-bold text-[#00FF88]" style={{ fontFamily: "'Orbitron', sans-serif", textShadow: '0 0 10px rgba(0, 255, 136, 0.5)' }}>
             LED Configuration
           </h2>
           <div
-            className={`flex items-center gap-2 px-2 py-1 rounded-full text-xs ${statusColor}`}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg ${statusColor}`}
+            style={{
+              boxShadow: serverStatus === 'connected' 
+                ? '0 0 15px rgba(0, 255, 136, 0.5)' 
+                : serverStatus === 'connecting'
+                ? '0 0 15px rgba(255, 170, 0, 0.5)'
+                : '0 0 15px rgba(255, 0, 102, 0.5)'
+            }}
             title="Lighting server connection status"
             aria-live="polite"
           >
-            <span className="inline-block w-2 h-2 rounded-full bg-white/90" />
-            <span className="font-semibold">{statusLabel}</span>
+            <span className={`inline-block w-2 h-2 rounded-full ${serverStatus === 'connected' ? 'bg-black' : 'bg-white/90'}`} />
+            <span>{statusLabel}</span>
           </div>
         </div>
 
         {/* LED Power Toggle */}
         <div className="mt-2 mb-4 flex justify-between items-center">
-          <span className="text-green-300 font-semibold">
-            LED Status: {ledOn ? 'On' : 'Off'}
+          <span className="text-[#00FF88] font-semibold text-lg" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
+            LED Status: <span className={ledOn ? 'text-[#00FF88]' : 'text-[#B0B0B0]'}>{ledOn ? 'On' : 'Off'}</span>
           </span>
           <button
             onClick={handleTogglePower}
             disabled={serverStatus !== 'connected'}
-            className={`px-4 py-2 rounded text-white focus:outline-none focus:ring-2 ${
+            className={`px-6 py-2.5 rounded-lg text-white font-semibold focus:outline-none focus:ring-2 transition-all shadow-lg ${
               serverStatus !== 'connected'
-                ? 'bg-gray-600 cursor-not-allowed'
+                ? 'bg-[#2A2A2A] cursor-not-allowed border border-[#4A4A4A]'
                 : ledOn
-                ? 'bg-red-500 hover:bg-red-600 focus:ring-red-400'
-                : 'bg-green-500 hover:bg-green-600 focus:ring-green-400'
+                ? 'bg-[#FF0066] hover:bg-[#FF0048] focus:ring-[#FF0066]/50 hover:shadow-[#FF0066]/50 border border-[#FF0066]/50'
+                : 'bg-[#00FF88] hover:bg-[#00DD77] focus:ring-[#00FF88]/50 hover:shadow-[#00FF88]/50 border border-[#00FF88]/50 text-black'
             }`}
           >
             {serverStatus !== 'connected'
@@ -397,22 +412,27 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
           className={ledOn && serverStatus === 'connected' ? '' : 'opacity-50'}
         >
           {/* Color Picker 1 */}
-          <label className="block text-green-300 font-semibold mb-1">Primary Color:</label>
-          <SketchPicker color={color1} onChange={handleColor1Change} />
+          <label className="block text-[#00FF88] font-semibold mb-2 text-lg" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>Primary Color:</label>
+          <div className="border border-[#C400FF]/30 rounded-lg p-2 bg-[#1A1A1A]/50">
+            <SketchPicker color={color1} onChange={handleColor1Change} />
+          </div>
 
           {/* Mode Selector */}
           <div className="mt-4">
-            <label htmlFor="mode" className="block text-green-300 font-semibold">
+            <label htmlFor="mode" className="block text-[#00FF88] font-semibold mb-1" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
               Mode:
             </label>
             <select
               id="mode"
               value={mode}
               onChange={handleModeChange}
-              className="w-full bg-gray-800 text-white p-2 rounded mt-1"
+              className="w-full bg-[#1A1A1A] text-[#E0E0E0] p-2.5 rounded-lg border border-[#C400FF]/30 focus:border-[#C400FF] focus:ring-2 focus:ring-[#C400FF]/50 transition-all"
+              style={{ 
+                boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 10px rgba(196, 0, 255, 0.1)'
+              }}
             >
               {LIGHTING_MODES.map((m) => (
-                <option key={m} value={m}>
+                <option key={m} value={m} className="bg-[#1A1A1A]">
                   {m.charAt(0).toUpperCase() + m.slice(1)}
                 </option>
               ))}
@@ -421,70 +441,73 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
 
           {/* Pattern Selector */}
           <div className="mt-4">
-            <label htmlFor="pattern" className="block text-green-300 font-semibold">
+            <label htmlFor="pattern" className="block text-[#00FF88] font-semibold mb-1" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
               Pattern:
             </label>
             <select
               id="pattern"
               value={pattern}
               onChange={handlePatternChange}
-              className="w-full bg-gray-800 text-white p-2 rounded mt-1"
+              className="w-full bg-[#1A1A1A] text-[#E0E0E0] p-2.5 rounded-lg border border-[#C400FF]/30 focus:border-[#C400FF] focus:ring-2 focus:ring-[#C400FF]/50 transition-all"
+              style={{ 
+                boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 10px rgba(196, 0, 255, 0.1)'
+              }}
             >
               {LIGHTING_PATTERNS.map((p) => (
-                <option key={p} value={p}>
+                <option key={p} value={p} className="bg-[#1A1A1A]">
                   {p.charAt(0).toUpperCase() + p.slice(1)}
                 </option>
               ))}
             </select>
             {pattern === 'music' && (
-              <p className="mt-2 text-sm text-green-200">
+              <p className="mt-2 text-sm text-[#00FF88]/90 bg-[#1A1A1A]/50 p-2 rounded border border-[#C400FF]/20" style={{ textShadow: '0 0 4px rgba(0, 255, 136, 0.3)' }}>
                 Music mode listens to the default microphone when available and generates a
                 beat-reactive light show. Reduce the interval for faster reaction times.
               </p>
             )}
             {pattern === 'fade' && (
-              <p className="mt-2 text-sm text-green-200">
+              <p className="mt-2 text-sm text-[#00FF88]/90 bg-[#1A1A1A]/50 p-2 rounded border border-[#C400FF]/20" style={{ textShadow: '0 0 4px rgba(0, 255, 136, 0.3)' }}>
                 Fade creates smooth color transitions. Adjust interval to control fade speed.
               </p>
             )}
             {pattern === 'chase' && (
-              <p className="mt-2 text-sm text-green-200">
+              <p className="mt-2 text-sm text-[#00FF88]/90 bg-[#1A1A1A]/50 p-2 rounded border border-[#C400FF]/20" style={{ textShadow: '0 0 4px rgba(0, 255, 136, 0.3)' }}>
                 Chase creates a moving light effect across the LED strip. Lower interval = faster chase.
               </p>
             )}
             {pattern === 'lightshow' && (
-              <p className="mt-2 text-sm text-green-200">
+              <p className="mt-2 text-sm text-[#00FF88]/90 bg-[#1A1A1A]/50 p-2 rounded border border-[#C400FF]/20" style={{ textShadow: '0 0 4px rgba(0, 255, 136, 0.3)' }}>
                 Lightshow creates a multi-stage animated display with rotating color bands and sparkles.
               </p>
             )}
             {pattern === 'rainbow' && (
-              <p className="mt-2 text-sm text-green-200">
+              <p className="mt-2 text-sm text-[#00FF88]/90 bg-[#1A1A1A]/50 p-2 rounded border border-[#C400FF]/20" style={{ textShadow: '0 0 4px rgba(0, 255, 136, 0.3)' }}>
                 Rainbow displays a full spectrum sweep across all LEDs. Interval controls animation speed.
               </p>
             )}
             {pattern === 'rave' && (
-              <p className="mt-2 text-sm text-green-200 font-bold">
+              <p className="mt-2 text-sm text-[#C400FF] font-bold bg-[#1A1A1A]/70 p-2 rounded border border-[#C400FF]/50" style={{ textShadow: '0 0 8px rgba(196, 0, 255, 0.6)' }}>
                 🎉 RAVE MODE: Energetic dancing lights with fast color cycling, strobing, and wave effects!
                 No audio required - creates synthetic beat patterns. Lower interval = faster party! 🎊
               </p>
             )}
             {pattern === 'breathing' && (
-              <p className="mt-2 text-sm text-green-200">
+              <p className="mt-2 text-sm text-[#00FF88]/90 bg-[#1A1A1A]/50 p-2 rounded border border-[#C400FF]/20" style={{ textShadow: '0 0 4px rgba(0, 255, 136, 0.3)' }}>
                 💨 BREATHING: Smooth, calming pulse effect perfect for idle/standby mode. Energy-efficient.
               </p>
             )}
             {pattern === 'aurora' && (
-              <p className="mt-2 text-sm text-green-200">
+              <p className="mt-2 text-sm text-[#00FF88]/90 bg-[#1A1A1A]/50 p-2 rounded border border-[#C400FF]/20" style={{ textShadow: '0 0 4px rgba(0, 255, 136, 0.3)' }}>
                 🌌 AURORA: Flowing northern lights effect with organic wave movements. Mesmerizing ambient lighting.
               </p>
             )}
             {pattern === 'matrix' && (
-              <p className="mt-2 text-sm text-green-200">
+              <p className="mt-2 text-sm text-[#00FF88]/90 bg-[#1A1A1A]/50 p-2 rounded border border-[#C400FF]/20" style={{ textShadow: '0 0 4px rgba(0, 255, 136, 0.3)' }}>
                 💚 MATRIX: Cool Matrix-style rain effect with falling light trails. Perfect for tech aesthetic!
               </p>
             )}
             {pattern === 'fire' && (
-              <p className="mt-2 text-sm text-green-200">
+              <p className="mt-2 text-sm text-[#00FF88]/90 bg-[#1A1A1A]/50 p-2 rounded border border-[#C400FF]/20" style={{ textShadow: '0 0 4px rgba(0, 255, 136, 0.3)' }}>
                 🔥 FIRE: Realistic flickering fire effect with orange/red/yellow flames. Great for ambient lighting!
               </p>
             )}
@@ -493,7 +516,7 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
           {/* Interval Input */}
           {pattern !== 'static' && (
             <div className="mt-4">
-              <label htmlFor="interval" className="block text-green-300 font-semibold">
+              <label htmlFor="interval" className="block text-[#00FF88] font-semibold mb-1" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
                 Interval (ms):
               </label>
               <input
@@ -501,7 +524,10 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
                 type="number"
                 value={intervalMs}
                 onChange={handleIntervalChange}
-                className="w-full bg-gray-800 text-white p-2 rounded mt-1"
+                className="w-full bg-[#1A1A1A] text-[#E0E0E0] p-2.5 rounded-lg border border-[#C400FF]/30 focus:border-[#C400FF] focus:ring-2 focus:ring-[#C400FF]/50 transition-all"
+                style={{ 
+                  boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 10px rgba(196, 0, 255, 0.1)'
+                }}
                 min={intervalConfig.min}
                 step={intervalConfig.step}
               />
@@ -510,8 +536,8 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
 
           {/* Brightness Slider */}
           <div className="mt-4">
-            <label htmlFor="brightness" className="block text-green-300 font-semibold">
-              Brightness (%):
+            <label htmlFor="brightness" className="block text-[#00FF88] font-semibold mb-2" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
+              Brightness (%): <span className="text-[#C400FF]">{brightness}%</span>
             </label>
             <input
               id="brightness"
@@ -520,7 +546,11 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
               max={100}
               value={brightness}
               onChange={handleBrightnessChange}
-              className="w-full"
+              className="w-full h-2 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-[#C400FF]"
+              style={{
+                background: `linear-gradient(to right, #C400FF 0%, #C400FF ${brightness}%, #1A1A1A ${brightness}%, #1A1A1A 100%)`,
+                boxShadow: '0 0 10px rgba(196, 0, 255, 0.3)'
+              }}
             />
           </div>
         </fieldset>
@@ -529,11 +559,15 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         <button
           onClick={handleApply}
           disabled={serverStatus !== 'connected' || !ledOn}
-          className={`text-white p-3 rounded mt-6 w-full focus:outline-none focus:ring-2 transition-all ${
+          className={`text-white p-3.5 rounded-lg mt-6 w-full focus:outline-none focus:ring-2 transition-all font-semibold ${
             serverStatus !== 'connected' || !ledOn
-              ? 'bg-gray-600 cursor-not-allowed'
-              : 'bg-purple-600 hover:bg-purple-700 focus:ring-purple-400 hover:shadow-lg'
+              ? 'bg-[#2A2A2A] cursor-not-allowed border border-[#4A4A4A]'
+              : 'bg-gradient-to-r from-[#C400FF] to-[#8B00FF] hover:from-[#D400FF] hover:to-[#9B00FF] focus:ring-[#C400FF]/50 border border-[#C400FF]/50 shadow-lg hover:shadow-[#C400FF]/50'
           }`}
+          style={{
+            textShadow: serverStatus === 'connected' && ledOn ? '0 0 8px rgba(196, 0, 255, 0.6)' : 'none',
+            boxShadow: serverStatus === 'connected' && ledOn ? '0 0 20px rgba(196, 0, 255, 0.4)' : 'none'
+          }}
         >
           {serverStatus !== 'connected' ? 'Server Unavailable' : 'Apply Settings'}
         </button>
