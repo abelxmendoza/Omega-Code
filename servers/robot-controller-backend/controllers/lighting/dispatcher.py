@@ -8,6 +8,8 @@ Receives lighting control commands and routes them to the appropriate LED patter
 based on UI input or WebSocket messages.
 """
 
+import sys
+from functools import lru_cache
 from controllers.lighting.patterns import (
     blink,
     chase,
@@ -20,62 +22,85 @@ from controllers.lighting.patterns import (
 )
 from rpi_ws281x import Color
 
+# Cache hex to RGB conversions (common colors)
+@lru_cache(maxsize=128)
 def hex_to_rgb(hex_color: str):
     """
+    Optimized hex to RGB conversion with caching.
     Convert a hex string like '#ff0000' to an RGB tuple.
     """
-    hex_color = hex_color.lstrip('#')
+    hex_color = hex_color.lstrip('#').upper()
     if len(hex_color) != 6:
-        raise ValueError("Color hex string must be in the format #RRGGBB")
-    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        raise ValueError(f"Color hex string must be in the format #RRGGBB, got: {hex_color}")
+    try:
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    except ValueError as e:
+        raise ValueError(f"Invalid hex color: {hex_color} - {e}")
+
+# Pattern routing dictionary for O(1) lookup instead of if/elif chain
+_PATTERN_HANDLERS = {
+    "static": lambda strip, c1, c2, i, b, m: (
+        dual_color(strip, Color(*c1), Color(*c2)) if m == "dual"
+        else color_wipe(strip, Color(*c1))
+    ),
+    "fade": lambda strip, c1, c2, i, b, m: fade(strip, c1, c2, delay=i / 1000.0),
+    "blink": lambda strip, c1, c2, i, b, m: blink(strip, Color(*c1), Color(*c2), delay=i / 1000.0),
+    "chase": lambda strip, c1, c2, i, b, m: chase(strip, Color(*c1), Color(*c2), delay=i / 1000.0),
+}
 
 def apply_lighting_mode(payload: dict, led_controller):
     """
+    Optimized dispatcher with comprehensive error handling and validation.
     Routes the payload from the UI or API to the appropriate LED pattern function.
 
     Args:
         payload (dict): Lighting settings from frontend or API.
         led_controller: Instance of LedController.
     """
-    pattern = payload.get("pattern", "static")
-    mode = payload.get("mode", "single")
-    interval = payload.get("interval", 1000)
-    color_hex = payload.get("color", "#ffffff")
-    brightness = payload.get("brightness", 1.0)  # optional, float 0.0–1.0
     try:
-        brightness = max(0.0, min(1.0, float(brightness)))
-    except (TypeError, ValueError):
-        brightness = 1.0
-
-    color1 = hex_to_rgb(color_hex)
-    color1_scaled = tuple(int(channel * brightness) for channel in color1)
-
-    # Placeholder for dual color (future UI support)
-    color2 = (0, 0, 0)
-    color2_scaled = tuple(int(channel * brightness) for channel in color2)
-    # If UI provides a second color: color2 = hex_to_rgb(payload['color2'])
-
-    strip = led_controller.strip
-
-    try:
-        if pattern == "static":
-            if mode == "dual":
-                dual_color(strip, Color(*color1_scaled), Color(*color2_scaled))
-            else:
-                color_wipe(strip, Color(*color1_scaled))
-        elif pattern == "fade":
-            fade(strip, color1_scaled, color2_scaled, delay=interval / 1000.0)
-        elif pattern == "blink":
-            blink(strip, Color(*color1_scaled), Color(*color2_scaled), delay=interval / 1000.0)
-        elif pattern == "chase":
-            chase(strip, Color(*color1_scaled), Color(*color2_scaled), delay=interval / 1000.0)
-        elif pattern == "lightshow" or mode == "lightshow":
+        # Extract and validate inputs
+        pattern = payload.get("pattern", "static").lower()
+        mode = payload.get("mode", "single").lower()
+        interval = payload.get("interval", 1000)
+        color_hex = payload.get("color", "#ffffff")
+        brightness = payload.get("brightness", 1.0)
+        
+        # Validate and clamp brightness
+        try:
+            brightness = max(0.0, min(1.0, float(brightness)))
+        except (TypeError, ValueError):
+            print(f"⚠️ [WARN] Invalid brightness value: {payload.get('brightness')}, using 1.0", file=sys.stderr)
+            brightness = 1.0
+        
+        # Validate interval
+        if not isinstance(interval, (int, float)) or interval < 0:
+            print(f"⚠️ [WARN] Invalid interval: {interval}, using 1000ms", file=sys.stderr)
+            interval = 1000
+        interval = max(0, min(60000, int(interval)))  # Clamp to 0-60s
+        
+        # Convert hex to RGB (cached)
+        try:
+            color1 = hex_to_rgb(color_hex)
+        except ValueError as e:
+            print(f"❌ [ERROR] Invalid color hex: {color_hex} - {e}", file=sys.stderr)
+            raise
+        
+        # Pre-compute scaled colors
+        color1_scaled = tuple(int(channel * brightness) for channel in color1)
+        
+        # Placeholder for dual color (future UI support)
+        color2 = (0, 0, 0)
+        color2_scaled = tuple(int(channel * brightness) for channel in color2)
+        
+        strip = led_controller.strip
+        
+        # Optimized pattern routing with dictionary lookup
+        if pattern == "lightshow" or mode == "lightshow":
             lightshow(strip, color1, interval_ms=interval, brightness=brightness)
         elif pattern == "rainbow" or mode == "rainbow":
-            # Accept both "rainbow" as pattern or mode
             rainbow(strip, wait_ms=interval)
         elif pattern in {"music", "music-reactive"}:
-            update_ms = interval if interval and interval > 0 else 80
+            update_ms = interval if interval > 0 else 80
             duration = max(8.0, update_ms / 1000.0 * 80)
             music_visualizer(
                 strip,
@@ -84,7 +109,16 @@ def apply_lighting_mode(payload: dict, led_controller):
                 update_ms=int(update_ms),
                 duration_s=duration,
             )
+        elif pattern in _PATTERN_HANDLERS:
+            _PATTERN_HANDLERS[pattern](strip, color1_scaled, color2_scaled, interval, brightness, mode)
         else:
-            print(f"⚠️ Unknown pattern: {pattern}")
+            raise ValueError(f"Unknown pattern: {pattern} (supported: static, fade, blink, chase, rainbow, lightshow, music)")
+            
+    except ValueError as e:
+        print(f"❌ [ERROR] Invalid lighting command: {e}", file=sys.stderr)
+        raise
     except Exception as e:
-        print(f"Lighting dispatcher error: {e}")
+        print(f"❌ [ERROR] Lighting dispatcher failed: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        raise

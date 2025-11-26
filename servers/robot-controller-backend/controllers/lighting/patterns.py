@@ -14,8 +14,10 @@ Usage:
 
 import math
 import time
+import sys
 from time import sleep
 from typing import Sequence, Tuple
+from functools import lru_cache
 
 import numpy as np
 from rpi_ws281x import Color
@@ -32,14 +34,19 @@ def _scale_rgb(rgb, scale, brightness):
 
 def color_wipe(strip, color):
     """
-    Fill all LEDs with a single solid color.
+    Optimized color wipe - fill all LEDs with a single solid color.
     Args:
         strip: The initialized NeoPixel strip object.
         color: The Color object for all LEDs.
     """
-    for i in range(strip.numPixels()):
-        strip.setPixelColor(i, color)
-    strip.show()
+    try:
+        num_pixels = strip.numPixels()
+        for i in range(num_pixels):
+            strip.setPixelColor(i, color)
+        strip.show()
+    except Exception as e:
+        print(f"❌ [ERROR] color_wipe failed: {e}", file=sys.stderr)
+        raise
 
 def dual_color(strip, color1, color2=Color(0,0,0)):
     """
@@ -100,31 +107,40 @@ def blink(strip, color1, color2=Color(0,0,0), delay=0.5):
 
 def chase(strip, color1, color2=Color(0,0,0), delay=0.05):
     """
-    Create a moving chase effect with optional secondary background color.
+    Optimized chase effect - create a moving chase with optional background color.
     Args:
         strip: The initialized NeoPixel strip object.
         color1: Color object for chasing pixel.
         color2: Background Color object.
         delay: Time for each move.
     """
-    for i in range(strip.numPixels()):
-        for j in range(strip.numPixels()):
-            if j == i:
-                strip.setPixelColor(j, color1)
-            else:
+    try:
+        num_pixels = strip.numPixels()
+        # Pre-fill with background color, then update chasing pixel
+        for i in range(num_pixels):
+            # Fill all with background first
+            for j in range(num_pixels):
                 strip.setPixelColor(j, color2)
-        strip.show()
-        sleep(delay)
+            # Set chasing pixel
+            strip.setPixelColor(i, color1)
+            strip.show()
+            sleep(delay)
+    except Exception as e:
+        print(f"❌ [ERROR] chase failed: {e}", file=sys.stderr)
+        raise
 
 def rainbow(strip, wait_ms=20, iterations=1):
     """
-    Display a rainbow across the strip.
+    Optimized rainbow - display a rainbow across the strip with cached calculations.
     Args:
         strip: The initialized NeoPixel strip object.
         wait_ms: Delay between color changes.
         iterations: Number of rainbow cycles.
     """
+    @lru_cache(maxsize=256)
     def wheel(pos):
+        """Cached wheel function for rainbow colors."""
+        pos = pos & 255  # Ensure 0-255 range
         if pos < 85:
             return Color(pos * 3, 255 - pos * 3, 0)
         elif pos < 170:
@@ -133,11 +149,19 @@ def rainbow(strip, wait_ms=20, iterations=1):
         else:
             pos -= 170
             return Color(0, pos * 3, 255 - pos * 3)
-    for j in range(256 * iterations):
-        for i in range(strip.numPixels()):
-            strip.setPixelColor(i, wheel((i + j) & 255))
-        strip.show()
-        sleep(wait_ms / 1000.0)
+    
+    try:
+        num_pixels = strip.numPixels()
+        wait_sec = max(0.01, wait_ms / 1000.0)  # Pre-compute wait time
+        
+        for j in range(256 * iterations):
+            for i in range(num_pixels):
+                strip.setPixelColor(i, wheel((i + j) & 255))
+            strip.show()
+            sleep(wait_sec)
+    except Exception as e:
+        print(f"❌ [ERROR] rainbow failed: {e}", file=sys.stderr)
+        raise
 
 
 # --- Advanced patterns -----------------------------------------------------

@@ -19,8 +19,10 @@ Example Payload:
 }
 """
 
+import sys
+import traceback
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 from typing import Optional
 
 from controllers.lighting.led_control import LedController
@@ -30,30 +32,72 @@ from controllers.lighting.dispatcher import apply_lighting_mode
 router = APIRouter()
 
 # Persistent LED controller instance (do NOT recreate for each request!)
-led = LedController()
+try:
+    led = LedController()
+    print("✅ [INIT] LED controller initialized for FastAPI routes", file=sys.stderr)
+except Exception as e:
+    print(f"❌ [ERROR] Failed to initialize LED controller: {e}", file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
+    led = None  # Will fail gracefully on requests
 
 class LightingRequest(BaseModel):
-    command: str
-    color: str                  # Always a hex string, e.g. "#ff0000"
-    mode: str                   # "single", "rainbow", etc.
-    pattern: str                # "static", "pulse", etc.
-    interval: Optional[int] = None  # Optional (default in dispatcher)
+    command: str = Field(..., description="Command type (must be SET_LED)")
+    color: str = Field(..., description="Hex color string, e.g. '#ff0000'")
+    mode: str = Field(default="single", description="Lighting mode: single, dual, rainbow, etc.")
+    pattern: str = Field(default="static", description="Pattern: static, fade, blink, chase, etc.")
+    interval: Optional[int] = Field(default=1000, ge=0, le=60000, description="Interval in ms (0-60000)")
+    brightness: Optional[float] = Field(default=1.0, ge=0.0, le=1.0, description="Brightness 0.0-1.0")
+    
+    @validator('color')
+    def validate_color(cls, v):
+        """Validate hex color format."""
+        v = v.lstrip('#').upper()
+        if len(v) != 6:
+            raise ValueError(f"Color must be 6 hex digits, got: {len(v)}")
+        try:
+            int(v, 16)
+        except ValueError:
+            raise ValueError(f"Invalid hex color: {v}")
+        return '#' + v
+    
+    @validator('command')
+    def validate_command(cls, v):
+        """Validate command."""
+        if v.upper() != "SET_LED":
+            raise ValueError(f"Command must be SET_LED, got: {v}")
+        return v.upper()
 
 @router.post("/lighting/control")
 def set_lighting(request: LightingRequest):
     """
     Receives a lighting control payload and dispatches it to the LED controller.
+    Comprehensive error handling with detailed messages.
     """
+    if led is None:
+        raise HTTPException(
+            status_code=503,
+            detail="LED controller not available. Check hardware initialization."
+        )
+    
     try:
         payload = request.dict()
-        # Only allow the supported command
-        if payload.get("command", "").upper() != "SET_LED":
-            raise HTTPException(status_code=400, detail="Unknown command")
-        # Dispatcher handles all parsing, including color hex
+        print(f"📨 [API] Received lighting command: {payload}", file=sys.stderr)
+        
+        # Dispatcher handles all parsing and validation
         apply_lighting_mode(payload, led)
-        return {"status": "success", "received": payload}
+        
+        return {
+            "status": "success",
+            "message": "Lighting command executed successfully",
+            "received": payload
+        }
+    except ValueError as e:
+        print(f"❌ [ERROR] Invalid request: {e}", file=sys.stderr)
+        raise HTTPException(status_code=400, detail=f"Invalid request: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"❌ [ERROR] Lighting command failed: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        raise HTTPException(status_code=500, detail=f"LED operation failed: {str(e)}")
 
 # Optional: Explicit power control (On/Off)
 class PowerRequest(BaseModel):
@@ -62,14 +106,29 @@ class PowerRequest(BaseModel):
 @router.post("/lighting/power")
 def set_power(request: PowerRequest):
     """
-    Turns LED strip power on or off.
+    Turns LED strip power on or off with comprehensive error handling.
     """
+    if led is None:
+        raise HTTPException(
+            status_code=503,
+            detail="LED controller not available. Check hardware initialization."
+        )
+    
     try:
         if request.power:
-            # You can change this to any default color or animation you want
-            led.color_wipe((255, 255, 255))  # ON: set to white
+            print(f"💡 [API] Turning LEDs ON", file=sys.stderr)
+            from rpi_ws281x import Color
+            led.color_wipe(Color(255, 255, 255))  # ON: set to white
         else:
+            print(f"💡 [API] Turning LEDs OFF", file=sys.stderr)
             led.clear_strip()  # OFF: turn off all LEDs
-        return {"status": "success", "power": request.power}
+        
+        return {
+            "status": "success",
+            "message": f"LEDs turned {'ON' if request.power else 'OFF'}",
+            "power": request.power
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"❌ [ERROR] Power control failed: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        raise HTTPException(status_code=500, detail=f"Power control failed: {str(e)}")

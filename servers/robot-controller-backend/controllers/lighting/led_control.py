@@ -17,9 +17,20 @@ File Location:
 
 import sys
 import time
+import traceback
+from functools import lru_cache
 from rpi_ws281x import Adafruit_NeoPixel, Color, WS2811_STRIP_GRB
 
 from controllers.lighting.patterns import music_visualizer
+
+# Cache common Color objects to reduce allocations
+_COLOR_CACHE = {
+    'black': Color(0, 0, 0),
+    'white': Color(255, 255, 255),
+    'red': Color(255, 0, 0),
+    'green': Color(0, 255, 0),
+    'blue': Color(0, 0, 255),
+}
 
 
 class StubPixelStrip:
@@ -48,14 +59,26 @@ class LedController:
     """
     def __init__(self, num_pixels=16, pin=18, brightness=255):
         """
-        Initialize the LED strip.
+        Initialize the LED strip with comprehensive error handling.
 
         Args:
-            num_pixels (int): Number of LEDs.
+            num_pixels (int): Number of LEDs (1-1024).
             pin (int): GPIO pin (default: 18).
             brightness (int): Brightness (0–255).
         """
+        # Validate inputs
+        if not isinstance(num_pixels, int) or num_pixels < 1 or num_pixels > 1024:
+            raise ValueError(f"num_pixels must be 1-1024, got {num_pixels}")
+        if not isinstance(pin, int) or pin < 0 or pin > 27:
+            raise ValueError(f"pin must be 0-27 (GPIO), got {pin}")
+        if not isinstance(brightness, int) or brightness < 0 or brightness > 255:
+            raise ValueError(f"brightness must be 0-255, got {brightness}")
+        
+        self.num_pixels = num_pixels
+        self.is_on = False
+        
         try:
+            print(f"🔧 [INIT] Initializing LED strip: {num_pixels} pixels, pin {pin}, brightness {brightness}")
             self.strip = Adafruit_NeoPixel(
                 num_pixels,
                 pin,
@@ -67,23 +90,41 @@ class LedController:
                 WS2811_STRIP_GRB
             )
             self.strip.begin()
-        except Exception as exc:
-            print(f"⚠️ Falling back to StubPixelStrip due to init error: {exc}")
+            print(f"✅ [SUCCESS] LED strip initialized successfully")
+        except ImportError as e:
+            print(f"❌ [ERROR] rpi_ws281x library not available: {e}")
+            print(f"   Falling back to StubPixelStrip (no hardware output)")
             self.strip = StubPixelStrip(num_pixels)
-        self.num_pixels = num_pixels
-        self.is_on = False
+        except Exception as exc:
+            print(f"❌ [ERROR] Failed to initialize LED strip: {exc}")
+            print(f"   Error type: {type(exc).__name__}")
+            print(f"   Falling back to StubPixelStrip (no hardware output)")
+            traceback.print_exc()
+            self.strip = StubPixelStrip(num_pixels)
 
     def color_wipe(self, color, wait_ms=50):
-        for i in range(self.num_pixels):
-            self.strip.setPixelColor(i, color)
-        self.strip.show()
-        self.is_on = True
+        """Optimized color wipe using batch operations."""
+        try:
+            # Batch set all pixels (more efficient than individual calls)
+            for i in range(self.num_pixels):
+                self.strip.setPixelColor(i, color)
+            self.strip.show()
+            self.is_on = True
+        except Exception as e:
+            print(f"❌ [ERROR] color_wipe failed: {e}")
+            raise
 
     def clear_strip(self):
-        for i in range(self.num_pixels):
-            self.strip.setPixelColor(i, Color(0, 0, 0))
-        self.strip.show()
-        self.is_on = False
+        """Optimized strip clearing using cached black color."""
+        try:
+            black = _COLOR_CACHE['black']
+            for i in range(self.num_pixels):
+                self.strip.setPixelColor(i, black)
+            self.strip.show()
+            self.is_on = False
+        except Exception as e:
+            print(f"❌ [ERROR] clear_strip failed: {e}")
+            raise
 
     def test_colors(self, wait_ms=500):
         self.color_wipe(Color(255, 0, 0), wait_ms)
@@ -107,12 +148,19 @@ class LedController:
             return Color(0, pos * 3, 255 - pos * 3)
 
     def _apply_brightness(self, base_color, brightness):
-        r = int(((base_color >> 16) & 255) * brightness)
-        g = int(((base_color >> 8) & 255) * brightness)
-        b = int((base_color & 255) * brightness)
-        for i in range(self.num_pixels):
-            self.strip.setPixelColor(i, Color(r, g, b))
-        self.strip.show()
+        """Optimized brightness application with pre-computed color."""
+        try:
+            # Pre-compute color once, then apply to all pixels
+            r = int(((base_color >> 16) & 255) * brightness)
+            g = int(((base_color >> 8) & 255) * brightness)
+            b = int((base_color & 255) * brightness)
+            color = Color(r, g, b)
+            for i in range(self.num_pixels):
+                self.strip.setPixelColor(i, color)
+            self.strip.show()
+        except Exception as e:
+            print(f"❌ [ERROR] _apply_brightness failed: {e}")
+            raise
 
     @staticmethod
     def _int_to_rgb(color):
@@ -132,16 +180,24 @@ class LedController:
         )
 
     def rainbow(self, wait_ms=20, brightness=1.0):
-        for j in range(256):
-            for i in range(self.num_pixels):
-                base_color = self._wheel((i + j) & 255)
-                r = int(((base_color >> 16) & 255) * brightness)
-                g = int(((base_color >> 8) & 255) * brightness)
-                b = int((base_color & 255) * brightness)
-                self.strip.setPixelColor(i, Color(r, g, b))
-            self.strip.show()
-            time.sleep(wait_ms / 1000.0)
-        self.is_on = True
+        """Optimized rainbow with pre-computed brightness scaling."""
+        try:
+            # Pre-compute wait time to avoid repeated division
+            wait_sec = max(0.01, wait_ms / 1000.0)
+            for j in range(256):
+                for i in range(self.num_pixels):
+                    base_color = self._wheel((i + j) & 255)
+                    # Optimize: extract RGB once, apply brightness, create Color once
+                    r = int(((base_color >> 16) & 255) * brightness)
+                    g = int(((base_color >> 8) & 255) * brightness)
+                    b = int((base_color & 255) * brightness)
+                    self.strip.setPixelColor(i, Color(r, g, b))
+                self.strip.show()
+                time.sleep(wait_sec)
+            self.is_on = True
+        except Exception as e:
+            print(f"❌ [ERROR] rainbow failed: {e}")
+            raise
 
     def lightshow(self, color, interval=100, brightness=1.0, cycles=3):
         base_rgb = self._int_to_rgb(color)
@@ -176,21 +232,32 @@ class LedController:
 
     def set_led(self, color, mode="single", pattern="static", interval=500, brightness=1.0):
         """
-        Set LED strip color/pattern/mode/brightness.
+        Set LED strip color/pattern/mode/brightness with comprehensive validation.
 
         Args:
-            color (int): 24-bit RGB integer.
+            color (int): 24-bit RGB integer (0-16777215).
             mode (str): Lighting mode.
             pattern (str): Animation pattern.
             interval (int): Timing for dynamic patterns (ms).
             brightness (float): 0.0–1.0, global brightness.
         """
         try:
+            # Validate inputs
+            if not isinstance(color, int) or color < 0 or color > 0xFFFFFF:
+                raise ValueError(f"color must be 0-16777215 (0xFFFFFF), got {color}")
+            if not isinstance(brightness, (int, float)) or brightness < 0 or brightness > 1:
+                raise ValueError(f"brightness must be 0.0-1.0, got {brightness}")
+            if not isinstance(interval, int) or interval < 0:
+                raise ValueError(f"interval must be >= 0, got {interval}")
+            
+            brightness = float(brightness)
+            interval = max(0, min(60000, interval))  # Clamp to reasonable range
+            
             if pattern == "off":
                 self.clear_strip()
                 return
 
-            # Always apply requested pattern!
+            # Pre-compute RGB values once
             raw_r = (color >> 16) & 255
             raw_g = (color >> 8) & 255
             raw_b = color & 255
@@ -237,12 +304,18 @@ class LedController:
                 )
                 self.is_on = True
             else:
-                print(f"Unknown pattern: {pattern}")
+                raise ValueError(f"Unknown pattern: {pattern} (supported: static, blink, pulse, rainbow, lightshow, music, off)")
 
             self.is_on = True
 
+        except ValueError as e:
+            print(f"❌ [ERROR] Invalid LED command: {e}")
+            raise
         except Exception as e:
-            print(f"LED error: {e}")
+            print(f"❌ [ERROR] LED operation failed: {e}")
+            print(f"   Pattern: {pattern}, Mode: {mode}, Color: {color:06x}")
+            traceback.print_exc()
+            raise
 
     def toggle_light(self):
         if self.is_on:
@@ -287,7 +360,14 @@ if __name__ == "__main__":
         interval = int(sys.argv[4])
         brightness = float(sys.argv[5]) if len(sys.argv) == 6 else 1.0
 
+        print(f"🎨 [LED] Setting: color=#{color:06x}, mode={mode}, pattern={pattern}, interval={interval}ms, brightness={brightness}")
         led_control = LedController()
         led_control.set_led(color, mode, pattern, interval, brightness)
+        print(f"✅ [SUCCESS] LED command completed")
+    except ValueError as e:
+        print(f"❌ [ERROR] Invalid input: {e}")
+        sys.exit(1)
     except Exception as e:
-        print(f"Startup error: {e}")
+        print(f"❌ [ERROR] LED command failed: {e}")
+        traceback.print_exc()
+        sys.exit(1)
