@@ -100,8 +100,8 @@ func loadCfg() envCfg {
 		Port:            getenvInt("PORT_ULTRASONIC", 8080),
 		Path:            firstNonEmpty(os.Getenv("ULTRA_PATH"), "/ultrasonic"),
 		OriginAllow:     getenvSet("ORIGIN_ALLOW"), // e.g. http://localhost:3000,http://192.168.1.107:3000
-		LogEvery:        getenvDur("ULTRA_LOG_EVERY", 5*time.Second),
-		LogDeltaCM:      getenvInt("ULTRA_LOG_DELTA_CM", 10),
+		LogEvery:        getenvDur("ULTRA_LOG_EVERY", 1*time.Second), // Log every second for better visibility
+		LogDeltaCM:      getenvInt("ULTRA_LOG_DELTA_CM", 5), // Log when change >= 5cm
 		ReadLimit:       int64(getenvInt("ULTRA_READ_LIMIT", 4096)),
 		WriteTimeout:    getenvDur("ULTRA_WRITE_TIMEOUT", 1500*time.Millisecond),
 		ReadTimeout:     getenvDur("ULTRA_READ_TIMEOUT", 0), // 0 = no deadline (JSON pings keep it alive)
@@ -225,8 +225,8 @@ func handleConn(ws *websocket.Conn, trigger gpio.PinOut, echo gpio.PinIn, cfg en
 		return ws.WriteJSON(v)
 	}
 
-	log.Printf("[ULTRA] client connected")
-	defer log.Printf("[ULTRA] client disconnected")
+	log.Printf("[ULTRA] ✅ Client connected from %s", ws.RemoteAddr())
+	defer log.Printf("[ULTRA] ❌ Client disconnected")
 
 	for {
 		select {
@@ -243,13 +243,11 @@ func handleConn(ws *websocket.Conn, trigger gpio.PinOut, echo gpio.PinIn, cfg en
 			if err != nil {
 				// Emit an error sample (UI can display)
 				_ = writeJSON(UltrasonicData{Status: "error", Error: errString(err)})
-				// Log timeouts sparingly
+				// Log errors immediately for visibility
 				if errors.Is(err, os.ErrDeadlineExceeded) {
-					// debounce repeated timeouts
-					if time.Since(lastLogTime) > 3*time.Second {
-						log.Printf("[ULTRA] timeout waiting for echo")
-						lastLogTime = time.Now()
-					}
+					log.Printf("[ULTRA] ⚠️  timeout waiting for echo")
+				} else {
+					log.Printf("[ULTRA] ⚠️  error: %v", err)
 				}
 				continue
 			}
@@ -269,7 +267,7 @@ func handleConn(ws *websocket.Conn, trigger gpio.PinOut, echo gpio.PinIn, cfg en
 				return
 			}
 
-			// Optional terminal logging (rate-limited and/or when changed significantly)
+			// Terminal logging (rate-limited and/or when changed significantly)
 			shouldLog := false
 			if cfg.LogEvery > 0 {
 				if time.Since(lastLogTime) >= cfg.LogEvery {
@@ -280,7 +278,7 @@ func handleConn(ws *websocket.Conn, trigger gpio.PinOut, echo gpio.PinIn, cfg en
 				shouldLog = true
 			}
 			if shouldLog {
-				log.Printf("[ULTRA] %d cm (%.2fm / %.2fin / %.2fft)", cm, msg.DistanceM, msg.DistanceInch, msg.DistanceFeet)
+				log.Printf("[ULTRA] 📏 Distance: %d cm (%.2fm / %.2fin / %.2fft)", cm, msg.DistanceM, msg.DistanceInch, msg.DistanceFeet)
 				lastLogTime = time.Now()
 				lastCM = cm
 			}

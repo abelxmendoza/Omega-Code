@@ -162,16 +162,23 @@ const SensorDashboard: React.FC = () => {
     ultrasonicWs.current.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        // Ignore welcome message
+        if (data.status === 'connected' && data.service === 'ultrasonic') {
+          console.log('[ULTRASONIC] Welcome message received');
+          return;
+        }
         if (data.distance_cm !== undefined) {
-          setUltrasonicData({
+          const newData = {
             distance_cm: Number(data.distance_cm ?? 0),
             distance_m: Number(data.distance_m ?? 0),
             distance_inch: Number(data.distance_inch ?? 0),
             distance_feet: Number(data.distance_feet ?? 0),
-          });
+          };
+          setUltrasonicData(newData);
+          console.log(`[ULTRASONIC] 📏 Distance: ${newData.distance_cm} cm (${newData.distance_m.toFixed(2)}m)`);
         }
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.warn('[ULTRASONIC] Failed to parse message:', err);
       }
     };
 
