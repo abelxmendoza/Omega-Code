@@ -14,9 +14,11 @@ This document explains the changes made to improve error messages and debugging 
 - **Enhanced error handling**: Better configuration for ESLint and TypeScript error reporting
 
 ### 3. Vercel Configuration (`vercel.json`)
-- **Set root directory**: `rootDirectory` is now set to `ui/robot-controller-ui` so Vercel knows where the Next.js app is located
+- **Build commands**: Updated to change directory to `ui/robot-controller-ui` before running npm commands
+- **Output directory**: Set to `ui/robot-controller-ui/.next` to match the Next.js app location
 - **Added verbose flags**: `--verbose` flag added to npm install commands for better debugging
 - **Added environment variables**: `VERCEL_DEBUG=1` and `NODE_ENV=production` set for better logging
+- **Note**: The root directory should be set in Vercel project settings (Settings → General → Root Directory) to `ui/robot-controller-ui`
 
 ### 4. Pre-Build Check Script (`ui/robot-controller-ui/scripts/pre-build-check.js`)
 - **Dependency verification**: Checks for critical dependencies (next, react, react-dom, typescript)
@@ -75,7 +77,8 @@ npm run build:verbose
 ## Vercel-Specific Notes
 
 - Vercel automatically installs dependencies before building
-- The `rootDirectory` setting tells Vercel where your Next.js app is located
+- **Important**: Set the Root Directory in Vercel project settings (Settings → General → Root Directory) to `ui/robot-controller-ui`
+- Alternatively, the build commands in `vercel.json` change directory explicitly
 - The prebuild script runs automatically via npm lifecycle hooks
 - All debug messages are prefixed with `[Vercel Build Debug]` for easy filtering
 

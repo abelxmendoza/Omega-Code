@@ -1,9 +1,8 @@
 {
-  "buildCommand": "npm install --verbose && npm run build",
-  "outputDirectory": ".next",
+  "buildCommand": "cd ui/robot-controller-ui && npm install --verbose && npm run build",
+  "outputDirectory": "ui/robot-controller-ui/.next",
   "framework": "nextjs",
-  "installCommand": "npm install --verbose",
-  "rootDirectory": "ui/robot-controller-ui",
+  "installCommand": "cd ui/robot-controller-ui && npm install --verbose",
   "env": {
     "NODE_ENV": "production",
     "VERCEL_DEBUG": "1"
