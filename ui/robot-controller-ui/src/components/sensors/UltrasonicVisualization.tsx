@@ -1,16 +1,16 @@
 /*
 # File: /src/components/sensors/UltrasonicVisualization.tsx
 # Summary:
-#   Visual display of ultrasonic sensor data showing:
-#   - Sensor's line of sight (cone/beam visualization)
-#   - Detected distance with markers
-#   - Obstacles/barriers at detected distance
+#   Radar-style visual display of ultrasonic sensor data showing:
+#   - Circular radar display with distance rings
+#   - Sweeping beam animation
+#   - Target blips at detected obstacles
 #   - Real-time distance readings
 */
 
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Radar, AlertTriangle } from 'lucide-react';
 
 interface UltrasonicData {
@@ -28,6 +28,8 @@ interface UltrasonicVisualizationProps {
 const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data, isConnected }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number>();
+  const sweepAngleRef = useRef<number>(0);
+  const [sweepAngle, setSweepAngle] = useState(0);
 
   // HC-SR04 typical specifications
   const MAX_DISTANCE_CM = 400; // Maximum detection range
@@ -54,173 +56,196 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
       const container = canvas.parentElement;
       if (container) {
         const rect = container.getBoundingClientRect();
-        canvas.width = Math.min(600, rect.width - 32); // Account for padding
-        canvas.height = 500;
+        const size = Math.min(600, rect.width - 32, rect.height - 32);
+        canvas.width = size;
+        canvas.height = size;
       }
     };
 
-    // Define draw function first
-    const draw = () => {
+    // Define draw function
+    const draw = (timestamp: number) => {
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Set canvas size
-      const width = canvas.width;
-      const height = canvas.height;
-      const centerX = width / 2;
-      const sensorY = height - 40; // Sensor position at bottom
-      const sensorRadius = 20;
+      const size = canvas.width;
+      const centerX = size / 2;
+      const centerY = size / 2;
+      const radius = Math.min(centerX, centerY) - 40;
 
-      // Calculate visualization scale
-      const maxDisplayDistance = Math.max(MAX_DISTANCE_CM, safeData.distance_cm || MAX_DISTANCE_CM);
-      const scale = (height - 100) / maxDisplayDistance; // Leave space for sensor and labels
+      // Draw dark green radar background
+      const bgGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+      bgGradient.addColorStop(0, 'rgba(0, 20, 0, 0.8)');
+      bgGradient.addColorStop(0.5, 'rgba(0, 30, 0, 0.6)');
+      bgGradient.addColorStop(1, 'rgba(0, 40, 0, 0.4)');
+      ctx.fillStyle = bgGradient;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.fill();
 
-      // Draw background grid
-      ctx.strokeStyle = 'rgba(100, 100, 100, 0.3)';
+      // Draw concentric distance rings
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
       ctx.lineWidth = 1;
-      for (let i = 0; i <= 5; i++) {
-        const y = sensorY - (i * maxDisplayDistance * scale) / 5;
+      const numRings = 5;
+      for (let i = 1; i <= numRings; i++) {
+        const ringRadius = (radius * i) / numRings;
         ctx.beginPath();
-        ctx.moveTo(20, y);
-        ctx.lineTo(width - 20, y);
+        ctx.arc(centerX, centerY, ringRadius, 0, Math.PI * 2);
         ctx.stroke();
       }
 
-      // Draw distance markers on the right
-      ctx.fillStyle = 'rgba(200, 200, 200, 0.6)';
-      ctx.font = '12px monospace';
-      ctx.textAlign = 'right';
-      for (let i = 0; i <= 5; i++) {
-        const distance = (i * maxDisplayDistance) / 5;
-        const y = sensorY - (distance * scale);
-        ctx.fillText(`${distance.toFixed(0)} cm`, width - 25, y + 4);
+      // Draw radial lines (like clock face)
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.2)';
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i < 12; i++) {
+        const angle = (i * Math.PI * 2) / 12 - Math.PI / 2; // Start from top
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(
+          centerX + Math.cos(angle) * radius,
+          centerY + Math.sin(angle) * radius
+        );
+        ctx.stroke();
+      }
+
+      // Draw distance labels
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.7)';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      for (let i = 1; i <= numRings; i++) {
+        const distance = (MAX_DISTANCE_CM * i) / numRings;
+        const labelRadius = (radius * i) / numRings;
+        ctx.fillText(
+          `${distance.toFixed(0)}cm`,
+          centerX + labelRadius * 0.7,
+          centerY - labelRadius * 0.7 + 3
+        );
       }
 
       if (!isConnected || safeData.distance_cm === 0) {
         // Draw disconnected state
-        ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
-        ctx.font = '16px sans-serif';
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+        ctx.font = 'bold 16px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('Sensor Disconnected', centerX, height / 2);
+        ctx.fillText('NO SIGNAL', centerX, centerY);
         animationFrameRef.current = requestAnimationFrame(draw);
         return;
       }
 
-      // Calculate obstacle position
-      const obstacleDistance = Math.min(safeData.distance_cm, MAX_DISTANCE_CM);
-      const obstacleY = sensorY - (obstacleDistance * scale);
+      // Update sweep angle (rotating beam)
+      sweepAngleRef.current += 0.02; // Rotation speed
+      if (sweepAngleRef.current > Math.PI * 2) {
+        sweepAngleRef.current = 0;
+      }
+      setSweepAngle(sweepAngleRef.current);
 
-      // Draw sensor (at bottom center)
-      ctx.fillStyle = '#3b82f6';
-      ctx.beginPath();
-      ctx.arc(centerX, sensorY, sensorRadius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#1e40af';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Draw sensor label
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('HC-SR04', centerX, sensorY + sensorRadius + 15);
-
-      // Draw field of view cone
+      // Draw sweep trail (fading effect)
+      const sweepAngle = sweepAngleRef.current;
       const fovRadians = (FIELD_OF_VIEW_DEGREES * Math.PI) / 180;
-      const coneLength = obstacleDistance * scale;
+      
+      // Create sweep gradient
+      const sweepGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+      sweepGradient.addColorStop(0, 'rgba(0, 255, 0, 0.1)');
+      sweepGradient.addColorStop(0.5, 'rgba(0, 255, 0, 0.05)');
+      sweepGradient.addColorStop(1, 'rgba(0, 255, 0, 0)');
 
-      // Create gradient for the cone
-      const gradient = ctx.createLinearGradient(centerX, sensorY, centerX, obstacleY);
-      gradient.addColorStop(0, 'rgba(59, 130, 246, 0.3)'); // Blue at sensor
-      gradient.addColorStop(0.5, 'rgba(59, 130, 246, 0.2)');
-      gradient.addColorStop(1, 'rgba(59, 130, 246, 0.05)'); // Fade at end
-
-      ctx.fillStyle = gradient;
+      // Draw sweep sector
+      ctx.fillStyle = sweepGradient;
       ctx.beginPath();
-      ctx.moveTo(centerX, sensorY);
-      const leftAngle = -fovRadians / 2;
-      const rightAngle = fovRadians / 2;
-      ctx.lineTo(
-        centerX + Math.sin(leftAngle) * coneLength,
-        sensorY - Math.cos(leftAngle) * coneLength
-      );
-      ctx.lineTo(
-        centerX + Math.sin(rightAngle) * coneLength,
-        sensorY - Math.cos(rightAngle) * coneLength
+      ctx.moveTo(centerX, centerY);
+      ctx.arc(
+        centerX,
+        centerY,
+        radius,
+        sweepAngle - fovRadians / 2,
+        sweepAngle + fovRadians / 2
       );
       ctx.closePath();
       ctx.fill();
 
-      // Draw detection beam (line of sight)
-      ctx.strokeStyle = '#60a5fa';
+      // Draw active sweep line
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
       ctx.lineWidth = 2;
-      ctx.setLineDash([5, 5]);
       ctx.beginPath();
-      ctx.moveTo(centerX, sensorY);
-      ctx.lineTo(centerX, obstacleY);
+      ctx.moveTo(centerX, centerY);
+      ctx.lineTo(
+        centerX + Math.cos(sweepAngle) * radius,
+        centerY + Math.sin(sweepAngle) * radius
+      );
       ctx.stroke();
-      ctx.setLineDash([]);
 
-      // Draw obstacle/barrier
-      if (obstacleDistance <= MAX_DISTANCE_CM && obstacleDistance >= MIN_DISTANCE_CM) {
-        const obstacleWidth = 60;
-        const obstacleHeight = 20;
+      // Draw target blip if obstacle detected
+      const obstacleDistance = Math.min(safeData.distance_cm, MAX_DISTANCE_CM);
+      if (obstacleDistance >= MIN_DISTANCE_CM && obstacleDistance <= MAX_DISTANCE_CM) {
+        const blipRadius = (obstacleDistance / MAX_DISTANCE_CM) * radius;
+        const blipX = centerX + Math.cos(sweepAngle) * blipRadius;
+        const blipY = centerY + Math.sin(sweepAngle) * blipRadius;
 
-        // Draw obstacle shadow
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-        ctx.fillRect(
-          centerX - obstacleWidth / 2 + 3,
-          obstacleY - obstacleHeight / 2 + 3,
-          obstacleWidth,
-          obstacleHeight
-        );
-
-        // Draw obstacle
-        ctx.fillStyle = safeData.distance_cm < 30 ? '#ef4444' : safeData.distance_cm < 100 ? '#f59e0b' : '#10b981';
-        ctx.fillRect(
-          centerX - obstacleWidth / 2,
-          obstacleY - obstacleHeight / 2,
-          obstacleWidth,
-          obstacleHeight
-        );
-
-        // Draw obstacle border
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(
-          centerX - obstacleWidth / 2,
-          obstacleY - obstacleHeight / 2,
-          obstacleWidth,
-          obstacleHeight
-        );
-
-        // Draw distance line from sensor to obstacle
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
+        // Draw blip with pulsing effect
+        const pulse = Math.sin(Date.now() / 200) * 0.3 + 0.7;
+        const blipSize = safeData.distance_cm < 30 ? 8 : safeData.distance_cm < 100 ? 6 : 4;
+        
+        // Outer glow
+        const glowGradient = ctx.createRadialGradient(blipX, blipY, 0, blipX, blipY, blipSize * 2);
+        const color = safeData.distance_cm < 30 ? '255, 0, 0' : safeData.distance_cm < 100 ? '255, 200, 0' : '0, 255, 0';
+        glowGradient.addColorStop(0, `rgba(${color}, ${0.6 * pulse})`);
+        glowGradient.addColorStop(0.5, `rgba(${color}, ${0.3 * pulse})`);
+        glowGradient.addColorStop(1, `rgba(${color}, 0)`);
+        
+        ctx.fillStyle = glowGradient;
         ctx.beginPath();
-        ctx.moveTo(centerX, sensorY);
-        ctx.lineTo(centerX, obstacleY);
+        ctx.arc(blipX, blipY, blipSize * 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Inner blip
+        ctx.fillStyle = `rgba(${color}, ${pulse})`;
+        ctx.beginPath();
+        ctx.arc(blipX, blipY, blipSize, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw line from center to blip
+        ctx.strokeStyle = `rgba(${color}, 0.4)`;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(blipX, blipY);
         ctx.stroke();
         ctx.setLineDash([]);
-      }
 
-      // Draw distance label at obstacle
-      if (obstacleDistance <= MAX_DISTANCE_CM && obstacleDistance >= MIN_DISTANCE_CM) {
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 14px sans-serif';
+        // Draw distance label near blip
+        ctx.fillStyle = `rgba(${color}, 0.9)`;
+        ctx.font = 'bold 11px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(
-          `${safeData.distance_cm.toFixed(1)} cm`,
-          centerX,
-          obstacleY - obstacleHeight / 2 - 10
+          `${safeData.distance_cm.toFixed(0)}cm`,
+          blipX,
+          blipY - blipSize - 8
         );
       }
+
+      // Draw center point (sensor)
+      ctx.fillStyle = '#00ff00';
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Draw crosshair at center
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(centerX - 10, centerY);
+      ctx.lineTo(centerX + 10, centerY);
+      ctx.moveTo(centerX, centerY - 10);
+      ctx.lineTo(centerX, centerY + 10);
+      ctx.stroke();
 
       // Draw warning if too close
       if (safeData.distance_cm < 30 && safeData.distance_cm > 0) {
-        ctx.fillStyle = '#ef4444';
-        ctx.font = 'bold 16px sans-serif';
+        ctx.fillStyle = '#ff0000';
+        ctx.font = 'bold 14px monospace';
         ctx.textAlign = 'center';
         ctx.fillText('⚠ TOO CLOSE', centerX, 30);
       }
@@ -232,7 +257,6 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
     updateCanvasSize();
     const resizeObserver = new ResizeObserver(() => {
       updateCanvasSize();
-      // Redraw after resize
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -242,7 +266,7 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
       resizeObserver.observe(canvas.parentElement);
     }
 
-    draw();
+    draw(0);
 
     return () => {
       if (animationFrameRef.current) {
@@ -267,8 +291,8 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
         {/* Header with status */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Radar className="h-5 w-5 text-blue-400" />
-            <h3 className="text-lg font-semibold text-white">Ultrasonic Sensor Visualization</h3>
+            <Radar className="h-5 w-5 text-green-400 animate-spin" style={{ animationDuration: '3s' }} />
+            <h3 className="text-lg font-semibold text-white">Radar Display</h3>
           </div>
           <div className={`flex items-center gap-2 ${getStatusColor()}`}>
             {safeData.distance_cm < 30 && safeData.distance_cm > 0 && (
@@ -281,37 +305,37 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
         </div>
 
         {/* Canvas visualization */}
-        <div className="relative bg-gray-950 rounded-lg border border-gray-700 p-4 flex items-center justify-center">
+        <div className="relative bg-black rounded-lg border-2 border-green-500 p-4 flex items-center justify-center shadow-lg shadow-green-500/20">
           <canvas
             ref={canvasRef}
-            className="w-full max-w-[600px] h-auto"
-            style={{ maxHeight: '500px' }}
+            className="w-full h-auto rounded"
+            style={{ maxWidth: '600px', maxHeight: '600px', aspectRatio: '1' }}
           />
         </div>
 
         {/* Distance info panel */}
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-gray-800 p-3 rounded-lg text-center">
+          <div className="bg-gray-800 p-3 rounded-lg text-center border border-green-500/30">
             <div className="text-xs text-gray-400 mb-1">Centimeters</div>
-            <div className="text-lg font-mono font-bold text-white">
+            <div className="text-lg font-mono font-bold text-green-400">
               {safeData.distance_cm.toFixed(1)}
             </div>
           </div>
-          <div className="bg-gray-800 p-3 rounded-lg text-center">
+          <div className="bg-gray-800 p-3 rounded-lg text-center border border-green-500/30">
             <div className="text-xs text-gray-400 mb-1">Meters</div>
-            <div className="text-lg font-mono font-bold text-white">
+            <div className="text-lg font-mono font-bold text-green-400">
               {safeData.distance_m.toFixed(2)}
             </div>
           </div>
-          <div className="bg-gray-800 p-3 rounded-lg text-center">
+          <div className="bg-gray-800 p-3 rounded-lg text-center border border-green-500/30">
             <div className="text-xs text-gray-400 mb-1">Inches</div>
-            <div className="text-lg font-mono font-bold text-white">
+            <div className="text-lg font-mono font-bold text-green-400">
               {safeData.distance_inch.toFixed(2)}
             </div>
           </div>
-          <div className="bg-gray-800 p-3 rounded-lg text-center">
+          <div className="bg-gray-800 p-3 rounded-lg text-center border border-green-500/30">
             <div className="text-xs text-gray-400 mb-1">Feet</div>
-            <div className="text-lg font-mono font-bold text-white">
+            <div className="text-lg font-mono font-bold text-green-400">
               {safeData.distance_feet.toFixed(2)}
             </div>
           </div>
@@ -321,10 +345,10 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
         <div className="mt-4 text-xs text-gray-400 text-center">
           {isConnected ? (
             <>
-              Field of View: {FIELD_OF_VIEW_DEGREES}° • Range: {MIN_DISTANCE_CM}-{MAX_DISTANCE_CM} cm
+              <span className="text-green-400">●</span> Active • Range: {MIN_DISTANCE_CM}-{MAX_DISTANCE_CM} cm • FOV: {FIELD_OF_VIEW_DEGREES}°
             </>
           ) : (
-            'Waiting for sensor connection...'
+            <span className="text-red-400">●</span> Waiting for sensor connection...
           )}
         </div>
       </div>
@@ -333,4 +357,3 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
 };
 
 export default UltrasonicVisualization;
-
