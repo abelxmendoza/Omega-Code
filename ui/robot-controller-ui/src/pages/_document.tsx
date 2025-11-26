@@ -43,6 +43,7 @@ export default function Document() {
               }
             `,
           }}
+          nonce={process.env.NEXT_PUBLIC_CSP_NONCE || ''}
         />
       </body>
     </Html>

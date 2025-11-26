@@ -12,6 +12,7 @@ import { AppProps } from 'next/app'; // Import Next.js App component props type
 import { Provider } from 'react-redux'; // Redux Provider for global state management
 import { CommandProvider } from '../context/CommandContext'; // Provides WebSocket and command state management
 import { MacroProvider } from '../context/MacroContext'; // Macro builder + automation runtime
+import { CapabilityProvider } from '../context/CapabilityContext'; // System capability detection
 import store from '../redux/store'; // Redux store configuration
 import '../styles/globals.scss'; // Import global styles
 import { ErrorBoundary } from 'react-error-boundary'; // Error boundary for runtime error handling
@@ -56,15 +57,17 @@ const MyApp = ({ Component, pageProps }: AppProps) => {
         <link rel="apple-touch-icon" href="/image/README/omegatechlogopro-noBackground.png" />
       </Head>
       <Provider store={store}> {/* Wrap all components with Redux state management */}
-        <CommandProvider> {/* Provide WebSocket and command logging functionality */}
-          <MacroProvider> {/* Persisted macro editor + runtime */}
-            <ErrorBoundary FallbackComponent={ErrorFallback}> {/* Gracefully handle runtime errors */}
-              <Component {...pageProps} /> {/* Render the current page */}
-              <InstallPrompt /> {/* PWA install prompt */}
-              {/* SpeedInsights removed - install @vercel/speed-insights package to enable */}
-            </ErrorBoundary>
-          </MacroProvider>
-        </CommandProvider>
+        <CapabilityProvider> {/* System capability detection and context */}
+          <CommandProvider> {/* Provide WebSocket and command logging functionality */}
+            <MacroProvider> {/* Persisted macro editor + runtime */}
+              <ErrorBoundary FallbackComponent={ErrorFallback}> {/* Gracefully handle runtime errors */}
+                <Component {...pageProps} /> {/* Render the current page */}
+                <InstallPrompt /> {/* PWA install prompt */}
+                {/* SpeedInsights removed - install @vercel/speed-insights package to enable */}
+              </ErrorBoundary>
+            </MacroProvider>
+          </CommandProvider>
+        </CapabilityProvider>
       </Provider>
     </>
   );

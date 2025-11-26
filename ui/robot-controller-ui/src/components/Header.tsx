@@ -21,6 +21,7 @@ import { CheckCircle, XCircle, Settings, Download } from 'lucide-react';
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { net } from '@/utils/netProfile';
+import { CapabilityInfoModal } from './capability/CapabilityInfoModal';
 
 const NetworkWizard = dynamic(() => import('@/components/NetworkWizard'), { ssr: false });
 
@@ -572,6 +573,11 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
               <div className={`h-4 rounded ${batteryClass}`} style={{ width: `${batteryLevel}%` }} />
             </div>
             <span className="ml-2 opacity-80">{batteryLevel}%</span>
+          </div>
+          
+          {/* Capability Status */}
+          <div className="flex items-center text-sm ml-4 pl-4 border-l border-white/10">
+            <CapabilityInfoModal />
           </div>
         </div>
       </div>

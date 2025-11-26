@@ -85,8 +85,29 @@ class VisionProcessor(Node):
             10
         )
         
-        # Parameters
-        self.enable_gpu = self.declare_parameter('enable_gpu', TORCH_AVAILABLE).value
+        # Load capability profile
+        try:
+            from .capability_utils import get_capability_profile
+            self.capability_profile = get_capability_profile()
+            self.ml_capable = self.capability_profile.get("ml_capable", False)
+            self.profile_mode = self.capability_profile.get("profile_mode", "mac")
+        except ImportError:
+            self.ml_capable = False
+            self.profile_mode = "mac"
+            self.get_logger().warn("capability_utils not available, using defaults")
+        
+        # Parameters - respect capability profile
+        default_gpu = TORCH_AVAILABLE and self.ml_capable
+        self.enable_gpu = self.declare_parameter('enable_gpu', default_gpu).value
+        
+        # Disable GPU if not capable
+        if self.enable_gpu and not self.ml_capable:
+            self.get_logger().warn(
+                "GPU requested but not available in current profile. "
+                f"Profile: {self.profile_mode}, ML capable: {self.ml_capable}"
+            )
+            self.enable_gpu = False
+        
         self.detection_threshold = self.declare_parameter('detection_threshold', 0.5).value
         self.process_rate = self.declare_parameter('process_rate', 30.0).value  # Hz
         

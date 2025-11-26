@@ -76,11 +76,27 @@ class CameraPublisher(Node):
             CompressedImage, '/camera/image_raw/compressed', 10
         )
         
-        # Camera configuration
-        self.width = int(self.declare_parameter('width', 640).value)
-        self.height = int(self.declare_parameter('height', 480).value)
-        self.fps = int(self.declare_parameter('fps', 30).value)
+        # Load capability profile for defaults
+        try:
+            from .capability_utils import get_max_resolution, get_max_fps
+            default_width, default_height = get_max_resolution()
+            default_fps = get_max_fps()
+        except ImportError:
+            default_width, default_height = 640, 480
+            default_fps = 30
+            self.get_logger().debug("capability_utils not available, using defaults")
+        
+        # Camera configuration (respects capability profile defaults)
+        self.width = int(self.declare_parameter('width', default_width).value)
+        self.height = int(self.declare_parameter('height', default_height).value)
+        self.fps = int(self.declare_parameter('fps', default_fps).value)
         self.publish_compressed = self.declare_parameter('publish_compressed', True).value
+        
+        # Log capability-aware settings
+        self.get_logger().info(
+            f'Camera configured: {self.width}x{self.height} @ {self.fps} FPS '
+            f'(capability-aware defaults)'
+        )
         
         # Initialize camera
         self.camera = None

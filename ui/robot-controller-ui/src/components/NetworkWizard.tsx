@@ -282,7 +282,7 @@ const NetworkWizard: React.FC = () => {
               wsState === 'connecting' ? 'bg-yellow-400' : 'bg-red-400'
             }`} title={`WebSocket: ${wsState}`}></div>
           </div>
-          <div>Video: <span className="text-white/80 font-mono">{movementLink || '—'}</span></div>
+          <div>Video: <span className="text-white/80 font-mono">{videoHealth || '—'}</span></div>
         </div>
       </div>
 
@@ -424,7 +424,7 @@ const NetworkWizard: React.FC = () => {
         
         <div className="text-xs text-white/60 mb-2">
           <strong>💡 What is SSID?</strong> SSID is your Wi-Fi network name (the name you see when connecting your phone/laptop to Wi-Fi).
-          Click "Scan Networks" above to see available networks, then click "Use" on any network to auto-fill it.
+          Click &quot;Scan Networks&quot; above to see available networks, then click &quot;Use&quot; on any network to auto-fill it.
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">

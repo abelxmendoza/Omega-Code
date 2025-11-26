@@ -32,6 +32,7 @@ setup(
             'odometry_publisher = omega_robot.odometry_publisher:main',
             'path_planner = omega_robot.path_planner:main',
             'vision_processor = omega_robot.vision_processor:main',
+            'system_capabilities = omega_robot.system_capabilities:main',
         ],
     },
 )

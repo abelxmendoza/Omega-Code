@@ -77,8 +77,19 @@ _raw_origins = [o.strip() for o in (os.getenv("ORIGIN_ALLOW", "")).split(",") if
 CORS_ORIGINS: Optional[List[str]] = _raw_origins or None
 ALLOWED_ORIGINS = CORS_ORIGINS if CORS_ORIGINS else "*"
 
-CAMERA_WIDTH   = int(os.getenv("CAMERA_WIDTH", "640"))
-CAMERA_HEIGHT  = int(os.getenv("CAMERA_HEIGHT", "480"))
+# Try to load capabilities for default resolution
+try:
+    from api.capability_service import get_capability_service
+    _capability_service = get_capability_service()
+    _default_width, _default_height = _capability_service.get_max_resolution()
+    _default_fps = _capability_service.get_max_fps()
+except Exception:
+    _default_width, _default_height = 640, 480
+    _default_fps = 30
+
+CAMERA_WIDTH   = int(os.getenv("CAMERA_WIDTH", str(_default_width)))
+CAMERA_HEIGHT  = int(os.getenv("CAMERA_HEIGHT", str(_default_height)))
+CAMERA_FPS     = int(os.getenv("CAMERA_FPS", str(_default_fps)))
 PLACEHOLDER_WHEN_NO_CAMERA = os.getenv("PLACEHOLDER_WHEN_NO_CAMERA", "0").lower() in ("1", "true", "yes")
 
 STARTUP_RETRY_SEC = int(os.getenv("STARTUP_RETRY_SEC", "5"))
