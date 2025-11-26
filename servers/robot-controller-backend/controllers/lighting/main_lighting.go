@@ -328,9 +328,20 @@ func main() {
 	}
 
 	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("📥 [REQUEST] Incoming request from %s: %s %s (Upgrade: %s, Connection: %s, User-Agent: %s)", 
+			r.RemoteAddr, r.Method, r.URL.Path, r.Header.Get("Upgrade"), r.Header.Get("Connection"), r.Header.Get("User-Agent"))
+		
+		// Check if this is a WebSocket upgrade request
+		if !websocket.IsWebSocketUpgrade(r) {
+			log.Printf("⚠️ [WARN] Non-WebSocket request to /lighting endpoint from %s", r.RemoteAddr)
+			http.Error(w, "This endpoint requires WebSocket upgrade", http.StatusBadRequest)
+			return
+		}
+		
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			log.Printf("❌ [ERROR] WebSocket upgrade failed from %s: %v", r.RemoteAddr, err)
+			log.Printf("❌ [ERROR] WebSocket upgrade failed from %s: %v (Headers: Upgrade=%s, Connection=%s)", 
+				r.RemoteAddr, err, r.Header.Get("Upgrade"), r.Header.Get("Connection"))
 			http.Error(w, fmt.Sprintf("WebSocket upgrade failed: %v", err), http.StatusBadRequest)
 			return
 		}
