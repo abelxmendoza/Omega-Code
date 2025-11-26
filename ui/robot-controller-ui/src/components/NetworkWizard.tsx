@@ -89,14 +89,22 @@ const NetworkWizard: React.FC = () => {
     return m ? `${m[1]}/health` : `${VIDEO_URL.replace(/\/$/, '')}/health`;
   }, [VIDEO_URL]);
 
-  // Safe sender (no-throw)
+  // Safe sender (no-throw) with debug logging
   const safeSend = React.useCallback((payload: any) => {
     try {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify(payload));
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[NetworkWizard] Sent:', payload);
+        }
+      } else {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[NetworkWizard] WebSocket not open, readyState:', wsRef.current?.readyState);
+        }
       }
-    } catch {
-      /* swallow */
+    } catch (error) {
+      console.error('[NetworkWizard] Error sending message:', error);
+      setMsg(`× Send error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }, []);
 
@@ -125,6 +133,9 @@ const NetworkWizard: React.FC = () => {
           if (cancelled) return;
           try {
             const data = JSON.parse(ev.data);
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[NetworkWizard] Received:', data);
+            }
             if (data?.type === 'net-info') {
               setInfo({
                 ssid: data.ssid ?? null,
@@ -132,28 +143,37 @@ const NetworkWizard: React.FC = () => {
                 iface: data.iface ?? null,
                 tailscaleIp: data.tailscaleIp ?? null,
                 ts: data.ts ?? Date.now(),
+                panActive: data.panActive ?? false,
+                panDevice: data.panDevice ?? undefined,
               });
               setMsg('');
             } else if (data?.type === 'net-scan' && Array.isArray(data.networks)) {
               setScan(data.networks);
-              setMsg('');
+              setBusy(false); // Clear busy state when scan completes
+              setMsg(`✓ Found ${data.networks.length} network(s)`);
             } else if (data?.type === 'ack') {
+              setBusy(false); // Clear busy state when ack received
               if (data.status === 'ok') {
                 setMsg(`✓ ${data.action || 'ok'}`);
                 if (data.action === 'net-join' || data.action === 'net-forget') {
                   // refresh info post-change
-                  safeSend({ command: 'net-info' });
+                  setTimeout(() => safeSend({ command: 'net-info' }), 500);
                 }
               } else {
-                setMsg(`× ${data.error || 'error'}`);
+                setMsg(`× ${data.error || data.message || 'error'}`);
               }
+            } else if (data?.type === 'error') {
+              setMsg(`× ${data.message || data.error || 'Unknown error'}`);
             }
-          } catch {
-            /* ignore parse errors */
+          } catch (error) {
+            console.error('[NetworkWizard] Parse error:', error, 'Raw data:', ev.data);
+            setMsg('× Invalid response from server');
           }
         };
 
-        ws.onerror = () => {
+        ws.onerror = (error) => {
+          console.error('[NetworkWizard] WebSocket error:', error);
+          setMsg('× WebSocket connection error');
           /* onclose will handle retry */
         };
 
@@ -186,29 +206,60 @@ const NetworkWizard: React.FC = () => {
   const doScan = async () => {
     setBusy(true);
     setMsg('Scanning…');
+    setScan([]); // Clear previous results
     safeSend({ command: 'net-scan' });
-    // Response arrives via onmessage handler
-    setBusy(false);
+    // Response arrives via onmessage handler which will set busy to false
+    // Set a timeout to reset busy state if no response
+    setTimeout(() => {
+      setBusy((prevBusy) => {
+        if (prevBusy) {
+          setMsg('× Scan timeout - no networks found or server not responding');
+          return false;
+        }
+        return prevBusy;
+      });
+    }, 10000); // 10 second timeout
   };
 
   const join = async (ssidVal: string, passVal: string) => {
-    if (!ssidVal) { setMsg('× SSID required'); return; }
+    if (!ssidVal?.trim()) { 
+      setMsg('× SSID required'); 
+      return; 
+    }
     setBusy(true);
-    safeSend({ command: 'net-join', ssid: ssidVal, pass: passVal });
-    setBusy(false);
+    setMsg(`Connecting to ${ssidVal}…`);
+    safeSend({ command: 'net-join', ssid: ssidVal.trim(), pass: passVal || '' });
+    // Note: busy state will be cleared when ack is received via WebSocket
   };
 
   const forget = async (ssidVal: string) => {
-    if (!ssidVal) { setMsg('× SSID required'); return; }
+    if (!ssidVal?.trim()) { 
+      setMsg('× SSID required'); 
+      return; 
+    }
+    if (!confirm(`Forget network "${ssidVal}"?`)) {
+      return;
+    }
     setBusy(true);
-    safeSend({ command: 'net-forget', ssid: ssidVal });
-    setBusy(false);
+    setMsg(`Forgetting ${ssidVal}…`);
+    safeSend({ command: 'net-forget', ssid: ssidVal.trim() });
+    // Note: busy state will be cleared when ack is received via WebSocket
   };
 
   const copy = async (txt?: string | null) => {
-    if (!txt) return;
-    try { await navigator.clipboard.writeText(txt); setMsg('✓ Copied'); }
-    catch { setMsg('× Copy failed'); }
+    if (!txt) {
+      setMsg('× Nothing to copy');
+      return;
+    }
+    try { 
+      await navigator.clipboard.writeText(txt); 
+      setMsg(`✓ Copied: ${txt}`);
+      // Clear message after 3 seconds
+      setTimeout(() => setMsg(''), 3000);
+    } catch (error) {
+      console.error('[NetworkWizard] Copy failed:', error);
+      setMsg(`× Copy failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
   // Profile switcher: map UI labels → app profiles, persist, and reload.
@@ -253,8 +304,10 @@ const NetworkWizard: React.FC = () => {
           <span className="text-white/70">{wsState}</span>
           <button
             onClick={refresh}
-            className="ml-2 px-2 py-1 rounded bg-black/30 hover:bg-black/40 text-xs border border-white/10"
-            title="Refresh info"
+            className="ml-2 px-2 py-1 rounded bg-black/30 hover:bg-black/40 text-xs border border-white/10 transition-colors"
+            title="Refresh network information"
+            aria-label="Refresh network information"
+            disabled={busy}
           >
             Refresh
           </button>
@@ -415,10 +468,11 @@ const NetworkWizard: React.FC = () => {
           <button
             onClick={doScan}
             disabled={busy}
-            className={`px-2 py-1 rounded text-xs ${busy ? 'bg-zinc-700' : 'bg-blue-600 hover:bg-blue-500'}`}
+            className={`px-2 py-1 rounded text-xs transition-colors ${busy ? 'bg-zinc-700 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500'}`}
             title="Scan for nearby Wi-Fi networks"
+            aria-label="Scan for nearby Wi-Fi networks"
           >
-            🔍 Scan Networks
+            {busy ? '⏳ Scanning...' : '🔍 Scan Networks'}
           </button>
         </div>
         
@@ -529,7 +583,21 @@ const NetworkWizard: React.FC = () => {
       </div>
 
       {/* Status line */}
-      {msg && <div className="text-xs text-white/70">{msg}</div>}
+      {msg && (
+        <div 
+          className={`text-xs p-2 rounded ${
+            msg.startsWith('✓') 
+              ? 'bg-emerald-900/30 text-emerald-300 border border-emerald-500/30' 
+              : msg.startsWith('×')
+              ? 'bg-rose-900/30 text-rose-300 border border-rose-500/30'
+              : 'bg-blue-900/30 text-blue-300 border border-blue-500/30'
+          }`}
+          role="status"
+          aria-live="polite"
+        >
+          {msg}
+        </div>
+      )}
 
       {/* Hint if server lacks handlers */}
       {wsState === 'connected' && !info.ip && !info.ssid && (
