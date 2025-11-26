@@ -19,6 +19,7 @@ from controllers.lighting.patterns import (
     music_visualizer,
     lightshow,
     rainbow,
+    rave_mode,
 )
 from rpi_ws281x import Color
 
@@ -109,10 +110,21 @@ def apply_lighting_mode(payload: dict, led_controller):
                 update_ms=int(update_ms),
                 duration_s=duration,
             )
+        elif pattern == "rave":
+            # Rave mode - energetic dancing lights (no audio required)
+            update_ms = interval if interval > 0 else 50
+            duration = max(10.0, update_ms / 1000.0 * 200)
+            rave_mode(
+                strip,
+                base_rgb=color1,
+                brightness=brightness,
+                interval_ms=int(update_ms),
+                duration_s=duration,
+            )
         elif pattern in _PATTERN_HANDLERS:
             _PATTERN_HANDLERS[pattern](strip, color1_scaled, color2_scaled, interval, brightness, mode)
         else:
-            raise ValueError(f"Unknown pattern: {pattern} (supported: static, fade, blink, chase, rainbow, lightshow, music)")
+            raise ValueError(f"Unknown pattern: {pattern} (supported: static, fade, blink, chase, rainbow, lightshow, music, rave)")
             
     except ValueError as e:
         print(f"❌ [ERROR] Invalid lighting command: {e}", file=sys.stderr)

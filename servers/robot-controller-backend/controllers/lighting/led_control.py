@@ -28,6 +28,7 @@ from controllers.lighting.patterns import (
     blink,
     color_wipe as pattern_color_wipe,
     dual_color,
+    rave_mode,
 )
 
 # Cache common Color objects to reduce allocations
@@ -317,8 +318,20 @@ class LedController:
                     duration_s=duration,
                 )
                 self.is_on = True
+            elif pattern == "rave":
+                # Rave mode - energetic dancing lights (no audio required)
+                update_ms = interval if isinstance(interval, (int, float)) and interval > 0 else 50
+                duration = max(10.0, update_ms / 1000.0 * 200)  # Run longer for rave mode
+                rave_mode(
+                    self.strip,
+                    base_rgb=(raw_r, raw_g, raw_b),
+                    brightness=brightness,
+                    interval_ms=int(update_ms),
+                    duration_s=duration,
+                )
+                self.is_on = True
             else:
-                raise ValueError(f"Unknown pattern: {pattern} (supported: static, blink, pulse, fade, chase, rainbow, lightshow, music, off)")
+                raise ValueError(f"Unknown pattern: {pattern} (supported: static, blink, pulse, fade, chase, rainbow, lightshow, music, rave, off)")
 
             self.is_on = True
 

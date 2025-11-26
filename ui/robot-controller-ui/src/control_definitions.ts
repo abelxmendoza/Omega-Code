@@ -87,6 +87,7 @@ export const LIGHTING_PATTERNS = [
   'rainbow',  // spectrum sweep
   'music',    // audio reactive pulse
   'lightshow', // multi-stage animated showpiece
+  'rave',     // energetic dancing lights (no audio required)
 ] as const;
 
 // Lighting Mode Constants

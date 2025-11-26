@@ -338,4 +338,99 @@ def lightshow(strip, base_rgb, interval_ms=100, brightness=1.0, cycles=3):
             sleep(sparkle_delay)
 
 
+def rave_mode(
+    strip,
+    base_rgb: Tuple[int, int, int] = (255, 0, 255),
+    brightness: float = 1.0,
+    interval_ms: int = 50,
+    duration_s: float = 30.0,
+) -> None:
+    """Create an energetic "rave mode" dancing lights effect.
+    
+    This pattern creates a high-energy, party-like lighting effect with:
+    - Fast color cycling through vibrant colors
+    - Strobing effects
+    - Wave patterns
+    - Pulsing beats
+    - Multiple simultaneous effects
+    
+    No audio input required - creates synthetic "beat" patterns that simulate
+    dancing to music. Perfect for party mode!
+    
+    Args:
+        strip: Initialized NeoPixel strip.
+        base_rgb: Base color tuple (r, g, b) - influences color palette.
+        brightness: Global brightness multiplier (0.0-1.0).
+        interval_ms: Base update interval in milliseconds (lower = faster, recommended 30-100ms).
+        duration_s: Duration to run the effect in seconds.
+    """
+    
+    brightness = _clamp(float(brightness), 0.0, 1.0)
+    update_sec = max(0.01, interval_ms / 1000.0)
+    duration = max(duration_s, update_sec)
+    num_pixels = strip.numPixels()
+    
+    if num_pixels <= 0:
+        return
+    
+    # Create vibrant rave color palette
+    # Mix base color with classic rave colors (magenta, cyan, yellow, green, red, blue)
+    rave_colors = [
+        base_rgb,
+        (255, 0, 255),  # Magenta
+        (0, 255, 255),  # Cyan
+        (255, 255, 0),  # Yellow
+        (0, 255, 0),    # Green
+        (255, 0, 0),    # Red
+        (0, 0, 255),    # Blue
+        (255, 128, 0),  # Orange
+    ]
+    
+    # Scale colors by brightness
+    palette = [tuple(int(c * brightness) for c in color) for color in rave_colors]
+    palette_colors = [Color(*rgb) for rgb in palette]
+    
+    # State variables for various effects
+    phase = 0.0
+    wave_offset = 0
+    strobe_counter = 0
+    color_index = 0
+    
+    end_time = time.time() + duration
+    
+    while time.time() < end_time:
+        phase += update_sec * 4.0  # Fast phase progression
+        strobe_counter += 1
+        
+        # Multiple simultaneous effects
+        for i in range(num_pixels):
+            # Effect 1: Wave pattern (sine wave moving across strip)
+            wave_pos = (i + wave_offset) % num_pixels
+            wave_value = (math.sin(phase + wave_pos * 0.5) + 1.0) / 2.0
+            
+            # Effect 2: Strobing (every 3rd frame, flash white)
+            if strobe_counter % 3 == 0 and i % 3 == 0:
+                strip.setPixelColor(i, Color(*_scale_rgb((255, 255, 255), 1.0, brightness)))
+            else:
+                # Effect 3: Color cycling with wave modulation
+                color_idx = int((phase * 2 + i * 0.3) % len(palette_colors))
+                base_color = palette[color_idx]
+                
+                # Apply wave modulation to brightness
+                modulated_brightness = wave_value * 0.7 + 0.3  # 30-100% brightness
+                r = int(base_color[0] * modulated_brightness)
+                g = int(base_color[1] * modulated_brightness)
+                b = int(base_color[2] * modulated_brightness)
+                
+                strip.setPixelColor(i, Color(r, g, b))
+        
+        strip.show()
+        
+        # Update offsets for next frame
+        wave_offset = (wave_offset + 1) % num_pixels
+        color_index = (color_index + 1) % len(palette_colors)
+        
+        time.sleep(update_sec)
+
+
 # Lighting patterns for NeoPixels

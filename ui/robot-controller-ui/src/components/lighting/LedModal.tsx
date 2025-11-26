@@ -16,7 +16,7 @@ import { connectLightingWs } from '../../utils/connectLightingWs';
 
 // Updated to match backend capabilities
 const LIGHTING_MODES = ['single', 'rainbow', 'dual'] as const;
-const LIGHTING_PATTERNS = ['static', 'pulse', 'blink', 'fade', 'chase', 'rainbow', 'lightshow', 'music'] as const;
+const LIGHTING_PATTERNS = ['static', 'pulse', 'blink', 'fade', 'chase', 'rainbow', 'lightshow', 'music', 'rave'] as const;
 
 type LightingMode = (typeof LIGHTING_MODES)[number];
 type LightingPattern = (typeof LIGHTING_PATTERNS)[number];
@@ -446,6 +446,12 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
             {pattern === 'rainbow' && (
               <p className="mt-2 text-sm text-green-200">
                 Rainbow displays a full spectrum sweep across all LEDs. Interval controls animation speed.
+              </p>
+            )}
+            {pattern === 'rave' && (
+              <p className="mt-2 text-sm text-green-200 font-bold">
+                🎉 RAVE MODE: Energetic dancing lights with fast color cycling, strobing, and wave effects!
+                No audio required - creates synthetic beat patterns. Lower interval = faster party! 🎊
               </p>
             )}
           </div>
