@@ -145,11 +145,16 @@ func measureDistance(trigger gpio.PinOut, echo gpio.PinIn) (int, error) {
 	trigger.Out(gpio.High)
 	time.Sleep(20 * time.Microsecond)
 	trigger.Out(gpio.Low)
+	
+	// CRITICAL: Small settling delay after trigger pulse
+	// HC-SR04 needs ~50-100µs to process trigger and prepare echo response
+	// This reduces intermittent "timeout waiting for echo HIGH" errors
+	time.Sleep(100 * time.Microsecond)
 
 	// Optimized echo detection with adaptive polling
 	// Use time.Now() once and calculate deltas efficiently
 	startWait := time.Now()
-	timeout := 100 * time.Millisecond
+	timeout := 150 * time.Millisecond // Increased from 100ms for better reliability
 	deadline := startWait.Add(timeout)
 	
 	// Adaptive polling: start with shorter delays, increase if needed
@@ -327,8 +332,24 @@ func handleConn(ws *websocket.Conn, trigger gpio.PinOut, echo gpio.PinIn, cfg en
 				}
 			}
 		case <-ticker.C:
-			// Measure distance
-			cm, err := measureDistance(trigger, echo)
+			// Measure distance with retry for transient failures
+			// Retry up to 2 times with exponential backoff (50ms, 100ms delays)
+			var cm int
+			var err error
+			maxRetries := 2
+			for attempt := 0; attempt <= maxRetries; attempt++ {
+				cm, err = measureDistance(trigger, echo)
+				if err == nil {
+					break // Success, exit retry loop
+				}
+				// If this is not the last attempt and error is timeout-related, retry
+				if attempt < maxRetries && strings.Contains(err.Error(), "timeout waiting for echo") {
+					backoffDelay := time.Duration(50*(1<<attempt)) * time.Millisecond
+					time.Sleep(backoffDelay)
+					continue
+				}
+				break // Non-retryable error or last attempt
+			}
 			now := time.Now() // Cache time for this iteration
 			
 			if err != nil {
