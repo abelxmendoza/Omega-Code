@@ -78,16 +78,20 @@ export const COMMAND = {
   // STOP_MACRO: 'stop-macro',
 } as const;
 
-// Lighting Pattern Constants
+// Lighting Pattern Constants - Optimized with cool patterns
 export const LIGHTING_PATTERNS = [
-  'static',   // steady color
-  'blink',    // on/off at defined interval
-  'fade',     // smooth transitions
-  'chase',    // chasing effect
-  'rainbow',  // spectrum sweep
-  'music',    // audio reactive pulse
+  'static',    // steady color
+  'blink',     // on/off at defined interval
+  'fade',      // smooth transitions
+  'chase',     // chasing effect
+  'rainbow',   // spectrum sweep
+  'music',     // audio reactive pulse
   'lightshow', // multi-stage animated showpiece
-  'rave',     // energetic dancing lights (no audio required)
+  'rave',      // energetic dancing lights (no audio required)
+  'breathing', // smooth breathing pulse (energy-efficient)
+  'aurora',    // flowing northern lights effect
+  'matrix',    // Matrix-style rain effect
+  'fire',      // flickering fire effect
 ] as const;
 
 // Lighting Mode Constants

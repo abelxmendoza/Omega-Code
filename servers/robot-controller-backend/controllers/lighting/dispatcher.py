@@ -20,6 +20,11 @@ from controllers.lighting.patterns import (
     lightshow,
     rainbow,
     rave_mode,
+    breathing,
+    aurora,
+    matrix_rain,
+    fire_effect,
+    status_indicator,
 )
 from rpi_ws281x import Color
 
@@ -121,10 +126,51 @@ def apply_lighting_mode(payload: dict, led_controller):
                 interval_ms=int(update_ms),
                 duration_s=duration,
             )
+        elif pattern == "breathing":
+            # Breathing effect - smooth pulse
+            breathing(
+                strip,
+                base_rgb=color1,
+                brightness=brightness,
+                interval_ms=interval if interval > 0 else 50,
+                cycles=5,
+            )
+        elif pattern == "aurora":
+            # Aurora effect - flowing northern lights
+            update_ms = interval if interval > 0 else 80
+            duration = max(10.0, update_ms / 1000.0 * 250)
+            aurora(
+                strip,
+                base_rgb=color1,
+                brightness=brightness,
+                interval_ms=int(update_ms),
+                duration_s=duration,
+            )
+        elif pattern == "matrix":
+            # Matrix rain effect
+            update_ms = interval if interval > 0 else 100
+            duration = max(10.0, update_ms / 1000.0 * 150)
+            matrix_rain(
+                strip,
+                base_rgb=color1,
+                brightness=brightness,
+                interval_ms=int(update_ms),
+                duration_s=duration,
+            )
+        elif pattern == "fire":
+            # Fire effect - flickering flames
+            update_ms = interval if interval > 0 else 50
+            duration = max(10.0, update_ms / 1000.0 * 400)
+            fire_effect(
+                strip,
+                brightness=brightness,
+                interval_ms=int(update_ms),
+                duration_s=duration,
+            )
         elif pattern in _PATTERN_HANDLERS:
             _PATTERN_HANDLERS[pattern](strip, color1_scaled, color2_scaled, interval, brightness, mode)
         else:
-            raise ValueError(f"Unknown pattern: {pattern} (supported: static, fade, blink, chase, rainbow, lightshow, music, rave)")
+            raise ValueError(f"Unknown pattern: {pattern} (supported: static, fade, blink, chase, rainbow, lightshow, music, rave, breathing, aurora, matrix, fire)")
             
     except ValueError as e:
         print(f"❌ [ERROR] Invalid lighting command: {e}", file=sys.stderr)

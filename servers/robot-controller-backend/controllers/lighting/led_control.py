@@ -29,6 +29,11 @@ from controllers.lighting.patterns import (
     color_wipe as pattern_color_wipe,
     dual_color,
     rave_mode,
+    breathing,
+    aurora,
+    matrix_rain,
+    fire_effect,
+    status_indicator,
 )
 
 # Cache common Color objects to reduce allocations
@@ -187,21 +192,27 @@ class LedController:
             max(0, min(255, int(b * scale * brightness))),
         )
 
-    def rainbow(self, wait_ms=20, brightness=1.0):
-        """Optimized rainbow with pre-computed brightness scaling."""
+    def rainbow(self, wait_ms=20, brightness=1.0, iterations=1):
+        """Optimized rainbow with pre-computed brightness scaling and configurable iterations."""
         try:
             # Pre-compute wait time to avoid repeated division
             wait_sec = max(0.01, wait_ms / 1000.0)
-            for j in range(256):
-                for i in range(self.num_pixels):
-                    base_color = self._wheel((i + j) & 255)
-                    # Optimize: extract RGB once, apply brightness, create Color once
-                    r = int(((base_color >> 16) & 255) * brightness)
-                    g = int(((base_color >> 8) & 255) * brightness)
-                    b = int((base_color & 255) * brightness)
-                    self.strip.setPixelColor(i, Color(r, g, b))
-                self.strip.show()
-                time.sleep(wait_sec)
+            # Cache brightness multiplication
+            brightness_r = brightness
+            brightness_g = brightness
+            brightness_b = brightness
+            
+            for iteration in range(iterations):
+                for j in range(256):
+                    for i in range(self.num_pixels):
+                        base_color = self._wheel((i + j) & 255)
+                        # Optimize: extract RGB once, apply brightness, create Color once
+                        r = int(((base_color >> 16) & 255) * brightness_r)
+                        g = int(((base_color >> 8) & 255) * brightness_g)
+                        b = int((base_color & 255) * brightness_b)
+                        self.strip.setPixelColor(i, Color(r, g, b))
+                    self.strip.show()
+                    time.sleep(wait_sec)
             self.is_on = True
         except Exception as e:
             print(f"❌ [ERROR] rainbow failed: {e}")
@@ -275,7 +286,9 @@ class LedController:
             b = int(raw_b * brightness)
 
             if mode == "rainbow" or pattern == "rainbow":
-                self.rainbow(interval, brightness)
+                # Rainbow runs continuously - use iterations for duration control
+                iterations = max(1, int(interval / 20)) if interval > 0 else 1
+                self.rainbow(interval if interval > 0 else 20, brightness, iterations)
             elif pattern == "lightshow" or mode == "lightshow":
                 self.lightshow(color, interval=interval, brightness=brightness)
             elif pattern == "static":
@@ -330,8 +343,53 @@ class LedController:
                     duration_s=duration,
                 )
                 self.is_on = True
+            elif pattern == "breathing":
+                # Breathing effect - smooth pulse like breathing
+                breathing(
+                    self.strip,
+                    base_rgb=(raw_r, raw_g, raw_b),
+                    brightness=brightness,
+                    interval_ms=interval if interval > 0 else 50,
+                    cycles=5,
+                )
+                self.is_on = True
+            elif pattern == "aurora":
+                # Aurora effect - flowing northern lights
+                update_ms = interval if isinstance(interval, (int, float)) and interval > 0 else 80
+                duration = max(10.0, update_ms / 1000.0 * 250)
+                aurora(
+                    self.strip,
+                    base_rgb=(raw_r, raw_g, raw_b),
+                    brightness=brightness,
+                    interval_ms=int(update_ms),
+                    duration_s=duration,
+                )
+                self.is_on = True
+            elif pattern == "matrix":
+                # Matrix rain effect
+                update_ms = interval if isinstance(interval, (int, float)) and interval > 0 else 100
+                duration = max(10.0, update_ms / 1000.0 * 150)
+                matrix_rain(
+                    self.strip,
+                    base_rgb=(raw_r, raw_g, raw_b),
+                    brightness=brightness,
+                    interval_ms=int(update_ms),
+                    duration_s=duration,
+                )
+                self.is_on = True
+            elif pattern == "fire":
+                # Fire effect - flickering flames
+                update_ms = interval if isinstance(interval, (int, float)) and interval > 0 else 50
+                duration = max(10.0, update_ms / 1000.0 * 400)
+                fire_effect(
+                    self.strip,
+                    brightness=brightness,
+                    interval_ms=int(update_ms),
+                    duration_s=duration,
+                )
+                self.is_on = True
             else:
-                raise ValueError(f"Unknown pattern: {pattern} (supported: static, blink, pulse, fade, chase, rainbow, lightshow, music, rave, off)")
+                raise ValueError(f"Unknown pattern: {pattern} (supported: static, blink, pulse, fade, chase, rainbow, lightshow, music, rave, breathing, aurora, matrix, fire, off)")
 
             self.is_on = True
 

@@ -14,9 +14,23 @@ import type { ColorResult } from 'react-color';
 import { SketchPicker } from 'react-color';
 import { connectLightingWs } from '../../utils/connectLightingWs';
 
-// Updated to match backend capabilities
+// Updated to match backend capabilities - optimized with cool patterns
 const LIGHTING_MODES = ['single', 'rainbow', 'dual'] as const;
-const LIGHTING_PATTERNS = ['static', 'pulse', 'blink', 'fade', 'chase', 'rainbow', 'lightshow', 'music', 'rave'] as const;
+const LIGHTING_PATTERNS = [
+  'static',      // Solid color
+  'pulse',       // Fade in/out
+  'blink',       // On/off blinking
+  'fade',        // Smooth transitions
+  'chase',       // Moving chase effect
+  'rainbow',     // Spectrum sweep
+  'lightshow',   // Multi-stage animation
+  'music',       // Audio reactive
+  'rave',        // Energetic dancing lights
+  'breathing',   // Smooth breathing pulse
+  'aurora',      // Flowing northern lights
+  'matrix',      // Matrix rain effect
+  'fire',        // Flickering fire effect
+] as const;
 
 type LightingMode = (typeof LIGHTING_MODES)[number];
 type LightingPattern = (typeof LIGHTING_PATTERNS)[number];
@@ -452,6 +466,26 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
               <p className="mt-2 text-sm text-green-200 font-bold">
                 🎉 RAVE MODE: Energetic dancing lights with fast color cycling, strobing, and wave effects!
                 No audio required - creates synthetic beat patterns. Lower interval = faster party! 🎊
+              </p>
+            )}
+            {pattern === 'breathing' && (
+              <p className="mt-2 text-sm text-green-200">
+                💨 BREATHING: Smooth, calming pulse effect perfect for idle/standby mode. Energy-efficient.
+              </p>
+            )}
+            {pattern === 'aurora' && (
+              <p className="mt-2 text-sm text-green-200">
+                🌌 AURORA: Flowing northern lights effect with organic wave movements. Mesmerizing ambient lighting.
+              </p>
+            )}
+            {pattern === 'matrix' && (
+              <p className="mt-2 text-sm text-green-200">
+                💚 MATRIX: Cool Matrix-style rain effect with falling light trails. Perfect for tech aesthetic!
+              </p>
+            )}
+            {pattern === 'fire' && (
+              <p className="mt-2 text-sm text-green-200">
+                🔥 FIRE: Realistic flickering fire effect with orange/red/yellow flames. Great for ambient lighting!
               </p>
             )}
           </div>

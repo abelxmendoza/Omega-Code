@@ -433,4 +433,344 @@ def rave_mode(
         time.sleep(update_sec)
 
 
+def breathing(
+    strip,
+    base_rgb: Tuple[int, int, int] = (0, 255, 255),
+    brightness: float = 1.0,
+    interval_ms: int = 50,
+    cycles: int = 5,
+) -> None:
+    """Smooth breathing effect - like a gentle pulse.
+    
+    Creates a calming, breathing-like effect perfect for idle/standby mode.
+    Energy-efficient with smooth transitions.
+    
+    Args:
+        strip: Initialized NeoPixel strip.
+        base_rgb: Base color tuple (r, g, b).
+        brightness: Global brightness multiplier (0.0-1.0).
+        interval_ms: Update interval in milliseconds.
+        cycles: Number of breath cycles.
+    """
+    brightness = _clamp(float(brightness), 0.0, 1.0)
+    update_sec = max(0.01, interval_ms / 1000.0)
+    num_pixels = strip.numPixels()
+    
+    if num_pixels <= 0:
+        return
+    
+    base_color = tuple(int(c * brightness) for c in base_rgb)
+    
+    for cycle in range(cycles):
+        # Breathe in (fade up)
+        for step in range(0, 101, 2):
+            scale = step / 100.0
+            # Smooth curve using ease-in-out
+            eased = scale * scale * (3.0 - 2.0 * scale)
+            r = int(base_color[0] * eased)
+            g = int(base_color[1] * eased)
+            b = int(base_color[2] * eased)
+            color = Color(r, g, b)
+            for i in range(num_pixels):
+                strip.setPixelColor(i, color)
+            strip.show()
+            time.sleep(update_sec * 2)
+        
+        # Breathe out (fade down)
+        for step in range(100, -1, -2):
+            scale = step / 100.0
+            eased = scale * scale * (3.0 - 2.0 * scale)
+            r = int(base_color[0] * eased)
+            g = int(base_color[1] * eased)
+            b = int(base_color[2] * eased)
+            color = Color(r, g, b)
+            for i in range(num_pixels):
+                strip.setPixelColor(i, color)
+            strip.show()
+            time.sleep(update_sec * 2)
+
+
+def aurora(
+    strip,
+    base_rgb: Tuple[int, int, int] = (0, 150, 255),
+    brightness: float = 1.0,
+    interval_ms: int = 80,
+    duration_s: float = 20.0,
+) -> None:
+    """Aurora effect - flowing, wave-like colors like northern lights.
+    
+    Creates mesmerizing, flowing color waves perfect for ambient lighting.
+    Energy-efficient with smooth, organic movements.
+    
+    Args:
+        strip: Initialized NeoPixel strip.
+        base_rgb: Base color tuple (r, g, b) - typically cool colors.
+        brightness: Global brightness multiplier (0.0-1.0).
+        interval_ms: Update interval in milliseconds.
+        duration_s: Duration to run the effect.
+    """
+    brightness = _clamp(float(brightness), 0.0, 1.0)
+    update_sec = max(0.02, interval_ms / 1000.0)
+    duration = max(duration_s, update_sec)
+    num_pixels = strip.numPixels()
+    
+    if num_pixels <= 0:
+        return
+    
+    # Create aurora color palette (cool colors)
+    aurora_colors = [
+        base_rgb,
+        (0, 100, 200),   # Deep blue
+        (50, 200, 255),  # Cyan
+        (100, 150, 255), # Light blue
+        (150, 100, 255), # Purple-blue
+    ]
+    
+    palette = [tuple(int(c * brightness) for c in color) for color in aurora_colors]
+    
+    phase = 0.0
+    end_time = time.time() + duration
+    
+    while time.time() < end_time:
+        phase += update_sec * 0.5  # Slow, flowing movement
+        
+        for i in range(num_pixels):
+            # Multiple sine waves for organic flow
+            wave1 = math.sin(phase + i * 0.1) * 0.5 + 0.5
+            wave2 = math.sin(phase * 1.3 + i * 0.15) * 0.5 + 0.5
+            wave3 = math.cos(phase * 0.7 + i * 0.2) * 0.5 + 0.5
+            
+            # Combine waves for complex pattern
+            combined = (wave1 + wave2 + wave3) / 3.0
+            
+            # Select color based on position and phase
+            color_idx = int((i * 0.1 + phase * 0.5) % len(palette))
+            base_color = palette[color_idx]
+            
+            # Apply wave modulation
+            r = int(base_color[0] * combined)
+            g = int(base_color[1] * combined)
+            b = int(base_color[2] * combined)
+            
+            strip.setPixelColor(i, Color(r, g, b))
+        
+        strip.show()
+        time.sleep(update_sec)
+
+
+def matrix_rain(
+    strip,
+    base_rgb: Tuple[int, int, int] = (0, 255, 0),
+    brightness: float = 1.0,
+    interval_ms: int = 100,
+    duration_s: float = 15.0,
+) -> None:
+    """Matrix-style rain effect - falling columns of light.
+    
+    Creates a cool "Matrix" style effect with falling light trails.
+    Perfect for tech/cyber aesthetic.
+    
+    Args:
+        strip: Initialized NeoPixel strip.
+        base_rgb: Base color tuple (r, g, b) - typically green for Matrix look.
+        brightness: Global brightness multiplier (0.0-1.0).
+        interval_ms: Update interval in milliseconds (lower = faster rain).
+        duration_s: Duration to run the effect.
+    """
+    brightness = _clamp(float(brightness), 0.0, 1.0)
+    update_sec = max(0.05, interval_ms / 1000.0)
+    duration = max(duration_s, update_sec)
+    num_pixels = strip.numPixels()
+    
+    if num_pixels <= 0:
+        return
+    
+    # Create matrix color with brightness
+    matrix_color = tuple(int(c * brightness) for c in base_rgb)
+    trail_color = tuple(int(c * brightness * 0.3) for c in base_rgb)
+    
+    # Track falling drops
+    drops = []
+    drop_counter = 0
+    
+    end_time = time.time() + duration
+    
+    while time.time() < end_time:
+        # Clear strip
+        for i in range(num_pixels):
+            strip.setPixelColor(i, Color(0, 0, 0))
+        
+        # Add new drops occasionally
+        drop_counter += 1
+        if drop_counter % 3 == 0:
+            drops.append({"pos": 0, "speed": 1 + (drop_counter % 3)})
+        
+        # Update and draw drops
+        active_drops = []
+        for drop in drops:
+            pos = drop["pos"]
+            speed = drop["speed"]
+            
+            # Draw head (bright)
+            if 0 <= pos < num_pixels:
+                strip.setPixelColor(int(pos), Color(*matrix_color))
+            
+            # Draw trail (fading)
+            trail_length = 3
+            for t in range(1, trail_length + 1):
+                trail_pos = pos - t * speed
+                if 0 <= trail_pos < num_pixels:
+                    fade = 1.0 - (t / trail_length)
+                    r = int(trail_color[0] * fade)
+                    g = int(trail_color[1] * fade)
+                    b = int(trail_color[2] * fade)
+                    strip.setPixelColor(int(trail_pos), Color(r, g, b))
+            
+            # Update position
+            drop["pos"] += speed
+            
+            # Keep if still visible
+            if drop["pos"] < num_pixels + trail_length * speed:
+                active_drops.append(drop)
+        
+        drops = active_drops
+        strip.show()
+        time.sleep(update_sec)
+
+
+def fire_effect(
+    strip,
+    brightness: float = 1.0,
+    interval_ms: int = 50,
+    duration_s: float = 20.0,
+) -> None:
+    """Fire effect - flickering flames with orange/red/yellow colors.
+    
+    Creates a realistic fire effect perfect for ambient lighting.
+    Uses cooling algorithm for natural flame behavior.
+    
+    Args:
+        strip: Initialized NeoPixel strip.
+        brightness: Global brightness multiplier (0.0-1.0).
+        interval_ms: Update interval in milliseconds.
+        duration_s: Duration to run the effect.
+    """
+    brightness = _clamp(float(brightness), 0.0, 1.0)
+    update_sec = max(0.02, interval_ms / 1000.0)
+    duration = max(duration_s, update_sec)
+    num_pixels = strip.numPixels()
+    
+    if num_pixels <= 0:
+        return
+    
+    # Fire heat array (0-255)
+    heat = [0] * num_pixels
+    
+    end_time = time.time() + duration
+    
+    while time.time() < end_time:
+        # Cool down every cell a little
+        for i in range(num_pixels):
+            cooling = (i * 7) / num_pixels + 2
+            heat[i] = max(0, heat[i] - cooling)
+        
+        # Heat from each cell drifts up and diffuses
+        for i in range(num_pixels - 1, 2, -1):
+            heat[i] = (heat[i - 1] + heat[i - 2] + heat[i - 2]) / 3
+        
+        # Randomly ignite new 'sparks' at the bottom
+        if time.time() % 0.1 < update_sec:
+            spark = int(num_pixels * 0.8 + (num_pixels * 0.2 * (time.time() % 1.0)))
+            if 0 <= spark < num_pixels:
+                heat[spark] = min(255, heat[spark] + 160)
+        
+        # Convert heat to LED colors
+        for i in range(num_pixels):
+            # Scale heat value to color
+            t192 = int((heat[i] / 255.0) * 191)
+            
+            # Calculate brightness of this frame
+            heatramp = t192 & 0x3F  # 0-63
+            heatramp <<= 2  # Scale up to 0-252
+            
+            # Color based on heat
+            if t192 > 0x80:  # Hottest
+                r = 255
+                g = 255
+                b = heatramp
+            elif t192 > 0x40:  # Hot
+                r = 255
+                g = heatramp
+                b = 0
+            else:  # Cool
+                r = heatramp
+                g = 0
+                b = 0
+            
+            # Apply brightness
+            r = int(r * brightness)
+            g = int(g * brightness)
+            b = int(b * brightness)
+            
+            strip.setPixelColor(i, Color(r, g, b))
+        
+        strip.show()
+        time.sleep(update_sec)
+
+
+def status_indicator(
+    strip,
+    status: str = "idle",
+    brightness: float = 0.5,
+) -> None:
+    """Status indicator - shows robot state through lighting.
+    
+    Uses different colors/patterns to indicate robot status:
+    - idle: Soft blue breathing
+    - moving: Green pulse
+    - error: Red blink
+    - low_battery: Orange warning
+    - charging: Yellow pulse
+    
+    Args:
+        strip: Initialized NeoPixel strip.
+        status: Robot status string.
+        brightness: Global brightness multiplier (0.0-1.0).
+    """
+    brightness = _clamp(float(brightness), 0.0, 1.0)
+    num_pixels = strip.numPixels()
+    
+    if num_pixels <= 0:
+        return
+    
+    status_colors = {
+        "idle": (0, 100, 255),      # Soft blue
+        "moving": (0, 255, 0),      # Green
+        "error": (255, 0, 0),       # Red
+        "low_battery": (255, 128, 0),  # Orange
+        "charging": (255, 255, 0),  # Yellow
+        "ready": (0, 255, 255),     # Cyan
+    }
+    
+    color = status_colors.get(status.lower(), (128, 128, 128))
+    color = tuple(int(c * brightness) for c in color)
+    
+    if status.lower() == "idle":
+        # Breathing effect for idle
+        breathing(strip, color, brightness, 50, 1)
+    elif status.lower() == "error":
+        # Blink for errors
+        blink(strip, Color(*color), Color(0, 0, 0), delay=0.3)
+    elif status.lower() == "moving":
+        # Pulse for movement
+        for _ in range(3):
+            color_wipe(strip, Color(*color))
+            time.sleep(0.2)
+            color_wipe(strip, Color(0, 0, 0))
+            time.sleep(0.2)
+    else:
+        # Static color for other statuses
+        color_wipe(strip, Color(*color))
+
+
 # Lighting patterns for NeoPixels
