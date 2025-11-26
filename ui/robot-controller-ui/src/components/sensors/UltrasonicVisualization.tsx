@@ -60,7 +60,7 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({
       const container = canvas.parentElement;
       if (container) {
         const rect = container.getBoundingClientRect();
-        const size = Math.min(450, rect.width - 16, rect.height - 16);
+        const size = Math.min(320, rect.width - 8, rect.height - 8);
         canvas.width = size;
         canvas.height = size;
       }
@@ -378,11 +378,11 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({
         </div>
 
         {/* Canvas visualization */}
-        <div className="relative bg-black rounded-lg border border-green-500 p-2 flex items-center justify-center">
+        <div className="relative bg-black rounded-lg border border-green-500 p-1 flex items-center justify-center">
           <canvas
             ref={canvasRef}
             className="w-full h-auto rounded"
-            style={{ maxWidth: '450px', maxHeight: '450px', aspectRatio: '1' }}
+            style={{ maxWidth: '320px', maxHeight: '320px', aspectRatio: '1' }}
           />
         </div>
 

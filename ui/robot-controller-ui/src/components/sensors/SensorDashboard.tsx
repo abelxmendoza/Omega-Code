@@ -425,19 +425,20 @@ const SensorDashboard: React.FC = () => {
               <>
                 {/* Backdrop */}
                 <div 
-                  className="fixed inset-0 bg-black/50 z-[99]"
+                  className="fixed inset-0 bg-black/50 z-[9998]"
                   onClick={() => setShowUltraVisualization(false)}
                 />
                 {/* Popup centered */}
                 <div 
-                  className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[500px] max-w-[90vw] max-h-[90vh] overflow-auto transition-all duration-200 z-[100]"
+                  className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[380px] max-w-[90vw] max-h-[85vh] overflow-auto transition-all duration-200 z-[9999]"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="bg-gray-900 border-2 border-green-500 rounded-lg shadow-xl p-3 relative">
+                  <div className="bg-gray-900 border-2 border-green-500 rounded-lg shadow-xl p-2 relative">
                     <button
                       onClick={() => setShowUltraVisualization(false)}
-                      className="absolute top-2 right-2 text-gray-400 hover:text-white z-10 text-2xl leading-none w-6 h-6 flex items-center justify-center rounded hover:bg-gray-700"
+                      className="absolute top-1 right-1 text-white bg-red-500 hover:bg-red-600 z-[10000] text-xl leading-none w-7 h-7 flex items-center justify-center rounded-full font-bold shadow-lg"
                       aria-label="Close"
+                      title="Close (or click outside)"
                     >
                       ×
                     </button>
