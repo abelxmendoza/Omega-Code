@@ -38,7 +38,7 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({
   const MAX_DISTANCE_CM = 400; // Maximum detection range
   const MIN_DISTANCE_CM = 2; // Minimum detection range
   const FIELD_OF_VIEW_DEGREES = 15; // Typical field of view angle
-  const FORWARD_ARC_DEGREES = 180; // Forward-facing arc to display (wider view)
+  const FORWARD_ARC_DEGREES = 240; // Forward-facing arc to display (wider view)
 
   // Safely get distance values with defaults
   const safeData = {
@@ -60,7 +60,7 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({
       const container = canvas.parentElement;
       if (container) {
         const rect = container.getBoundingClientRect();
-        const size = Math.min(350, rect.width - 8, rect.height - 8);
+        const size = Math.min(450, rect.width - 16, rect.height - 16);
         canvas.width = size;
         canvas.height = size;
       }
@@ -378,11 +378,11 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({
         </div>
 
         {/* Canvas visualization */}
-        <div className="relative bg-black rounded-lg border border-green-500 p-1 flex items-center justify-center">
+        <div className="relative bg-black rounded-lg border border-green-500 p-2 flex items-center justify-center">
           <canvas
             ref={canvasRef}
             className="w-full h-auto rounded"
-            style={{ maxWidth: '350px', maxHeight: '350px', aspectRatio: '1' }}
+            style={{ maxWidth: '450px', maxHeight: '450px', aspectRatio: '1' }}
           />
         </div>
 

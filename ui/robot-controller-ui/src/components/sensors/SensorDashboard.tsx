@@ -91,6 +91,9 @@ const SensorDashboard: React.FC = () => {
   const [ultraErrorCount, setUltraErrorCount] = useState(0);
   const [ultraLastSuccess, setUltraLastSuccess] = useState<Date | null>(null);
   const [ultraConsecutiveErrors, setUltraConsecutiveErrors] = useState(0);
+  
+  // Ultrasonic visualization popup state
+  const [showUltraVisualization, setShowUltraVisualization] = useState(false);
 
   // --- WebSocket refs ---
   const lineWs = useRef<WebSocket | null>(null);
@@ -404,18 +407,23 @@ const SensorDashboard: React.FC = () => {
             </div>
           )}
           
-          {/* Ultrasonic Visualization Hover Popup */}
+          {/* Ultrasonic Visualization Popup */}
           <div className="relative group mt-3">
             <Button
               className="w-full gap-2 bg-blue-600 hover:bg-blue-700 text-white"
               variant="default"
+              onClick={() => setShowUltraVisualization(!showUltraVisualization)}
             >
               <Radar className="h-4 w-4" />
-              Hover to View
+              {showUltraVisualization ? 'Hide Visualization' : 'Show Visualization'}
             </Button>
-            {/* Popup on hover */}
-            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-[400px] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 pointer-events-none group-hover:pointer-events-auto">
-              <div className="bg-gray-900 border-2 border-green-500 rounded-lg shadow-xl p-2">
+            {/* Popup - shows on hover or when clicked */}
+            <div className={`absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-[500px] transition-all duration-200 z-50 ${
+              showUltraVisualization 
+                ? 'opacity-100 visible pointer-events-auto' 
+                : 'opacity-0 invisible pointer-events-none group-hover:opacity-100 group-hover:visible group-hover:pointer-events-auto'
+            }`}>
+              <div className="bg-gray-900 border-2 border-green-500 rounded-lg shadow-xl p-3">
                 <UltrasonicVisualization
                   data={ultrasonicData}
                   isConnected={ultraStatus === 'connected'}
