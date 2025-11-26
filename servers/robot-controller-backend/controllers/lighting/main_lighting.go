@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -143,7 +144,8 @@ func handleLighting(ws *websocket.Conn) {
 	}()
 	
 	clientAddr := ws.RemoteAddr().String()
-	log.Printf("✅ [CONNECTED] Lighting WebSocket client: %s", clientAddr)
+	log.Printf("✅ [CONNECTED] Lighting WebSocket client connected: %s", clientAddr)
+	log.Printf("   📡 Connection established at %s", time.Now().Format("2006-01-02 15:04:05"))
 
 	// Pre-allocate welcome message (reused from pool)
 	welcomeMsg := responsePool.Get().(map[string]interface{})
@@ -208,12 +210,15 @@ func handleLighting(ws *websocket.Conn) {
 			continue
 		}
 		
-		log.Printf("📨 [CMD] Received from %s: color=%v, mode=%s, pattern=%s, interval=%dms, brightness=%v",
-			clientAddr, command.Color, command.Mode, command.Pattern, command.Interval, command.Brightness)
+		log.Printf("📨 [CMD] Received lighting command from %s", clientAddr)
+		log.Printf("   🎨 Color: %v | Mode: %s | Pattern: %s | Interval: %dms | Brightness: %v",
+			command.Color, command.Mode, command.Pattern, command.Interval, command.Brightness)
 
+		log.Printf("   🔄 [PROCESS] Parsing color...")
 		hexColor, err := hexColorString(command.Color)
 		if err != nil {
-			log.Printf("❌ [ERROR] Color parsing failed for %s: %v", clientAddr, err)
+			log.Printf("❌ [ERROR] Color parsing FAILED for %s", clientAddr)
+			log.Printf("   Error: %v", err)
 			errorResp := responsePool.Get().(map[string]interface{})
 			errorResp["type"] = "error"
 			errorResp["error"] = fmt.Sprintf("Color parsing error: %v", err)
@@ -222,6 +227,7 @@ func handleLighting(ws *websocket.Conn) {
 			responsePool.Put(errorResp)
 			continue
 		}
+		log.Printf("   ✅ [PROCESS] Color parsed: #%s", hexColor)
 
 		// Brightness: default to 1.0 only when omitted; otherwise clamp to [0,1]
 		brightness := 1.0
@@ -251,16 +257,20 @@ func handleLighting(ws *websocket.Conn) {
 		}
 
 		runLedPath := getRunLedPath()
-		log.Printf("⚡ [EXEC] Running LED command: %s %v", runLedPath, args)
+		log.Printf("   ⚡ [EXEC] Executing LED command...")
+		log.Printf("      Script: %s", runLedPath)
+		log.Printf("      Args: %v", args)
 
 		// Run the wrapper with timeout and proper error handling
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		
 		startTime := time.Now()
+		log.Printf("   ⏳ [EXEC] Command started at %s", startTime.Format("15:04:05.000"))
 		cmd := exec.CommandContext(ctx, runLedPath, args...)
 		output, err := cmd.CombinedOutput()
 		duration := time.Since(startTime)
+		log.Printf("   ⏱️  [EXEC] Command completed in %v", duration)
 
 		// Reuse response map from pool
 		resultResp := responsePool.Get().(map[string]interface{})
@@ -268,7 +278,8 @@ func handleLighting(ws *websocket.Conn) {
 		resultResp["ts"] = time.Now().UnixMilli()
 
 		if ctx.Err() == context.DeadlineExceeded {
-			log.Printf("⏱️ [TIMEOUT] LED command exceeded 5s timeout for %s", clientAddr)
+			log.Printf("⏱️  [TIMEOUT] LED command EXCEEDED 5s timeout for %s", clientAddr)
+			log.Printf("   ⚠️  Command took longer than 5 seconds and was cancelled")
 			resultResp["ok"] = false
 			resultResp["error"] = "Command execution timeout (exceeded 5s)"
 			resultResp["output"] = string(output)
@@ -278,8 +289,10 @@ func handleLighting(ws *websocket.Conn) {
 		}
 		
 		if err != nil {
-			log.Printf("❌ [ERROR] LED command failed for %s after %v: %v", clientAddr, duration, err)
+			log.Printf("❌ [ERROR] LED command FAILED for %s", clientAddr)
+			log.Printf("   Duration: %v | Error: %v", duration, err)
 			log.Printf("   Output: %s", string(output))
+			log.Printf("   💡 Check LED script permissions and hardware connections")
 			resultResp["ok"] = false
 			resultResp["error"] = err.Error()
 			resultResp["output"] = string(output)
@@ -288,10 +301,12 @@ func handleLighting(ws *websocket.Conn) {
 			continue
 		}
 		
-		log.Printf("✅ [SUCCESS] LED command completed for %s in %v", clientAddr, duration)
+		log.Printf("✅ [SUCCESS] LED command completed successfully for %s", clientAddr)
+		log.Printf("   ⏱️  Duration: %v", duration)
 		if len(output) > 0 {
-			log.Printf("   Output: %s", strings.TrimSpace(string(output)))
+			log.Printf("   📤 Output: %s", strings.TrimSpace(string(output)))
 		}
+		log.Printf("   📡 Sending success response to client...")
 		resultResp["ok"] = true
 		resultResp["output"] = strings.TrimSpace(string(output))
 		resultResp["duration_ms"] = duration.Milliseconds()
@@ -328,30 +343,91 @@ func main() {
 	}
 
 	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("📥 [REQUEST] Incoming request from %s: %s %s (Upgrade: %s, Connection: %s, User-Agent: %s)", 
-			r.RemoteAddr, r.Method, r.URL.Path, r.Header.Get("Upgrade"), r.Header.Get("Connection"), r.Header.Get("User-Agent"))
+		clientIP := r.RemoteAddr
+		log.Printf("📥 [REQUEST] Incoming connection attempt from %s", clientIP)
+		log.Printf("   Method: %s | Path: %s | Protocol: %s", r.Method, r.URL.Path, r.Proto)
+		log.Printf("   Headers - Upgrade: %s | Connection: %s | Origin: %s", 
+			r.Header.Get("Upgrade"), r.Header.Get("Connection"), r.Header.Get("Origin"))
 		
 		// Check if this is a WebSocket upgrade request
 		if !websocket.IsWebSocketUpgrade(r) {
-			log.Printf("⚠️ [WARN] Non-WebSocket request to /lighting endpoint from %s", r.RemoteAddr)
+			log.Printf("⚠️ [WARN] Non-WebSocket request rejected from %s (expected WebSocket upgrade)", clientIP)
+			log.Printf("   💡 Tip: This endpoint only accepts WebSocket connections (ws:// or wss://)")
 			http.Error(w, "This endpoint requires WebSocket upgrade", http.StatusBadRequest)
 			return
 		}
 		
+		log.Printf("🔄 [UPGRADE] Attempting WebSocket upgrade for %s...", clientIP)
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			log.Printf("❌ [ERROR] WebSocket upgrade failed from %s: %v (Headers: Upgrade=%s, Connection=%s)", 
-				r.RemoteAddr, err, r.Header.Get("Upgrade"), r.Header.Get("Connection"))
+			log.Printf("❌ [ERROR] WebSocket upgrade FAILED from %s", clientIP)
+			log.Printf("   Error details: %v", err)
+			log.Printf("   Headers received - Upgrade: %s, Connection: %s", 
+				r.Header.Get("Upgrade"), r.Header.Get("Connection"))
+			log.Printf("   💡 Troubleshooting: Check CORS, firewall, or network connectivity")
 			http.Error(w, fmt.Sprintf("WebSocket upgrade failed: %v", err), http.StatusBadRequest)
 			return
 		}
+		
+		log.Printf("✅ [UPGRADE] WebSocket upgrade successful for %s", clientIP)
 		go handleLighting(conn) // Handle each connection in a goroutine
 	})
 
 	log.Printf("🚀 [STARTUP] Lighting WebSocket server starting...")
-	log.Printf("   Port: %s", port)
-	log.Printf("   Path: %s", path)
-	log.Printf("   LED Script: %s", runLedPath)
-	log.Printf("✅ [READY] Server listening on :%s%s", port, path)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Printf("   📍 Port: %s", port)
+	log.Printf("   🛣️  Path: %s", path)
+	log.Printf("   📜 LED Script: %s", runLedPath)
+	
+	// Get local IP addresses for better diagnostics
+	log.Printf("   🌐 Network interfaces:")
+	ifaces, err := net.Interfaces()
+	if err == nil {
+		for _, iface := range ifaces {
+			addrs, err := iface.Addrs()
+			if err != nil {
+				continue
+			}
+			for _, addr := range addrs {
+				if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+					if ipnet.IP.To4() != nil {
+						log.Printf("      - %s: %s:%s", iface.Name, ipnet.IP.String(), port)
+					}
+				}
+			}
+		}
+	}
+	
+	// Try to bind and listen with detailed error handling
+	listenAddr := ":" + port
+	log.Printf("")
+	log.Printf("🔌 [BIND] Attempting to bind to %s...", listenAddr)
+	
+	ln, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		log.Printf("❌ [FATAL] Failed to bind to %s", listenAddr)
+		if strings.Contains(err.Error(), "address already in use") {
+			log.Printf("   💡 Port %s is already in use!", port)
+			log.Printf("   💡 Solution: Kill the process using port %s or use a different port:", port)
+			log.Printf("      sudo lsof -i :%s", port)
+			log.Printf("      sudo kill -9 <PID>")
+			log.Printf("   💡 Or set PORT_LIGHTING environment variable to use a different port")
+		} else if strings.Contains(err.Error(), "permission denied") {
+			log.Printf("   💡 Permission denied! Ports below 1024 require root privileges")
+			log.Printf("   💡 Solution: Use a port >= 1024 or run with sudo")
+		} else {
+			log.Printf("   💡 Error: %v", err)
+		}
+		log.Fatal(err)
+	}
+	
+	log.Printf("✅ [BIND] Successfully bound to %s", listenAddr)
+	log.Printf("")
+	log.Printf("🎯 [READY] Server is now listening and accepting connections!")
+	log.Printf("   📡 WebSocket URL: ws://<IP>:%s%s", port, path)
+	log.Printf("   ⏰ Started at: %s", time.Now().Format("2006-01-02 15:04:05"))
+	log.Printf("   💡 Waiting for client connections...")
+	log.Printf("")
+	
+	// Start serving with the listener we created
+	log.Fatal(http.Serve(ln, nil))
 }
