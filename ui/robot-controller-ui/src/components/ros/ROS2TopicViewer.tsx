@@ -171,7 +171,10 @@ export function ROS2TopicViewer({
       </CardHeader>
       <CardContent>
         {error ? (
-          <div className="text-sm text-red-500">{error}</div>
+          (() => {
+            console.error('ROS2TopicViewer Error:', error);
+            return null;
+          })()
         ) : (
           <>
             <div className="text-2xl font-bold mb-2">

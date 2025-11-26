@@ -144,9 +144,10 @@ export const TelemetryVisualization: React.FC<TelemetryVisualizationProps> = ({ 
       </div>
 
       {error && (
-        <div className="mb-4 p-2 bg-red-900 text-red-100 rounded text-sm">
-          {error}
-        </div>
+        (() => {
+          console.error('TelemetryVisualization Error:', error);
+          return null;
+        })()
       )}
 
       {!connected && !error && (

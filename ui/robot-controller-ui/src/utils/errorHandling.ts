@@ -65,15 +65,24 @@ export class ErrorHandler {
       userAgent: navigator.userAgent,
     };
 
-    // Log to console
-    console.error('ErrorHandler:', errorInfo);
+    // Log to console (detailed logging for debugging)
+    console.error('ErrorHandler:', {
+      ...errorInfo,
+      context,
+      timestamp: new Date(errorInfo.timestamp).toISOString(),
+    });
 
     // Send to monitoring service (if available)
     this.reportError(errorInfo);
 
-    // Show user notification for critical errors
+    // Log critical errors to console with additional details
     if (this.isCriticalError(error, context)) {
-      this.showUserNotification(errorInfo);
+      console.error('CRITICAL ERROR:', {
+        message: errorInfo.message,
+        component: errorInfo.component,
+        stack: errorInfo.stack,
+        context,
+      });
     }
   }
 
@@ -94,45 +103,7 @@ export class ErrorHandler {
     );
   }
 
-  private showUserNotification(errorInfo: ErrorInfo): void {
-    // Create a user-friendly notification
-    const notification = document.createElement('div');
-    notification.className = 'error-notification';
-    notification.innerHTML = `
-      <div class="error-notification-content">
-        <div class="error-icon">⚠️</div>
-        <div class="error-message">
-          <strong>Connection Issue</strong>
-          <p>There's a problem with the robot connection. Please check your network and try refreshing the page.</p>
-          <button onclick="this.parentElement.parentElement.remove()">Dismiss</button>
-        </div>
-      </div>
-    `;
-
-    // Add styles
-    notification.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: #ff4444;
-      color: white;
-      padding: 15px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      z-index: 10000;
-      max-width: 400px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    `;
-
-    document.body.appendChild(notification);
-
-    // Auto-remove after 10 seconds
-    setTimeout(() => {
-      if (notification.parentElement) {
-        notification.remove();
-      }
-    }, 10000);
-  }
+  // Removed showUserNotification - errors are now logged to console only
 
   private reportError(errorInfo: ErrorInfo): void {
     // In a real application, you would send this to your error monitoring service

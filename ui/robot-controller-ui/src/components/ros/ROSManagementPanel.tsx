@@ -140,9 +140,10 @@ export const ROSManagementPanel: React.FC<ROSManagementPanelProps> = ({ classNam
       </div>
 
       {error && (
-        <div className="mb-4 p-2 bg-red-900 text-red-100 rounded text-sm">
-          {error}
-        </div>
+        (() => {
+          console.error('ROSManagementPanel Error:', error);
+          return null;
+        })()
       )}
 
       {/* Quick Actions */}

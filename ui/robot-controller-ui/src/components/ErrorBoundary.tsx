@@ -167,101 +167,21 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   };
 
   render() {
-    const { hasError, error, errorInfo, retryCount } = this.state;
-    const { children, fallback, maxRetries = 3 } = this.props;
+    const { hasError, error, errorInfo } = this.state;
+    const { children, fallback } = this.props;
 
     if (hasError) {
-      // Use custom fallback if provided
+      // Log error to console instead of showing UI
+      console.error('ErrorBoundary: Error caught and logged to console. Check browser console for details.');
+      
+      // Use custom fallback if provided, otherwise render children (errors logged to console)
       if (fallback) {
         return fallback;
       }
 
-      // Default error UI
-      return (
-        <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-4">
-          <div className="max-w-2xl w-full bg-gray-800 rounded-lg shadow-lg p-6">
-            <div className="flex items-center mb-4">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-red-600 rounded-full flex items-center justify-center">
-                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                </div>
-              </div>
-              <div className="ml-3">
-                <h1 className="text-lg font-semibold text-red-400">Something went wrong</h1>
-                <p className="text-sm text-gray-300">An unexpected error occurred in the application</p>
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <div className="bg-gray-700 rounded p-3 mb-3">
-                <p className="text-sm text-gray-300 mb-1">Error Message:</p>
-                <p className="text-red-300 font-mono text-sm">{error?.message || 'Unknown error'}</p>
-              </div>
-
-              {process.env.NODE_ENV === 'development' && errorInfo && (
-                <details className="mb-3">
-                  <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-300">
-                    Technical Details (Development)
-                  </summary>
-                  <div className="mt-2 bg-gray-700 rounded p-3">
-                    <pre className="text-xs text-gray-300 whitespace-pre-wrap overflow-auto max-h-40">
-                      {error?.stack}
-                    </pre>
-                    <div className="mt-2">
-                      <p className="text-xs text-gray-400 mb-1">Component Stack:</p>
-                      <pre className="text-xs text-gray-300 whitespace-pre-wrap overflow-auto max-h-20">
-                        {errorInfo.componentStack}
-                      </pre>
-                    </div>
-                  </div>
-                </details>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={this.retry}
-                disabled={retryCount >= maxRetries}
-                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                  retryCount >= maxRetries
-                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
-              >
-                {retryCount >= maxRetries ? 'Max Retries Reached' : `Retry (${retryCount}/${maxRetries})`}
-              </button>
-
-              <button
-                onClick={this.resetError}
-                className="px-4 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 transition-colors"
-              >
-                Reset
-              </button>
-
-              <button
-                onClick={this.copyErrorDetails}
-                className="px-4 py-2 bg-gray-600 text-white rounded text-sm font-medium hover:bg-gray-700 transition-colors"
-              >
-                Copy Error Details
-              </button>
-
-              <button
-                onClick={() => window.location.reload()}
-                className="px-4 py-2 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors"
-              >
-                Reload Page
-              </button>
-            </div>
-
-            <div className="mt-4 text-xs text-gray-400">
-              <p>If this error persists, please contact support with the error details.</p>
-              <p>Error ID: {this.state.errorId}</p>
-            </div>
-          </div>
-        </div>
-      );
+      // Don't show error UI - just log to console and render children
+      // Errors are visible in browser console and terminal
+      return children;
     }
 
     return children;

@@ -363,25 +363,21 @@ const SensorDashboard: React.FC = () => {
             />
           </div>
           
-          {/* Error Display */}
+          {/* Error Display - Logged to console instead */}
           {ultraError && (
-            <div className="mb-3 p-2 bg-red-900/50 border border-red-600 rounded text-xs">
-              <div className="flex items-start gap-2">
-                <span className="text-red-400 font-bold">⚠️</span>
-                <div className="flex-1">
-                  <div className="font-semibold text-red-300 mb-1">Sensor Error:</div>
-                  <div className="text-red-200 break-words">{ultraError}</div>
-                  {ultraConsecutiveErrors >= 3 && (
-                    <div className="mt-2 pt-2 border-t border-red-700">
-                      <div className="text-yellow-300 font-semibold mb-1">🔧 Troubleshooting:</div>
-                      <ul className="text-yellow-200 text-xs list-disc list-inside space-y-1">
-                        <li>Check sensor power: VCC → 5V, GND → GND</li>
-                        <li>Verify wiring: Trigger → GPIO27 (Pin13), Echo → GPIO22 (Pin15)</li>
-                        <li>Run diagnostic: <code className="bg-gray-800 px-1 rounded">go run test_ultrasonic_hardware.go</code></li>
-                        <li>Check GPIO permissions: <code className="bg-gray-800 px-1 rounded">sudo usermod -a -G gpio $USER</code></li>
-                      </ul>
-                    </div>
-                  )}
+            (() => {
+              console.error('SensorDashboard Ultrasonic Error:', ultraError, { 
+                consecutiveErrors: ultraConsecutiveErrors,
+                troubleshooting: ultraConsecutiveErrors >= 3 ? [
+                  'Check sensor power: VCC → 5V, GND → GND',
+                  'Verify wiring: Trigger → GPIO27 (Pin13), Echo → GPIO22 (Pin15)',
+                  'Run diagnostic: go run test_ultrasonic_hardware.go',
+                  'Check GPIO permissions: sudo usermod -a -G gpio $USER'
+                ] : []
+              });
+              return null;
+            })()
+          )}
                 </div>
               </div>
             </div>

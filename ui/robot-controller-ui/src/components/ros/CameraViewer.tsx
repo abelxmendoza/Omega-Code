@@ -152,7 +152,10 @@ export function CameraViewer({
       </CardHeader>
       <CardContent>
         {error ? (
-          <div className="text-sm text-red-500">{error}</div>
+          (() => {
+            console.error('CameraViewer Error:', error);
+            return null;
+          })()
         ) : (
           <div className="relative bg-black rounded-lg overflow-hidden" style={{ width, height }}>
             <canvas
