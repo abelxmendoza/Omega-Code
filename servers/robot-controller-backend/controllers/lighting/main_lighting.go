@@ -342,6 +342,19 @@ func main() {
 		log.Printf("✅ [INIT] Verified LED script: %s (executable)", runLedPath)
 	}
 
+	// Health check endpoint for connectivity testing
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":    "ok",
+			"service":   "lighting",
+			"port":      port,
+			"path":      path,
+			"timestamp": time.Now().Unix(),
+		})
+	})
+
 	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		clientIP := r.RemoteAddr
 		log.Printf("📥 [REQUEST] Incoming connection attempt from %s", clientIP)
@@ -424,8 +437,17 @@ func main() {
 	log.Printf("")
 	log.Printf("🎯 [READY] Server is now listening and accepting connections!")
 	log.Printf("   📡 WebSocket URL: ws://<IP>:%s%s", port, path)
+	log.Printf("   🏥 Health check: http://<IP>:%s/health", port)
 	log.Printf("   ⏰ Started at: %s", time.Now().Format("2006-01-02 15:04:05"))
 	log.Printf("   💡 Waiting for client connections...")
+	log.Printf("")
+	log.Printf("🔍 [DIAGNOSTICS] To test connectivity from another machine:")
+	log.Printf("   curl http://100.93.225.61:%s/health", port)
+	log.Printf("   curl http://192.168.6.164:%s/health", port)
+	log.Printf("")
+	log.Printf("⚠️  [FIREWALL] If connections fail, check firewall rules:")
+	log.Printf("   sudo ufw status")
+	log.Printf("   sudo ufw allow %s/tcp", port)
 	log.Printf("")
 	
 	// Start serving with the listener we created
