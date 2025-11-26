@@ -19,13 +19,6 @@ import {
 } from '@/utils/connectLineTrackerWs';
 import { resolveWsUrl, resolveWsCandidates } from '@/utils/resolveWsUrl';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 import { Radar } from 'lucide-react';
 import UltrasonicVisualization from './UltrasonicVisualization';
 
@@ -411,30 +404,29 @@ const SensorDashboard: React.FC = () => {
             </div>
           )}
           
-          {/* Ultrasonic Visualization Button */}
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button
-                className="mt-3 w-full gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-                variant="default"
-              >
-                <Radar className="h-4 w-4" />
-                View Visualization
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto border border-gray-700 bg-gray-900">
-              <DialogHeader>
-                <DialogTitle className="text-white flex items-center gap-2">
-                  <Radar className="h-5 w-5 text-blue-400" />
-                  Ultrasonic Sensor Visualization
-                </DialogTitle>
-              </DialogHeader>
-              <UltrasonicVisualization
-                data={ultrasonicData}
-                isConnected={ultraStatus === 'connected'}
-              />
-            </DialogContent>
-          </Dialog>
+          {/* Ultrasonic Visualization Hover Popup */}
+          <div className="relative group mt-3">
+            <Button
+              className="w-full gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+              variant="default"
+            >
+              <Radar className="h-4 w-4" />
+              Hover to View
+            </Button>
+            {/* Popup on hover */}
+            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-[400px] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 pointer-events-none group-hover:pointer-events-auto">
+              <div className="bg-gray-900 border-2 border-green-500 rounded-lg shadow-xl p-2">
+                <UltrasonicVisualization
+                  data={ultrasonicData}
+                  isConnected={ultraStatus === 'connected'}
+                />
+              </div>
+              {/* Arrow pointing down */}
+              <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                <div className="w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-green-500"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
