@@ -162,11 +162,18 @@ func handleLighting(ws *websocket.Conn) {
 	responsePool.Put(welcomeMsg)
 
 	for {
+		log.Printf("   📡 [READ] Waiting for message from %s...", clientAddr)
 		_, msg, err := ws.ReadMessage()
 		if err != nil {
-			log.Printf("WebSocket read error: %v", err)
+			log.Printf("   ❌ [READ] WebSocket read error from %s: %v", clientAddr, err)
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("   ⚠️  [READ] Unexpected close error: %v", err)
+			}
 			break
 		}
+		
+		log.Printf("   📨 [READ] Received %d bytes from %s", len(msg), clientAddr)
+		log.Printf("   📄 [READ] Raw message: %s", string(msg))
 
 		// Optimized heartbeat detection: fast path for ping/pong
 		// Check for ping without full unmarshal if possible
