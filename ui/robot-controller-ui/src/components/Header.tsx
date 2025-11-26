@@ -23,7 +23,13 @@ import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { net } from '@/utils/netProfile';
 import { CapabilityInfoModal } from './capability/CapabilityInfoModal';
 
-const NetworkWizard = dynamic(() => import('@/components/NetworkWizard'), { ssr: false });
+const NetworkWizard = dynamic(
+  () => import('./NetworkWizard'),
+  { 
+    ssr: false,
+    loading: () => <div className="text-white/50 p-2 text-xs">Loading Network Wizard...</div>
+  }
+);
 
 // Install button component for PWA
 const InstallButton: React.FC = () => {
