@@ -36,13 +36,16 @@ export function useROS2Status(autoRefresh = true, refreshInterval = 5000) {
       
       const data = await response.json();
       
+      // Check if ROS is disabled
+      const isDisabled = data.mode === 'disabled' || data.message?.includes('disabled');
+      
       setStatus({
-        available: data.mode !== 'none',
-        connected: data.mode !== 'none',
-        mode: data.mode || 'none',
+        available: !isDisabled && data.mode !== 'none',
+        connected: !isDisabled && data.mode !== 'none',
+        mode: isDisabled ? 'none' : (data.mode || 'none'),
         topics: data.topics || [],
         actions: [], // Would need separate endpoint for actions
-        error: undefined,
+        error: isDisabled ? 'ROS features are disabled. Set ROS_ENABLED=true to enable.' : undefined,
       });
     } catch (err) {
       setStatus(prev => ({

@@ -17,7 +17,7 @@ import {
   startJsonHeartbeat,
   parseLineTrackingPayload,
 } from '@/utils/connectLineTrackerWs';
-import { resolveWsUrl } from '@/utils/resolveWsUrl';
+import { resolveWsUrl, resolveWsCandidates } from '@/utils/resolveWsUrl';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -44,7 +44,11 @@ interface UltrasonicData {
 type ServerStatus = 'connecting' | 'connected' | 'disconnected';
 
 // ------------- WebSocket URLs (from env) ----------------
-const ULTRASONIC_WS = resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC');
+// Use resolveWsUrl with default port 8080 and path /ultrasonic for direct Go server connection
+const ULTRASONIC_WS = resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC', {
+  defaultPort: '8080',
+  path: '/ultrasonic',
+});
 
 // Small status dot helper
 function StatusDot({
@@ -147,51 +151,94 @@ const SensorDashboard: React.FC = () => {
     };
   }, []);
 
-  // Ultrasonic WS (direct)
+  // Ultrasonic WS (direct connection to Go server on port 8080)
   useEffect(() => {
-    if (!ULTRASONIC_WS) return;
+    // Build candidates: direct env vars first, then fallback to host-based URLs
+    const candidates = resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC', {
+      defaultPort: '8080',
+      path: '/ultrasonic',
+    });
+    
+    if (!candidates.length) {
+      console.warn('[ULTRASONIC] No WebSocket candidates found');
+      return;
+    }
 
-    setUltraStatus('connecting');
-    ultrasonicWs.current = new WebSocket(ULTRASONIC_WS);
+    let currentCandidateIndex = 0;
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
 
-    ultrasonicWs.current.onopen = () => {
-      setUltraStatus('connected');
-      console.log(`[ULTRASONIC] WebSocket connected: ${ULTRASONIC_WS}`);
-    };
+    const tryConnect = () => {
+      if (currentCandidateIndex >= candidates.length) {
+        console.error('[ULTRASONIC] All connection attempts failed');
+        setUltraStatus('disconnected');
+        return;
+      }
 
-    ultrasonicWs.current.onmessage = (event) => {
+      const url = candidates[currentCandidateIndex];
+      console.log(`[ULTRASONIC] Attempting connection ${currentCandidateIndex + 1}/${candidates.length}: ${url}`);
+      setUltraStatus('connecting');
+
       try {
-        const data = JSON.parse(event.data);
-        // Ignore welcome message
-        if (data.status === 'connected' && data.service === 'ultrasonic') {
-          console.log('[ULTRASONIC] Welcome message received');
-          return;
-        }
-        if (data.distance_cm !== undefined) {
-          const newData = {
-            distance_cm: Number(data.distance_cm ?? 0),
-            distance_m: Number(data.distance_m ?? 0),
-            distance_inch: Number(data.distance_inch ?? 0),
-            distance_feet: Number(data.distance_feet ?? 0),
-          };
-          setUltrasonicData(newData);
-          console.log(`[ULTRASONIC] 📏 Distance: ${newData.distance_cm} cm (${newData.distance_m.toFixed(2)}m)`);
-        }
+        ws = new WebSocket(url);
+        ultrasonicWs.current = ws;
+
+        ws.onopen = () => {
+          setUltraStatus('connected');
+          console.log(`[ULTRASONIC] ✅ WebSocket connected: ${url}`);
+          currentCandidateIndex = 0; // Reset on success
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            // Ignore welcome message
+            if (data.status === 'connected' && data.service === 'ultrasonic') {
+              console.log('[ULTRASONIC] Welcome message received');
+              return;
+            }
+            if (data.distance_cm !== undefined) {
+              const newData = {
+                distance_cm: Number(data.distance_cm ?? 0),
+                distance_m: Number(data.distance_m ?? 0),
+                distance_inch: Number(data.distance_inch ?? 0),
+                distance_feet: Number(data.distance_feet ?? 0),
+              };
+              setUltrasonicData(newData);
+              console.log(`[ULTRASONIC] 📏 Distance: ${newData.distance_cm} cm (${newData.distance_m.toFixed(2)}m)`);
+            }
+          } catch (err) {
+            console.warn('[ULTRASONIC] Failed to parse message:', err);
+          }
+        };
+
+        ws.onerror = (e) => {
+          console.warn(`[ULTRASONIC] WebSocket error on ${url}:`, e);
+        };
+
+        ws.onclose = () => {
+          console.log(`[ULTRASONIC] WebSocket closed: ${url}`);
+          setUltraStatus('disconnected');
+          // Try next candidate after a delay
+          if (currentCandidateIndex < candidates.length - 1) {
+            currentCandidateIndex++;
+            reconnectTimeout = setTimeout(tryConnect, 2000);
+          }
+        };
       } catch (err) {
-        console.warn('[ULTRASONIC] Failed to parse message:', err);
+        console.error(`[ULTRASONIC] Failed to create WebSocket for ${url}:`, err);
+        currentCandidateIndex++;
+        reconnectTimeout = setTimeout(tryConnect, 2000);
       }
     };
 
-    ultrasonicWs.current.onerror = (e) => {
-      console.warn('[ULTRASONIC] WebSocket error:', e);
-      setUltraStatus('disconnected');
-    };
-    ultrasonicWs.current.onclose = () => {
-      console.log('[ULTRASONIC] WebSocket closed');
-      setUltraStatus('disconnected');
-    };
+    tryConnect();
 
-    return () => ultrasonicWs.current?.close();
+    return () => {
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (ws) ws.close();
+      ultrasonicWs.current = null;
+    };
   }, []);
 
   // Tooltip strings

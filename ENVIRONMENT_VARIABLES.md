@@ -79,6 +79,12 @@ LOG_FILE=robot.log
 CAMERA_WIDTH=640
 CAMERA_HEIGHT=480
 CAMERA_FPS=30
+
+# ROS Configuration (optional - system works without ROS)
+ROS_ENABLED=true          # Enable/disable ROS features (default: true)
+ROS_NATIVE_MODE=false     # Use native ROS2 (rclpy) instead of Docker (default: false)
+ROS_DOCKER_COMPOSE_PATH=/path/to/docker-compose.yml  # Path to ROS Docker compose file
+ROS_WORKSPACE_PATH=/path/to/workspace                # ROS2 workspace path
 ```
 
 ## Quick Setup
@@ -87,9 +93,33 @@ CAMERA_FPS=30
 2. **Backend**: Copy the example variables above to `servers/robot-controller-backend/.env`
 3. **Development**: Set `NEXT_PUBLIC_MOCK_WS=true` to use mock connections
 
+## ROS 2 Configuration
+
+**Note:** ROS features are **optional**. The robot controller works perfectly without ROS. See `ROS_OPTIONAL_CONFIG.md` for details.
+
+### ROS Enable/Disable
+
+```bash
+# Disable ROS completely (system works without ROS)
+ROS_ENABLED=false
+
+# Enable ROS (default)
+ROS_ENABLED=true
+```
+
+### ROS Mode Selection
+
+```bash
+# Use Docker-based ROS2 (default)
+ROS_NATIVE_MODE=false
+
+# Use native ROS2 Python bindings (requires rclpy installed)
+ROS_NATIVE_MODE=true
+```
+
 ## ROS 2 Docker Environment
 
-### Required Variables
+### Required Variables (when using Docker mode)
 
 For ROS 2 Humble Docker containers (`docker/ros2_robot/`):
 

@@ -14,7 +14,7 @@
       <Peers>
         <Peer address="192.168.1.107"/> <!-- Raspberry Pi - Update as needed -->
         <Peer address="192.168.1.202"/> <!-- MacBook/Laptop - Update as needed -->
-        <!-- Add Jetson Orin Nano IP when available -->
+        <Peer address="100.107.112.110"/> <!-- Jetson Orin Nano (Tailscale IP: omega1@100.107.112.110) -->
       </Peers>
     </Discovery>
   </Domain>

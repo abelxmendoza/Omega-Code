@@ -34,13 +34,31 @@ except ImportError as e:
     log.warning(f"rclpy not available: {e}. Native ROS2 features disabled.")
     log.warning("Install with: sudo apt install ros-rolling-rclpy")
     rclpy = None
-    # Create a dummy base class when Node is not available
-    class _DummyNode:
-        pass
-    Node = _DummyNode
+    Node = None
+    String = None
+    Float32 = None
+    Int32 = None
+    Int32MultiArray = None
+    Image = None
+    CompressedImage = None
+    BatteryState = None
+    Twist = None
+    PoseStamped = None
+    Odometry = None
+    Path = None
+    QoSProfile = None
+    ReliabilityPolicy = None
+    DurabilityPolicy = None
 
 
-class ROS2NativeBridge(Node):
+# Check if ROS is enabled via environment variable
+_ros_enabled = os.getenv("ROS_ENABLED", "true").lower() in ("true", "1", "yes")
+_ros_native_mode = os.getenv("ROS_NATIVE_MODE", "false").lower() == "true"
+
+
+if _rclpy_available and _ros_enabled:
+    # ROS is available and enabled - use real implementation
+    class ROS2NativeBridge(Node):
     """
     Native ROS2 bridge node that connects to ROS2 topics
     and provides a bridge to the FastAPI backend.
@@ -176,6 +194,50 @@ class ROS2NativeBridge(Node):
         msg.angular.z = float(angular_z)
         self._publishers[topic_name].publish(msg)
 
+else:
+    # ROS is not available or disabled - use mock implementation
+    class ROS2NativeBridge:
+        """
+        Mock ROS2 bridge for when ROS is not available or disabled.
+        All methods are no-ops that log warnings.
+        """
+        
+        def __init__(self, node_name: str = "omega_robot_bridge"):
+            log.info(f"ROS2NativeBridge initialized in mock mode (ROS not available or disabled)")
+            self._subscribers: Dict[str, any] = {}
+            self._publishers: Dict[str, any] = {}
+            self._message_queues: Dict[str, Queue] = {}
+            self._callbacks: Dict[str, List[Callable]] = {}
+        
+        def subscribe_topic(self, topic_name: str, msg_type=None, callback: Optional[Callable] = None):
+            """Mock subscribe - no-op"""
+            log.debug(f"Mock: subscribe_topic({topic_name}) - ROS not available")
+        
+        def publish_topic(self, topic_name: str, msg_type=None):
+            """Mock publish_topic - no-op"""
+            log.debug(f"Mock: publish_topic({topic_name}) - ROS not available")
+            return None
+        
+        def get_latest_message(self, topic_name: str, timeout: float = 0.1):
+            """Mock get_latest_message - returns None"""
+            return None
+        
+        def register_callback(self, topic_name: str, callback: Callable):
+            """Mock register_callback - no-op"""
+            pass
+        
+        def publish_string(self, topic_name: str, data: str):
+            """Mock publish_string - no-op"""
+            log.debug(f"Mock: publish_string({topic_name}) - ROS not available")
+        
+        def publish_twist(self, topic_name: str, linear_x: float = 0.0, angular_z: float = 0.0):
+            """Mock publish_twist - no-op"""
+            log.debug(f"Mock: publish_twist({topic_name}) - ROS not available")
+        
+        def destroy_node(self):
+            """Mock destroy_node - no-op"""
+            pass
+
 
 # Global bridge instance
 _bridge_instance: Optional[ROS2NativeBridge] = None
@@ -186,6 +248,10 @@ _bridge_running = False
 def init_ros2_bridge() -> bool:
     """Initialize the ROS2 native bridge"""
     global _bridge_instance, _bridge_thread, _bridge_running
+    
+    if not _ros_enabled:
+        log.info("ROS is disabled via ROS_ENABLED environment variable")
+        return False
     
     if not _rclpy_available:
         log.warning("Cannot initialize ROS2 bridge: rclpy not available")
@@ -252,10 +318,12 @@ def shutdown_ros2_bridge():
     log.info("ROS2 Native Bridge shut down")
 
 
-# Auto-initialize if ROS_NATIVE_MODE is enabled
-if os.getenv("ROS_NATIVE_MODE", "false").lower() == "true":
+# Auto-initialize if ROS_NATIVE_MODE is enabled and ROS is enabled
+if _ros_native_mode and _ros_enabled:
     if _rclpy_available:
         init_ros2_bridge()
     else:
         log.warning("ROS_NATIVE_MODE=true but rclpy not available")
+elif not _ros_enabled:
+    log.info("ROS features are disabled. Set ROS_ENABLED=true to enable.")
 

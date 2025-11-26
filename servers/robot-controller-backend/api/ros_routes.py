@@ -7,6 +7,8 @@ Provides endpoints for managing ROS 2 Docker containers:
 - Check container status
 - View logs
 - Monitor ROS 2 topics
+
+ROS features can be disabled by setting ROS_ENABLED=false in environment.
 """
 import os
 import subprocess
@@ -17,6 +19,9 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/ros", tags=["ROS 2"])
+
+# Check if ROS is enabled
+ROS_ENABLED = os.getenv("ROS_ENABLED", "true").lower() in ("true", "1", "yes")
 
 # Configuration
 ROS_DOCKER_COMPOSE_PATH = os.getenv("ROS_DOCKER_COMPOSE_PATH", "/home/omega1/Omega-Code/docker/ros2_robot/docker-compose.yml")
@@ -102,6 +107,14 @@ class ContainerAction(BaseModel):
 @router.get("/status")
 def get_ros_status():
     """Get status of all ROS 2 containers"""
+    if not ROS_ENABLED:
+        return JSONResponse({
+            "containers": [],
+            "topics": [],
+            "mode": "disabled",
+            "message": "ROS features are disabled. Set ROS_ENABLED=true to enable."
+        })
+    
     try:
         # Check docker-compose services (use project name if set)
         compose_cmd = ["docker", "compose", "-f", ROS_DOCKER_COMPOSE_PATH]
@@ -170,6 +183,12 @@ def get_ros_status():
 @router.post("/control")
 def control_ros_container(action: ContainerAction):
     """Start, stop, or restart ROS 2 containers"""
+    if not ROS_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="ROS features are disabled. Set ROS_ENABLED=true to enable."
+        )
+    
     try:
         # Use docker compose (newer syntax) with project name
         cmd = ["docker", "compose", "-f", ROS_DOCKER_COMPOSE_PATH]
@@ -213,6 +232,12 @@ def control_ros_container(action: ContainerAction):
 @router.get("/logs/{service}")
 def get_ros_logs(service: str, tail: int = 50):
     """Get logs from a ROS 2 container"""
+    if not ROS_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="ROS features are disabled. Set ROS_ENABLED=true to enable."
+        )
+    
     try:
         # Try different container name patterns
         container_names = [
@@ -242,6 +267,12 @@ def get_ros_logs(service: str, tail: int = 50):
 @router.get("/topics")
 def list_ros_topics():
     """List available ROS 2 topics"""
+    if not ROS_ENABLED:
+        return JSONResponse({
+            "topics": [],
+            "message": "ROS features are disabled. Set ROS_ENABLED=true to enable."
+        })
+    
     try:
         # Try to exec into any running container
         containers = ["telemetry_publisher", "telemetry_listener"]
@@ -271,6 +302,13 @@ def list_ros_topics():
 async def ros_telemetry_websocket(websocket: WebSocket):
     """WebSocket bridge for ROS 2 telemetry topic"""
     await websocket.accept()
+    
+    if not ROS_ENABLED:
+        await websocket.send_json({
+            "error": "ROS features are disabled. Set ROS_ENABLED=true to enable."
+        })
+        await websocket.close()
+        return
     
     try:
         # Find running container (try different naming patterns)

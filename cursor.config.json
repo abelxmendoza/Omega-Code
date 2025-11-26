@@ -1,0 +1,266 @@
+{
+  "$schema": "https://cursor.sh/config.schema.json",
+  "project": {
+    "name": "Omega-Code",
+    "description": "High-performance robotics control stack for Raspberry Pi powered rover with ROS2 integration, multi-language backend (Go/Python), Next.js UI, and comprehensive hardware interfaces",
+    "type": "robotics",
+      "technologies": [
+      "ROS2",
+      "Python",
+      "Go",
+      "Next.js",
+      "TypeScript",
+      "Docker",
+      "Raspberry Pi",
+      "Jetson Orin Nano",
+      "CUDA",
+      "WebSocket",
+      "FastAPI",
+      "Flask",
+      "OpenCV"
+    ]
+  },
+  "directories": {
+    "servers/robot-controller-backend": {
+      "description": "Multi-language backend: Go WebSocket servers, FastAPI + Flask gateways, Python controllers, ROS bootstrap helpers, video streaming, diagnostics, and autonomy orchestration",
+      "keyFiles": [
+        "main_api.py",
+        "main.go",
+        "main_combined.go",
+        "video_server.py",
+        "robot_controller_server.py"
+      ],
+      "subdirectories": {
+        "api/": "FastAPI REST endpoints for lighting, autonomy, and ROS2 bridge",
+        "movement/": "Movement WebSocket server implementing motor control, servo, buzzer, and autonomy hand-off logic",
+        "sensors/": "Sensor WebSocket servers (ultrasonic, line tracking) and Go/Python sensor interfaces",
+        "controllers/": "Hardware controllers (lighting, GPIO, motor control)",
+        "hardware/": "Hardware abstraction layer for GPIO, motors, sensors, camera",
+        "gpio/": "GPIO operations with hardware PWM and interrupt-driven reading",
+        "video/": "Video streaming with Flask + OpenCV MJPEG server",
+        "autonomy/": "Autonomous behavior controllers and mode handlers",
+        "ai/": "AI/ML integration modules",
+        "servers/": "Gateway proxy and WebSocket aggregation services",
+        "commands/": "Command definitions and handlers (Go/Python)",
+        "utils/": "Shared utilities and helpers",
+        "tests/": "Backend test suite (unit, integration, e2e)"
+      }
+    },
+    "ui/robot-controller-ui": {
+      "description": "Next.js 14 + React 18 dashboard with Redux Toolkit, Tailwind, comprehensive test suite, network wizard, video proxy routes, and autonomy controls",
+      "keyFiles": [
+        "package.json",
+        "next.config.js",
+        "tsconfig.json"
+      ],
+      "patterns": [
+        "Uses centralized gateway configuration system (src/config/gateway.ts)",
+        "Profile-based URL resolution (local, lan, tailscale)",
+        "React component memoization for performance",
+        "WebSocket integration for real-time robot control"
+      ]
+    },
+    "ros/": {
+      "description": "ROS2 launch files, packages, and helper scripts for autonomy and simulation",
+      "subdirectories": {
+        "launch/": "ROS2 launch files for full setup, multidevice, and robot configurations",
+        "src/omega_robot/": "ROS2 package with telemetry publishers, sensor data publishers, robot controllers",
+        "scripts/": "ROS2 helper scripts (A*, D*, RRT path planning, sensor fusion, autonomous driving)",
+        "tests/": "ROS2 test suite (unit, integration, e2e)"
+      },
+      "keyConcepts": [
+        "ROS2 Humble (Pi Docker) and ROS2 Rolling (Lenovo native)",
+        "CycloneDDS for DDS communication",
+        "Domain ID isolation for multi-robot support",
+        "Topic namespace: /omega/* prefix"
+      ]
+    },
+    "docker/ros2_robot": {
+      "description": "ROS2 Humble Docker setup for Raspberry Pi with CycloneDDS configuration",
+      "keyFiles": [
+        "Dockerfile",
+        "docker-compose.yml",
+        "docker-compose.multidevice.yml",
+        "config/cyclonedds.xml"
+      ]
+    },
+    "scripts/": {
+      "description": "Bash utilities for provisioning, Bluetooth PAN setup, network diagnostics, ROS2 setup, and field operations",
+      "keyScripts": [
+        "check_endpoints.sh",
+        "start_robot.sh",
+        "setup_multidevice_ros2.sh",
+        "setup_ros2_laptop.sh",
+        "connect_*.sh"
+      ]
+    },
+    "machine_learning/": {
+      "description": "ML notebooks and models for robot learning capabilities"
+    },
+    "config/": {
+      "description": "Configuration files and templates"
+    }
+  },
+  "architecture": {
+    "backend": {
+      "languages": ["Go", "Python"],
+      "patterns": [
+        "WebSocket message batching for 50% latency reduction",
+        "Redis-based caching (80% reduction in DB calls)",
+        "Async task processing with priority queues",
+        "Connection pooling for WebSocket management",
+        "Real-time performance monitoring"
+      ],
+      "ports": {
+        "movement": "PORT_MOVEMENT (default: 8080)",
+        "ultrasonic": "ULTRA_PORT",
+        "video": "VIDEO_PORT (default: 5000)",
+        "fastapi": "8000",
+        "gateway": "7070"
+      }
+    },
+    "frontend": {
+      "framework": "Next.js 14",
+      "patterns": [
+        "React component memoization (60% fewer re-renders)",
+        "Debounced callbacks (70% fewer WebSocket messages)",
+        "Lazy loading and code splitting",
+        "Performance dashboard with real-time metrics"
+      ],
+      "port": "3000"
+    },
+    "ros2": {
+      "implementations": {
+        "pi": "ROS2 Humble in Docker",
+        "lenovo": "ROS2 Rolling native",
+        "macbook": "Backend works without ROS2 (graceful fallback)",
+        "jetson": "ROS2 Humble native with CUDA (AI/vision processing)"
+      },
+      "middleware": "CycloneDDS",
+      "domainId": "ROS_DOMAIN_ID (default: 0)",
+      "topics": {
+        "sensors": [
+          "/omega/sensors/ultrasonic",
+          "/omega/sensors/line_tracking",
+          "/omega/sensors/battery"
+        ],
+        "control": [
+          "/cmd_vel",
+          "/omega/motors/left",
+          "/omega/motors/right"
+        ],
+        "telemetry": "/omega/telemetry"
+      },
+      "bridge": "/api/ros/bridge (WebSocket endpoint)"
+    },
+    "hardware": {
+      "target": "Raspberry Pi 5 (Pi 4 compatible with lgpio), Jetson Orin Nano (AI compute)",
+      "interfaces": [
+        "GPIO (<1ms response time)",
+        "Motor control (<10ms response time)",
+        "Camera (30+ FPS stable)",
+        "Sensors (<5ms response time)",
+        "CUDA GPU acceleration (Jetson)",
+        "Vision processing (Jetson)"
+      ],
+      "optimizations": [
+        "Hardware PWM",
+        "Interrupt-driven sensor reading",
+        "Real-time scheduling for critical operations",
+        "Dynamic power scaling"
+      ]
+    }
+  },
+  "environment": {
+    "variables": {
+      "root": ".env.example",
+      "backend": "servers/robot-controller-backend/.env.example",
+      "ui": "ui/robot-controller-ui/env.example",
+      "scripts": "scripts/.env (optional)"
+    },
+    "profiles": ["local", "lan", "tailscale"],
+    "keyVariables": [
+      "PORT_MOVEMENT",
+      "VIDEO_PORT",
+      "CAMERA_*",
+      "ROS_DOMAIN_ID",
+      "RMW_IMPLEMENTATION",
+      "CYCLONEDDS_URI",
+      "NEXT_PUBLIC_ROBOT_HOST_*",
+      "NEXT_PUBLIC_GATEWAY_HOST_*"
+    ]
+  },
+  "testing": {
+    "backend": {
+      "go": "go test ./...",
+      "python": "pytest tests/unit tests/integration tests/e2e tests/api"
+    },
+    "frontend": {
+      "lint": "npm run lint",
+      "test": "npm test",
+      "e2e": "npx cypress run"
+    },
+    "ros2": "ros2 test (via ament)"
+  },
+  "deployment": {
+    "docker": {
+      "backend": "servers/robot-controller-backend/Dockerfile",
+      "ros2": "docker/ros2_robot/Dockerfile"
+    },
+    "scripts": {
+      "deploy": "deploy.sh",
+      "makefile": "Makefile (shortcuts for common operations)"
+    }
+  },
+  "documentation": {
+    "architecture": [
+      "ROS2_ARCHITECTURE.md",
+      "ROS2_MULTIDEVICE_SETUP.md",
+      "ROS2_OPENCV_INTEGRATION.md"
+    ],
+    "phases": [
+      "PHASE2_CAMERA_INTEGRATION.md",
+      "PHASE3_AUTONOMOUS_BEHAVIORS.md",
+      "PHASE4_NAVIGATION_SLAM.md"
+    ],
+    "setup": [
+      "ROS2_QUICK_START.md",
+      "ROS2_SETUP_SUMMARY.md",
+      "ENVIRONMENT_VARIABLES.md"
+    ]
+  },
+  "conventions": {
+    "naming": {
+      "ros2Topics": "Use /omega/* prefix for namespacing",
+      "python": "snake_case for functions and variables",
+      "go": "camelCase for exported, camelCase for unexported",
+      "typescript": "camelCase for variables, PascalCase for components"
+    },
+    "fileOrganization": {
+      "backend": "Organize by feature/domain (movement/, sensors/, controllers/)",
+      "frontend": "Feature-based organization with shared components",
+      "ros2": "Standard ROS2 package structure"
+    },
+    "performance": {
+      "targets": {
+        "gpio": "<1ms",
+        "motor": "<10ms",
+        "camera": "30+ FPS",
+        "sensor": "<5ms"
+      }
+    }
+  },
+  "workflows": {
+    "development": {
+      "local": "Backend + UI on laptop, mock hardware",
+      "lan": "Backend + UI on laptop, Pi hardware via network",
+      "tailscale": "Remote development via Tailscale VPN"
+    },
+    "ros2": {
+      "lenovo": "Native ROS2 Rolling, full development",
+      "macbook": "UI development, backend without ROS2",
+      "pi": "Docker ROS2 Humble, hardware interface"
+    }
+  }
+}
+

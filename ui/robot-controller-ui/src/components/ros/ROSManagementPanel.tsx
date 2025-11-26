@@ -45,6 +45,11 @@ export const ROSManagementPanel: React.FC<ROSManagementPanelProps> = ({ classNam
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       setStatus(data);
+      
+      // Show message if ROS is disabled
+      if (data.mode === 'disabled' || data.message?.includes('disabled')) {
+        setError('ROS features are disabled. Set ROS_ENABLED=true on the backend to enable.');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch ROS status');
       setStatus({ containers: [], topics: [] });
