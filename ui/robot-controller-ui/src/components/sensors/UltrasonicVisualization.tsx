@@ -34,6 +34,14 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
   const MIN_DISTANCE_CM = 2; // Minimum detection range
   const FIELD_OF_VIEW_DEGREES = 15; // Typical field of view angle
 
+  // Safely get distance values with defaults
+  const safeData = {
+    distance_cm: data?.distance_cm ?? 0,
+    distance_m: data?.distance_m ?? 0,
+    distance_inch: data?.distance_inch ?? 0,
+    distance_feet: data?.distance_feet ?? 0,
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -64,7 +72,7 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
       const sensorRadius = 20;
 
       // Calculate visualization scale
-      const maxDisplayDistance = Math.max(MAX_DISTANCE_CM, data.distance_cm || MAX_DISTANCE_CM);
+      const maxDisplayDistance = Math.max(MAX_DISTANCE_CM, safeData.distance_cm || MAX_DISTANCE_CM);
       const scale = (height - 100) / maxDisplayDistance; // Leave space for sensor and labels
 
       // Draw background grid
@@ -88,7 +96,7 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
         ctx.fillText(`${distance.toFixed(0)} cm`, width - 25, y + 4);
       }
 
-      if (!isConnected || data.distance_cm === 0) {
+      if (!isConnected || safeData.distance_cm === 0) {
         // Draw disconnected state
         ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
         ctx.font = '16px sans-serif';
@@ -99,7 +107,7 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
       }
 
       // Calculate obstacle position
-      const obstacleDistance = Math.min(data.distance_cm, MAX_DISTANCE_CM);
+      const obstacleDistance = Math.min(safeData.distance_cm, MAX_DISTANCE_CM);
       const obstacleY = sensorY - (obstacleDistance * scale);
 
       // Draw sensor (at bottom center)
@@ -168,7 +176,7 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
         );
 
         // Draw obstacle
-        ctx.fillStyle = data.distance_cm < 30 ? '#ef4444' : data.distance_cm < 100 ? '#f59e0b' : '#10b981';
+        ctx.fillStyle = safeData.distance_cm < 30 ? '#ef4444' : safeData.distance_cm < 100 ? '#f59e0b' : '#10b981';
         ctx.fillRect(
           centerX - obstacleWidth / 2,
           obstacleY - obstacleHeight / 2,
@@ -203,14 +211,14 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
         ctx.font = 'bold 14px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(
-          `${data.distance_cm.toFixed(1)} cm`,
+          `${safeData.distance_cm.toFixed(1)} cm`,
           centerX,
           obstacleY - obstacleHeight / 2 - 10
         );
       }
 
       // Draw warning if too close
-      if (data.distance_cm < 30 && data.distance_cm > 0) {
+      if (safeData.distance_cm < 30 && safeData.distance_cm > 0) {
         ctx.fillStyle = '#ef4444';
         ctx.font = 'bold 16px sans-serif';
         ctx.textAlign = 'center';
@@ -242,14 +250,14 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
       }
       resizeObserver.disconnect();
     };
-  }, [data, isConnected]);
+  }, [safeData.distance_cm, safeData.distance_m, safeData.distance_inch, safeData.distance_feet, isConnected]);
 
   // Determine status color
   const getStatusColor = () => {
     if (!isConnected) return 'text-gray-500';
-    if (data.distance_cm === 0) return 'text-gray-500';
-    if (data.distance_cm < 30) return 'text-red-500';
-    if (data.distance_cm < 100) return 'text-yellow-500';
+    if (safeData.distance_cm === 0) return 'text-gray-500';
+    if (safeData.distance_cm < 30) return 'text-red-500';
+    if (safeData.distance_cm < 100) return 'text-yellow-500';
     return 'text-green-500';
   };
 
@@ -263,11 +271,11 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
             <h3 className="text-lg font-semibold text-white">Ultrasonic Sensor Visualization</h3>
           </div>
           <div className={`flex items-center gap-2 ${getStatusColor()}`}>
-            {data.distance_cm < 30 && data.distance_cm > 0 && (
+            {safeData.distance_cm < 30 && safeData.distance_cm > 0 && (
               <AlertTriangle className="h-4 w-4" />
             )}
             <span className="text-sm font-mono">
-              {isConnected ? `${data.distance_cm.toFixed(1)} cm` : 'Disconnected'}
+              {isConnected ? `${safeData.distance_cm.toFixed(1)} cm` : 'Disconnected'}
             </span>
           </div>
         </div>
@@ -286,25 +294,25 @@ const UltrasonicVisualization: React.FC<UltrasonicVisualizationProps> = ({ data,
           <div className="bg-gray-800 p-3 rounded-lg text-center">
             <div className="text-xs text-gray-400 mb-1">Centimeters</div>
             <div className="text-lg font-mono font-bold text-white">
-              {data.distance_cm.toFixed(1)}
+              {safeData.distance_cm.toFixed(1)}
             </div>
           </div>
           <div className="bg-gray-800 p-3 rounded-lg text-center">
             <div className="text-xs text-gray-400 mb-1">Meters</div>
             <div className="text-lg font-mono font-bold text-white">
-              {data.distance_m.toFixed(2)}
+              {safeData.distance_m.toFixed(2)}
             </div>
           </div>
           <div className="bg-gray-800 p-3 rounded-lg text-center">
             <div className="text-xs text-gray-400 mb-1">Inches</div>
             <div className="text-lg font-mono font-bold text-white">
-              {data.distance_inch.toFixed(2)}
+              {safeData.distance_inch.toFixed(2)}
             </div>
           </div>
           <div className="bg-gray-800 p-3 rounded-lg text-center">
             <div className="text-xs text-gray-400 mb-1">Feet</div>
             <div className="text-lg font-mono font-bold text-white">
-              {data.distance_feet.toFixed(2)}
+              {safeData.distance_feet.toFixed(2)}
             </div>
           </div>
         </div>
