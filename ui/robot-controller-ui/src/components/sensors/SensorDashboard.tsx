@@ -408,32 +408,47 @@ const SensorDashboard: React.FC = () => {
           )}
           
           {/* Ultrasonic Visualization Popup */}
-          <div className="relative group mt-3">
+          <div className="relative mt-3">
             <Button
               className="w-full gap-2 bg-blue-600 hover:bg-blue-700 text-white"
               variant="default"
-              onClick={() => setShowUltraVisualization(!showUltraVisualization)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowUltraVisualization(!showUltraVisualization);
+              }}
             >
               <Radar className="h-4 w-4" />
               {showUltraVisualization ? 'Hide Visualization' : 'Show Visualization'}
             </Button>
-            {/* Popup - shows on hover or when clicked */}
-            <div className={`absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-[500px] transition-all duration-200 z-50 ${
-              showUltraVisualization 
-                ? 'opacity-100 visible pointer-events-auto' 
-                : 'opacity-0 invisible pointer-events-none group-hover:opacity-100 group-hover:visible group-hover:pointer-events-auto'
-            }`}>
-              <div className="bg-gray-900 border-2 border-green-500 rounded-lg shadow-xl p-3">
-                <UltrasonicVisualization
-                  data={ultrasonicData}
-                  isConnected={ultraStatus === 'connected'}
+            {/* Popup - shows when clicked */}
+            {showUltraVisualization && (
+              <>
+                {/* Backdrop */}
+                <div 
+                  className="fixed inset-0 bg-black/50 z-[99]"
+                  onClick={() => setShowUltraVisualization(false)}
                 />
-              </div>
-              {/* Arrow pointing down */}
-              <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
-                <div className="w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-green-500"></div>
-              </div>
-            </div>
+                {/* Popup centered */}
+                <div 
+                  className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[500px] max-w-[90vw] max-h-[90vh] overflow-auto transition-all duration-200 z-[100]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="bg-gray-900 border-2 border-green-500 rounded-lg shadow-xl p-3 relative">
+                    <button
+                      onClick={() => setShowUltraVisualization(false)}
+                      className="absolute top-2 right-2 text-gray-400 hover:text-white z-10 text-2xl leading-none w-6 h-6 flex items-center justify-center rounded hover:bg-gray-700"
+                      aria-label="Close"
+                    >
+                      ×
+                    </button>
+                    <UltrasonicVisualization
+                      data={ultrasonicData}
+                      isConnected={ultraStatus === 'connected'}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
