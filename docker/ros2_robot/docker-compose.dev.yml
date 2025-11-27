@@ -1,0 +1,29 @@
+version: "3.8"
+
+# Omega ROS2 Development Container
+# For MacBook → GitHub → Pi workflow
+name: omega_ros2_dev
+
+services:
+  omega_ros2:
+    build:
+      context: ../..
+      dockerfile: docker/ros2_robot/Dockerfile.dev
+    image: omega_ros2:dev
+    container_name: omega_ros2
+    network_mode: host
+    privileged: true
+    volumes:
+      # Mount entire Omega-Code directory for hot-swapping
+      - /home/omega1/Omega-Code:/workspace/Omega-Code
+      # Mount device directory for hardware access
+      - /dev:/dev
+    environment:
+      - ROS_DOMAIN_ID=0
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///workspace/Omega-Code/docker/ros2_robot/config/cyclonedds.xml
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    command: /bin/bash
+

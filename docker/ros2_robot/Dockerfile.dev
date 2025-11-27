@@ -1,0 +1,42 @@
+FROM ros:humble
+
+# Install essentials + development tools
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-opencv \
+    python3-numpy \
+    git \
+    vim \
+    nano \
+    curl \
+    wget \
+    ros-humble-rmw-cyclonedds-cpp \
+    ros-humble-cv-bridge \
+    ros-humble-image-transport \
+    ros-humble-sensor-msgs \
+    ros-humble-std-msgs \
+    ros-humble-geometry-msgs \
+    python3-colcon-common-extensions \
+    python3-rosdep \
+    && rm -rf /var/lib/apt/lists/*
+
+# Initialize rosdep
+RUN rosdep init || true
+
+# Set working directory
+WORKDIR /workspace/Omega-Code
+
+# Copy entrypoint script
+COPY docker/ros2_robot/entrypoint.dev.sh /entrypoint.dev.sh
+RUN chmod +x /entrypoint.dev.sh
+
+# Create ROS2 workspace directory
+RUN mkdir -p /root/omega_ws/src
+
+# Set up environment
+ENV ROS_DOMAIN_ID=0
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+ENTRYPOINT ["/entrypoint.dev.sh"]
+CMD ["/bin/bash"]
+
