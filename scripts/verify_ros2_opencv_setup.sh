@@ -89,7 +89,7 @@ echo ""
 
 # Check backend dependencies
 echo "🐍 Checking Python dependencies..."
-cd "$(dirname "$0")/../servers/robot-controller-backend" 2>/dev/null || cd /home/abelxmendoza/Desktop/code/Omega-Code/servers/robot-controller-backend
+cd "$(dirname "$0")/../servers/robot_controller_backend" 2>/dev/null || cd /home/abelxmendoza/Desktop/code/Omega-Code/servers/robot_controller_backend
 
 if [ -f "requirements.txt" ]; then
     echo "  ✅ requirements.txt found"

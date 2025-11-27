@@ -15,8 +15,8 @@ ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 # ---- Load backend (for ports) + optional UI envs ----
 set -o allexport
-[ -f "$ROOT_DIR/servers/robot-controller-backend/.env" ] && . "$ROOT_DIR/servers/robot-controller-backend/.env"
-[ -f "$ROOT_DIR/servers/robot-controller-backend/.env.local" ] && . "$ROOT_DIR/servers/robot-controller-backend/.env.local"
+[ -f "$ROOT_DIR/servers/robot_controller_backend/.env" ] && . "$ROOT_DIR/servers/robot_controller_backend/.env"
+[ -f "$ROOT_DIR/servers/robot_controller_backend/.env.local" ] && . "$ROOT_DIR/servers/robot_controller_backend/.env.local"
 for f in "$ROOT_DIR/ui/.env" "$ROOT_DIR/ui/.env.local" \
          "$ROOT_DIR/ui/robot-controller-ui/.env" "$ROOT_DIR/ui/robot-controller-ui/.env.local"; do
   [ -f "$f" ] && . "$f"

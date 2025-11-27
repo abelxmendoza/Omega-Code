@@ -5,7 +5,7 @@ set -e
 
 echo "🧪 Running Hybrid System Tests with Mock Orin..."
 
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 
 # Activate virtual environment if it exists
 if [ -d "venv" ]; then

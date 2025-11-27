@@ -45,7 +45,7 @@ cd ../..
 
 # Backend Unit Tests
 echo -e "\n${YELLOW}🐍 Running Backend Unit Tests...${NC}"
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 if [ -d "venv" ]; then
     source venv/bin/activate
     if pytest tests/unit -v; then
@@ -61,7 +61,7 @@ cd ../..
 
 # Backend Integration Tests
 echo -e "\n${YELLOW}🔗 Running Backend Integration Tests...${NC}"
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 if [ -d "venv" ]; then
     source venv/bin/activate
     if pytest tests/integration -v -m integration; then
@@ -77,7 +77,7 @@ cd ../..
 
 # Security Tests
 echo -e "\n${YELLOW}🔒 Running Security Tests...${NC}"
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 if [ -d "venv" ]; then
     source venv/bin/activate
     if pytest tests/security -v -m security; then
@@ -93,7 +93,7 @@ cd ../..
 
 # Performance Tests
 echo -e "\n${YELLOW}⚡ Running Performance Tests...${NC}"
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 if [ -d "venv" ]; then
     source venv/bin/activate
     if pytest tests/performance -v -m performance; then

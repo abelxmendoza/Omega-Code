@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-ENV_FILE="${ENV_FILE:-$ROOT_DIR/servers/robot-controller-backend/.env}"
+ENV_FILE="${ENV_FILE:-$ROOT_DIR/servers/robot_controller_backend/.env}"
 
 # Load .env safely (handles spaces)
 if [ -f "$ENV_FILE" ]; then

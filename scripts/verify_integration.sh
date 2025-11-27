@@ -18,7 +18,7 @@ NC='\033[0m' # No Color
 
 # Load environment variables
 set -o allexport
-[ -f "$ROOT_DIR/servers/robot-controller-backend/.env" ] && source "$ROOT_DIR/servers/robot-controller-backend/.env"
+[ -f "$ROOT_DIR/servers/robot_controller_backend/.env" ] && source "$ROOT_DIR/servers/robot_controller_backend/.env"
 [ -f "$ROOT_DIR/ui/robot-controller-ui/.env.local" ] && source "$ROOT_DIR/ui/robot-controller-ui/.env.local"
 set +o allexport
 
@@ -226,7 +226,7 @@ else
     echo "   - Video Server (port ${VIDEO_PORT:-5000})"
     echo ""
     echo "2. Check environment variables:"
-    echo "   - Backend: servers/robot-controller-backend/.env"
+    echo "   - Backend: servers/robot_controller_backend/.env"
     echo "   - Frontend: ui/robot-controller-ui/.env.local"
     echo ""
     echo "3. SSH into omega1 and check services:"

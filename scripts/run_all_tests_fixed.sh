@@ -24,7 +24,7 @@ echo "=========================================="
 
 # Backend Unit Tests (skip hardware-dependent)
 echo -e "\n${YELLOW}🐍 Running Backend Unit Tests...${NC}"
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 if [ -d "venv" ]; then
     source venv/bin/activate
     if pytest tests/unit/ -v --tb=no -q -k "not hardware" 2>&1 | tee /tmp/backend_unit.log; then
@@ -70,7 +70,7 @@ cd ../..
 
 # Backend Integration Tests (skip if services not running)
 echo -e "\n${YELLOW}🔗 Running Backend Integration Tests...${NC}"
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 if [ -d "venv" ]; then
     source venv/bin/activate
     if pytest tests/integration/ -v --tb=no -q -m "integration" --skip-if-no-service 2>&1 | tee /tmp/backend_integration.log; then
@@ -86,7 +86,7 @@ cd ../..
 
 # Security Tests
 echo -e "\n${YELLOW}🔒 Running Security Tests...${NC}"
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 if [ -d "venv" ]; then
     source venv/bin/activate
     if pytest tests/security/ -v --tb=no -q -m "security" 2>&1 | tee /tmp/security.log; then
@@ -102,7 +102,7 @@ cd ../..
 
 # Performance Tests
 echo -e "\n${YELLOW}⚡ Running Performance Tests...${NC}"
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 if [ -d "venv" ]; then
     source venv/bin/activate
     if pytest tests/performance/ -v --tb=no -q -m "performance" 2>&1 | tee /tmp/performance.log; then

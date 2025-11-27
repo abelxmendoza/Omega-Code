@@ -42,7 +42,7 @@ test-frontend:
 
 test-backend: setup-venv
 	@echo "🧪 Running backend tests..."
-	cd servers/robot-controller-backend && \
+	cd servers/robot_controller_backend && \
 		source venv/bin/activate && \
 		pytest tests/ -v
 
@@ -59,7 +59,7 @@ test-coverage-frontend:
 
 test-coverage-backend: setup-venv
 	@echo "📊 Generating backend coverage..."
-	cd servers/robot-controller-backend && \
+	cd servers/robot_controller_backend && \
 		source venv/bin/activate && \
 		pytest --cov=. --cov-report=html --cov-report=term
 
@@ -74,7 +74,7 @@ test-security-frontend:
 
 test-security-backend: setup-venv
 	@echo "🔒 Running backend security tests..."
-	cd servers/robot-controller-backend && \
+	cd servers/robot_controller_backend && \
 		source venv/bin/activate && \
 		pytest tests/security -v && \
 		bandit -r . -f json -o security-report.json || true
@@ -88,7 +88,7 @@ test-performance-frontend:
 
 test-performance-backend: setup-venv
 	@echo "⚡ Running backend performance tests..."
-	cd servers/robot-controller-backend && \
+	cd servers/robot_controller_backend && \
 		source venv/bin/activate && \
 		pytest tests/performance -v
 
@@ -106,7 +106,7 @@ lint-frontend:
 
 lint-backend: setup-venv
 	@echo "🔍 Linting backend..."
-	cd servers/robot-controller-backend && \
+	cd servers/robot_controller_backend && \
 		source venv/bin/activate && \
 		flake8 . --max-line-length=120 --exclude=venv,__pycache__,.git || true && \
 		mypy . --ignore-missing-imports || true
@@ -120,7 +120,7 @@ format-frontend:
 
 format-backend: setup-venv
 	@echo "💅 Formatting backend..."
-	cd servers/robot-controller-backend && \
+	cd servers/robot_controller_backend && \
 		source venv/bin/activate && \
 		black . --line-length=120 --exclude=venv || true && \
 		isort . --profile=black || true
@@ -135,14 +135,14 @@ install-frontend:
 
 install-backend: setup-venv
 	@echo "📦 Installing backend dependencies..."
-	cd servers/robot-controller-backend && \
+	cd servers/robot_controller_backend && \
 		source venv/bin/activate && \
 		pip install -r requirements.txt
 
 setup-venv:
 	@echo "🐍 Setting up Python virtual environment..."
 	@if [ ! -d "servers/robot-controller-backend/venv" ]; then \
-		cd servers/robot-controller-backend && \
+		cd servers/robot_controller_backend && \
 		python3 -m venv venv && \
 		source venv/bin/activate && \
 		pip install --upgrade pip && \

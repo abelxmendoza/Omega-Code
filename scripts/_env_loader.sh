@@ -5,7 +5,7 @@
 
 load_env() {
   local ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-  local ENV_BASE="${ENV_FILE:-$ROOT_DIR/servers/robot-controller-backend/.env}"
+  local ENV_BASE="${ENV_FILE:-$ROOT_DIR/servers/robot_controller_backend/.env}"
   local ENV_LOCAL="$ENV_BASE.local"
 
   set -o allexport

@@ -34,7 +34,7 @@ start_ui() {
 # Function to start the Go backend server
 start_go_backend() {
     echo "Starting Go backend server..."
-    cd "$ROOT_DIR/servers/robot-controller-backend"
+    cd "$ROOT_DIR/servers/robot_controller_backend"
     go run main_combined.go &
 }
 
@@ -43,7 +43,7 @@ start_go_backend() {
 ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 # Load environment variables from the backend .env file
-ENV_FILE="${ENV_FILE:-$ROOT_DIR/servers/robot-controller-backend/.env}"
+ENV_FILE="${ENV_FILE:-$ROOT_DIR/servers/robot_controller_backend/.env}"
 if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
 else

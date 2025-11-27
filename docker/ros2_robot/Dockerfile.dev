@@ -1,10 +1,16 @@
+# ================================================
+# Omega ROS2 Dev Container (with backend support)
+# ================================================
 FROM ros:humble
 
-# Install essentials + development tools
+# System-level deps
 RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-opencv \
     python3-numpy \
+    libcamera-apps \
+    python3-picamera2 \
+    libatlas-base-dev \
     git \
     vim \
     nano \
@@ -19,6 +25,26 @@ RUN apt-get update && apt-get install -y \
     python3-colcon-common-extensions \
     python3-rosdep \
     && rm -rf /var/lib/apt/lists/*
+
+# All Python deps for Omega backend + frontend scripts
+RUN pip3 install --no-cache-dir \
+    flask \
+    flask-cors \
+    flask-socketio \
+    eventlet \
+    numpy \
+    opencv-python \
+    pillow \
+    psutil \
+    requests \
+    python-dotenv \
+    aiofiles \
+    python-multipart \
+    paho-mqtt \
+    fastapi \
+    uvicorn \
+    websockets \
+    pydantic
 
 # Initialize rosdep
 RUN rosdep init || true
