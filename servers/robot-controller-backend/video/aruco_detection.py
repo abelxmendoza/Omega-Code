@@ -59,6 +59,28 @@ else:  # pragma: no cover - behaviour tested indirectly
 log = logging.getLogger(__name__)
 
 
+def _detect_hardware() -> dict:
+    """Detect hardware for ArUco optimizations."""
+    is_pi4b = False
+    is_jetson = False
+    
+    try:
+        if os.path.exists("/proc/device-tree/model"):
+            with open("/proc/device-tree/model", "r") as f:
+                model = f.read().strip()
+                if "Raspberry Pi 4" in model:
+                    is_pi4b = True
+                elif "NVIDIA" in model or "Jetson" in model:
+                    is_jetson = True
+    except Exception:
+        pass
+    
+    return {"is_pi4b": is_pi4b, "is_jetson": is_jetson}
+
+
+_hardware = _detect_hardware()
+
+
 def _normalise_bool(value: Optional[str], default: bool = False) -> bool:
     if value is None:
         return default
@@ -179,7 +201,12 @@ class ArucoDetector:
         if frame is None or frame.size == 0:  # pragma: no cover - defensive
             return frame, []
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Hardware-aware grayscale conversion (can skip on Jetson if already grayscale)
+        if len(frame.shape) == 3:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = frame
+        
         corners, ids = self._detect(gray)
         if not corners or ids is None:
             return frame, []

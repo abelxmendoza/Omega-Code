@@ -36,6 +36,12 @@ from typing import Optional, Callable
 
 import numpy as np
 
+# Hardware detection for optimizations
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
 # --- OpenCV (used by V4L2 and for RGB->BGR conversion in Picamera2 path) ---
 try:
     import cv2  # type: ignore
@@ -54,6 +60,28 @@ except Exception:
     _PICAM2_OK = False
 
 log = logging.getLogger(__name__)
+
+
+def _detect_hardware() -> dict:
+    """Detect hardware for camera optimizations."""
+    is_pi4b = False
+    is_jetson = False
+    
+    try:
+        if os.path.exists("/proc/device-tree/model"):
+            with open("/proc/device-tree/model", "r") as f:
+                model = f.read().strip()
+                if "Raspberry Pi 4" in model:
+                    is_pi4b = True
+                elif "NVIDIA" in model or "Jetson" in model:
+                    is_jetson = True
+    except Exception:
+        pass
+    
+    return {"is_pi4b": is_pi4b, "is_jetson": is_jetson}
+
+
+_hardware = _detect_hardware()
 
 
 def _env_int(name: str, default: int) -> int:
@@ -124,8 +152,12 @@ class _PiCam2Backend:
             )
         self.picam.configure(cfg)
         self.picam.start()
-        # short settle helps AE/AGC lock and avoids first capture timeout bursts
-        time.sleep(0.5)
+        
+        # Hardware-aware settle time
+        if _hardware["is_pi4b"]:
+            time.sleep(0.3)  # Shorter settle for Pi 4B
+        else:
+            time.sleep(0.5)  # Default settle time
 
         # Start capture thread
         self._running = True
@@ -183,9 +215,13 @@ class _PiCam2Backend:
             except Exception as e:
                 self._drops_total += 1
                 # Picamera2 can throw transient errors during AE/AGC – throttle and continue
-                if (self._drops_total % 30) == 1:
+                # Hardware-aware throttling
+                throttle_interval = 50 if _hardware["is_pi4b"] else 30
+                if (self._drops_total % throttle_interval) == 1:
                     log.warning("Picamera2 capture warning: %s", e)
-                time.sleep(0.03)
+                # Hardware-aware sleep
+                sleep_time = 0.05 if _hardware["is_pi4b"] else 0.03
+                time.sleep(sleep_time)
 
     # -- API surface used by the facade --
     def get_frame(self) -> Optional[np.ndarray]:
@@ -316,7 +352,11 @@ class _V4L2Backend:
         last_tick = time.time()
         frames_in_win = 0
 
-        base_sleep = max(0.0, 1.0 / (self._target_fps * 3.0))
+        # Hardware-aware sleep calculation
+        if _hardware["is_pi4b"]:
+            base_sleep = max(0.0, 1.0 / (self._target_fps * 2.5))  # Slightly longer sleep for Pi
+        else:
+            base_sleep = max(0.0, 1.0 / (self._target_fps * 3.0))
 
         while self._running:
             ok, frame = self._cap.read()

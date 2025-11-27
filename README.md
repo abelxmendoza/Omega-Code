@@ -1,5 +1,7 @@
 # Omega-Code
 
+> **📚 [Complete Documentation](DOCUMENTATION.md)** | **📋 [File Summary](FILE_SUMMARY.md)**
+
 Omega-Code is a **high-performance, production-ready** robotics control stack for a Raspberry Pi powered rover. The repository hosts:
 
 - **Optimized** hardware-facing Go and Python services with advanced caching, async processing, and real-time performance monitoring
@@ -8,6 +10,72 @@ Omega-Code is a **high-performance, production-ready** robotics control stack fo
 - Bash utilities that simplify provisioning, Bluetooth PAN setup, and network diagnostics when you are in the field
 
 Everything can run on the Pi, but the services are split so you can develop the UI on your laptop while tunnelling to the robot, or spin everything up locally with mock hardware for rapid iteration.
+
+## ✨ Full Feature Set
+
+### 🤖 Robot Control
+- **Movement Control**: Forward, backward, left, right, stop with adjustable speed (0-4095)
+- **Servo Control**: Horizontal/vertical camera servos with precise angle control (0-180°)
+- **Speed Management**: Real-time speed adjustment with increment/decrement controls
+- **Timed Moves**: Execute movements for specific durations with automatic stop
+- **Straight-Drive Assist**: Automatic drift correction for straight driving with trim adjustment
+- **Buzzer Control**: On/off, timed beeps, and pulse patterns
+
+### 📡 Sensor Systems
+- **Ultrasonic Distance**: HC-SR04 sensor with 2-400cm range, real-time distance readings
+- **Line Tracking**: IR sensor array for line following with multi-sensor support
+- **Battery Monitoring**: Voltage and percentage tracking with low-battery alerts
+- **System Telemetry**: CPU, memory, temperature, and network monitoring
+
+### 💡 Lighting System
+- **RGB LED Control**: WS2812/WS2811 LED strip control with full color spectrum
+- **Lighting Patterns**: Rainbow, fade, blink, chase, music visualizer, and custom patterns
+- **Color Selection**: RGB color picker with brightness control
+- **Music Reactive**: Real-time audio visualization with microphone input (graceful fallback)
+
+### 📹 Camera & Computer Vision
+- **MJPEG Streaming**: Real-time video feed with multi-resolution support (low/medium/high)
+- **Motion Detection**: Background subtraction algorithm with motion bounding boxes
+- **Face Recognition**: Known face detection and identification with configurable threshold
+- **ArUco Detection**: Marker detection, ID reading, and 6DOF pose estimation
+- **Object Tracking**: MOSSE/KCF tracking algorithms with manual object selection
+- **Video Recording**: Capture video streams to disk with configurable quality
+- **Frame Overlays**: Timestamp, FPS, telemetry overlays with customizable display
+
+### 🧠 Autonomous Behaviors
+- **ROS2 Actions**: Navigate to goal, follow line, obstacle avoidance, docking
+- **Autonomy Modes**: Patrol mode, line following, exploration with waypoint support
+- **Path Planning**: A*, D* Lite, and RRT algorithms for navigation
+- **Obstacle Avoidance**: Reactive obstacle avoidance using ultrasonic sensors
+- **SLAM Support**: Simultaneous Localization and Mapping (on capable hardware)
+
+### 🌐 Multi-Platform Support
+- **Capability Profiles**: Auto-detection of hardware capabilities (MacBook/Lenovo/Jetson)
+- **Adaptive Features**: Automatic feature gating based on hardware capabilities
+- **Light Mode**: Basic features for MacBook + Pi (640x480 @ 20 FPS)
+- **Dev Mode**: Full ROS2 + SLAM for Lenovo + Pi (1280x720 @ 25 FPS)
+- **Omega Mode**: GPU acceleration + ML for Jetson + Pi (1920x1080 @ 60 FPS)
+
+### 🔌 Network & Connectivity
+- **Multi-Profile Support**: Local, LAN, and Tailscale VPN profiles
+- **WebSocket Communication**: Real-time bidirectional communication with auto-reconnect
+- **REST APIs**: FastAPI endpoints for lighting, autonomy, and system control
+- **Gateway Proxy**: Unified API gateway aggregating all services
+- **Health Monitoring**: Service health checks and connection status indicators
+
+### 📊 Performance & Monitoring
+- **Real-time Dashboard**: System metrics, application performance, cache statistics
+- **Performance Alerts**: Automatic alerts for performance thresholds
+- **WebSocket Optimization**: Message batching, connection pooling, compression
+- **Caching System**: Redis-based caching with 80% reduction in backend load
+- **Async Processing**: Non-blocking operations with priority queues
+
+### 🛠️ Development Tools
+- **Hardware Diagnostics**: Comprehensive GPIO and sensor testing tools
+- **Endpoint Checker**: Profile-aware connectivity testing
+- **Mock Mode**: Development without hardware (simulation mode)
+- **Test Suites**: Unit, integration, and E2E tests for backend and frontend
+- **ROS2 Integration**: Full ROS2 Humble/Rolling support with Docker option
 
 ## 🚀 Performance Features
 

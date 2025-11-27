@@ -221,6 +221,159 @@ scripts/
 └── apply_profile.sh                 # Profile detection script
 ```
 
+## Implementation Details
+
+### Core Detection System
+
+**`ros/src/omega_robot/omega_robot/system_capabilities.py`**
+- ROS2 node that auto-detects system capabilities
+- Detects Jetson hardware, CUDA availability, ROS2 tools
+- Publishes capability profile to `/omega/capabilities` topic
+- Saves profile to `/tmp/omega_capabilities.json` for launch files
+- Supports three profiles: `mac`, `lenovo`, `jetson`
+
+**`ros/src/omega_robot/omega_robot/capability_utils.py`**
+- Utility module for nodes to check capabilities
+- Functions: `is_ml_capable()`, `is_slam_capable()`, `get_max_resolution()`, etc.
+- `CapabilitySubscriber` class for subscribing to capability updates
+- Loads profile from temp file or provides defaults
+
+### Adaptive Launch Files
+
+**`ros/launch/omega_camera.launch.py`**
+- Automatically adapts camera and vision nodes based on profile
+- Light mode: Basic tracking, ArUco
+- Dev mode: + SLAM, navigation
+- Omega mode: + GPU vision, YOLO, face recognition
+
+**`ros/launch/omega_brain.launch.py`**
+- Launches autonomy stack (only if not light mode)
+- Navigation, path planning, action servers
+- GPU-accelerated nodes on Jetson
+
+**`ros/launch/omega_full.launch.py`**
+- Launches complete system: camera + brain
+- One command to start everything
+
+### Profile Detection Script
+
+**`scripts/apply_profile.sh`**
+- Standalone script to detect capabilities
+- Creates `/tmp/omega_capabilities.json`
+- Can be run before launching ROS2 nodes
+- Provides colored output for easy debugging
+
+## App-Wide Integration
+
+### Backend (Python)
+
+**`servers/robot-controller-backend/api/capability_service.py`**
+- Detects system capabilities (Jetson, CUDA, ROS2)
+- Provides singleton service for capability queries
+- Integrates with ROS2 capability profile if available
+- Falls back to local detection
+
+**`servers/robot-controller-backend/api/capability_routes.py`**
+- REST API endpoints:
+  - `GET /api/capabilities` - Get full capability profile
+  - `GET /api/capabilities/check?feature=X` - Check specific feature
+  - `GET /api/capabilities/resolution` - Get max resolution
+  - `GET /api/capabilities/fps` - Get max FPS
+  - `GET /api/capabilities/profile` - Get profile mode
+
+**Video Server Integration**
+- `video/video_server.py` now uses capability service for default resolution/FPS
+- Automatically adapts camera settings based on profile
+
+### Frontend (React/TypeScript)
+
+**`src/hooks/useCapabilities.ts`**
+- React hook to fetch and use capabilities
+- Auto-refreshes every 30 seconds
+- Provides convenience getters: `isMLCapable`, `isSLAMCapable`, etc.
+
+**`src/context/CapabilityContext.tsx`**
+- React context provider for app-wide capability access
+- Wraps entire app in `_app.tsx`
+- Provides hooks: `useCapabilityContext()`, `useIsMLCapable()`, etc.
+
+**`src/components/capability/CapabilityStatus.tsx`**
+- Displays current profile mode and capabilities
+- Shows badges for enabled features
+- Color-coded by profile (green=Jetson, blue=Lenovo, gray=Mac)
+
+**`src/components/capability/CapabilityGate.tsx`**
+- Conditional rendering component
+- `<CapabilityGate feature="ml_capable">` - Only renders if ML available
+- `<ProfileGate mode="jetson">` - Only renders in Jetson mode
+
+### Usage Examples
+
+**Backend Usage**:
+```python
+from api.capability_service import get_capability_service
+
+service = get_capability_service()
+
+# Check capabilities
+if service.is_ml_capable():
+    # Use GPU processing
+    pass
+
+# Get max resolution
+width, height = service.get_max_resolution()
+fps = service.get_max_fps()
+```
+
+**Frontend Usage**:
+```tsx
+import { useCapabilities } from '@/hooks/useCapabilities';
+
+function MyComponent() {
+  const { isMLCapable, isSLAMCapable, profileMode } = useCapabilities();
+  
+  return (
+    <div>
+      {isMLCapable && <GPUFeatures />}
+      {isSLAMCapable && <SLAMFeatures />}
+    </div>
+  );
+}
+```
+
+**Using Capability Gate**:
+```tsx
+import { CapabilityGate, ProfileGate } from '@/components/capability';
+
+function Dashboard() {
+  return (
+    <div>
+      {/* Only show YOLO if ML capable */}
+      <CapabilityGate feature="ml_capable">
+        <YOLODetection />
+      </CapabilityGate>
+      
+      {/* Only show SLAM in Jetson mode */}
+      <ProfileGate mode="jetson">
+        <SLAMVisualization />
+      </ProfileGate>
+    </div>
+  );
+}
+```
+
+### API Endpoints
+
+**Get Full Profile**:
+```bash
+curl http://localhost:8000/api/capabilities
+```
+
+**Check Specific Feature**:
+```bash
+curl http://localhost:8000/api/capabilities/check?feature=ml_capable
+```
+
 ## Next Steps
 
 1. **Add YOLO Node**: Create GPU-accelerated YOLO detection node for Jetson
@@ -228,6 +381,8 @@ scripts/
 3. **Semantic Navigation**: Add semantic segmentation for navigation
 4. **Multi-Camera**: Support multiple camera streams on Jetson
 5. **Profile Persistence**: Save profile preferences across reboots
+6. **Capability-aware UI themes**: Show capability warnings in UI
+7. **Capability comparison view**: Add capability-based feature recommendations
 
 ## Examples
 

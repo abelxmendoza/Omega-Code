@@ -1,28 +1,70 @@
 #!/usr/bin/env python3
 """
 Mock Camera Server
-Provides a test video feed when no real camera is available
+Provides a test video feed when no real camera is available.
+Hardware-aware patterns and optimizations.
 """
 
+import os
 import cv2
 import numpy as np
 import time
 import threading
+import logging
 from flask import Flask, Response, jsonify
 from flask_cors import CORS
+
+log = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
 
-class MockCamera:
-    """Mock camera that generates test patterns"""
+
+def _detect_hardware():
+    """Detect hardware for mock camera optimization."""
+    is_pi4b = False
+    is_jetson = False
     
-    def __init__(self, width=640, height=480):
+    try:
+        if os.path.exists("/proc/device-tree/model"):
+            with open("/proc/device-tree/model", "r") as f:
+                model = f.read().strip()
+                if "Raspberry Pi 4" in model:
+                    is_pi4b = True
+                elif "NVIDIA" in model or "Jetson" in model:
+                    is_jetson = True
+    except Exception:
+        pass
+    
+    return {"is_pi4b": is_pi4b, "is_jetson": is_jetson}
+
+
+_hardware = _detect_hardware()
+
+class MockCamera:
+    """
+    Mock camera that generates test patterns.
+    Hardware-aware FPS and pattern complexity.
+    """
+    
+    def __init__(self, width=640, height=480, fps=None):
         self.width = width
         self.height = height
+        
+        # Hardware-aware FPS
+        if fps is None:
+            if _hardware["is_jetson"]:
+                fps = 60
+            elif _hardware["is_pi4b"]:
+                fps = 30
+            else:
+                fps = 30
+        
+        self.target_fps = fps
         self.running = False
         self.frame = None
         self.thread = None
+        self._frame_count = 0
         
     def start(self):
         """Start mock camera"""
@@ -38,8 +80,10 @@ class MockCamera:
             self.thread.join()
             
     def _generate_frames(self):
-        """Generate test frames"""
+        """Generate test frames with hardware-aware complexity"""
         frame_count = 0
+        last_time = time.time()
+        
         while self.running:
             # Create a test pattern
             frame = np.zeros((self.height, self.width, 3), dtype=np.uint8)
@@ -59,23 +103,50 @@ class MockCamera:
             rect_y = int(center_y + 80 * np.cos(angle * 0.7))
             cv2.rectangle(frame, (rect_x-20, rect_y-20), (rect_x+20, rect_y+20), (255, 0, 0), -1)
             
-            # Add text
-            cv2.putText(frame, f"Mock Camera Frame {frame_count}", 
-                       (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-            cv2.putText(frame, f"Time: {time.strftime('%H:%M:%S')}", 
-                       (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            # Hardware-aware additional elements
+            if _hardware["is_jetson"]:
+                # More complex patterns for Jetson
+                for i in range(3):
+                    offset = i * 60
+                    cv2.circle(frame, 
+                              (int(center_x + 80 * np.cos(angle + offset)), 
+                               int(center_y + 80 * np.sin(angle + offset))),
+                              15, (255, 255, 0), -1)
             
-            # Add some noise
-            noise = np.random.randint(0, 50, (self.height, self.width, 3), dtype=np.uint8)
-            frame = cv2.add(frame, noise)
+            # Add text with hardware info
+            hw_name = "Jetson" if _hardware["is_jetson"] else "Pi4B" if _hardware["is_pi4b"] else "Other"
+            cv2.putText(frame, f"Mock Camera - {hw_name} - Frame {frame_count}", 
+                       (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.putText(frame, f"Time: {time.strftime('%H:%M:%S')}", 
+                       (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(frame, f"FPS: {self.target_fps}", 
+                       (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+            
+            # Add subtle noise (less on Pi for performance)
+            if not _hardware["is_pi4b"]:
+                noise = np.random.randint(0, 30, (self.height, self.width, 3), dtype=np.uint8)
+                frame = cv2.add(frame, noise)
             
             self.frame = frame
+            self._frame_count = frame_count
             frame_count += 1
-            time.sleep(1/30)  # 30 FPS
+            
+            # Hardware-aware frame timing
+            sleep_time = 1.0 / self.target_fps
+            time.sleep(sleep_time)
             
     def get_frame(self):
         """Get current frame"""
         return self.frame
+    
+    def get_stats(self):
+        """Get mock camera statistics"""
+        return {
+            "frames_generated": self._frame_count,
+            "fps": self.target_fps,
+            "resolution": f"{self.width}x{self.height}",
+            "hardware": "Jetson" if _hardware["is_jetson"] else "Pi4B" if _hardware["is_pi4b"] else "Other",
+        }
 
 # Global mock camera
 mock_camera = MockCamera()

@@ -230,6 +230,125 @@ ssh pi@<pi_ip>
 ros2 run omega_robot sensor_data_publisher
 ```
 
+## 📦 PyTorch Installation
+
+### Quick Installation
+
+**On Jetson**:
+```bash
+cd ~/Omega-Code
+chmod +x scripts/install_pytorch_jetson.sh scripts/verify_pytorch_jetson.sh
+./scripts/install_pytorch_jetson.sh
+```
+
+**What the installer does**:
+- Detects your JetPack and CUDA versions
+- Downloads appropriate PyTorch wheel from NVIDIA
+- Installs torchvision
+- Verifies CUDA support
+- Configures library paths
+
+**Installation time**: 5-15 minutes (depending on download speed)
+
+### Manual Installation
+
+If you already have a PyTorch wheel file:
+
+```bash
+# Install the wheel file
+pip3 install torch-2.4.0a0+3bcc3cddb5.nv24.07.16234504-cp310-cp310-linux_aarch64.whl
+
+# Install torchvision
+pip3 install torchvision --no-deps
+pip3 install pillow
+
+# Verify installation
+python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.cuda.is_available()}')"
+```
+
+### Copying Scripts to Jetson
+
+**From your laptop**:
+```bash
+# Copy PyTorch installation scripts
+scp scripts/install_pytorch_jetson.sh omega1@100.107.112.110:~/Omega-Code/scripts/
+scp scripts/verify_pytorch_jetson.sh omega1@100.107.112.110:~/Omega-Code/scripts/
+
+# Or copy entire project via rsync
+rsync -avz --exclude 'venv' --exclude 'node_modules' --exclude '.git' \
+  ~/Desktop/Omega-Code/ omega1@100.107.112.110:~/Omega-Code/
+```
+
+### PyTorch Installation Status
+
+**Current System Info**:
+- **JetPack**: R36 (Revision 4.7)
+- **CUDA**: 12.6.68
+- **cuDNN**: 9.3.0
+- **Python**: 3.10
+
+**Known Issues**:
+- PyTorch wheels from PyPI are for x86_64, not ARM64 - use Jetson-specific wheels
+- cuDNN version mismatches (system has cuDNN 9, some wheels require cuDNN 8)
+- Missing libraries: `libcusparseLt.so.0`, `libcudnn.so.8`
+
+**Solution**: Use NVIDIA pre-built wheels matching your JetPack version.
+
+### Verifying PyTorch Installation
+
+```bash
+# Check PyTorch version
+python3 -c "import torch; print(f'PyTorch: {torch.__version__}')"
+
+# Check CUDA availability
+python3 -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+
+# Test GPU tensor
+python3 << EOF
+import torch
+if torch.cuda.is_available():
+    x = torch.randn(3, 3).cuda()
+    print(f"✅ GPU tensor test passed: {x.shape}")
+    print(f"✅ Device: {torch.cuda.get_device_name(0)}")
+else:
+    print("❌ CUDA not available")
+EOF
+```
+
+## 🔧 cuDNN Library Path Configuration
+
+### Issue: cuDNN Library Not Found
+
+**Error**: `ImportError: libcudnn.so.8: cannot open shared object file`
+
+### Solution
+
+**Step 1: Find cuDNN library location**
+```bash
+# Search for cuDNN libraries
+find /usr -name "libcudnn.so*" 2>/dev/null
+```
+
+**Step 2: Add to library path**
+
+Add to `~/.bashrc`:
+```bash
+# Add cuDNN to library path
+export LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64:$LD_LIBRARY_PATH
+
+# CUDA environment
+export CUDA_HOME=/usr/local/cuda-12.6
+export PATH=$CUDA_HOME/bin:$PATH
+```
+
+**Step 3: Reload and test**
+```bash
+source ~/.bashrc
+python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.cuda.is_available()}')"
+```
+
 ## 🐛 Troubleshooting
 
 ### Issue: Topics not visible across devices
@@ -262,17 +381,54 @@ ros2 daemon start
 2. Check CUDA: `nvcc --version`
 3. Test PyTorch CUDA: `python3 -c "import torch; print(torch.cuda.is_available())"`
 4. Install CUDA toolkit if missing: `sudo apt install nvidia-cuda-toolkit`
+5. Check library paths: `echo $LD_LIBRARY_PATH`
 
 ### Issue: PyTorch/torchvision installation fails
 
-**Solution**:
-1. Use Jetson-specific installer: `./scripts/install_pytorch_jetson.sh`
-2. See detailed troubleshooting: [JETSON_PYTORCH_TROUBLESHOOTING.md](JETSON_PYTORCH_TROUBLESHOOTING.md)
-3. Common causes:
-   - Wrong architecture (need ARM64, not x86_64)
-   - Missing CUDA dependencies
-   - Insufficient disk space
-   - Wrong PyTorch version for JetPack
+**Common Causes**:
+- Wrong architecture (need ARM64, not x86_64)
+- Missing CUDA dependencies
+- Insufficient disk space
+- Wrong PyTorch version for JetPack
+- cuDNN version mismatch
+
+**Solutions**:
+
+1. **Use Jetson-specific installer**:
+```bash
+cd ~/Omega-Code
+./scripts/install_pytorch_jetson.sh
+```
+
+2. **Clear pip cache and reinstall**:
+```bash
+pip3 cache purge
+pip3 install --no-cache-dir torch torchvision
+```
+
+3. **Increase swap space** (if out of memory):
+```bash
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+```
+
+4. **Install with limited parallelism**:
+```bash
+export MAX_JOBS=1
+pip3 install torch torchvision --no-cache-dir
+```
+
+5. **Check system requirements**:
+```bash
+# Run diagnostic
+cat /etc/nv_tegra_release  # JetPack version
+nvcc --version              # CUDA version
+python3 --version          # Python version
+df -h /                     # Disk space
+free -h                     # Memory
+```
 
 ### Issue: Build fails on Jetson
 
@@ -281,6 +437,7 @@ ros2 daemon start
 2. Reduce parallel jobs: `colcon build --parallel-workers 2`
 3. Build packages individually
 4. Check disk space: `df -h`
+5. Increase swap space if needed (see above)
 
 ## 📚 Architecture Overview
 
@@ -334,15 +491,50 @@ ros2 daemon start
 4. **Performance Tuning**: Optimize for your specific workloads
 5. **Monitoring**: Set up system monitoring dashboards
 
+## 📋 Installation Checklist
+
+### Initial Setup
+- [ ] SSH access configured
+- [ ] Omega-Code repository cloned/copied
+- [ ] ROS2 Humble Desktop installed
+- [ ] CUDA environment configured
+- [ ] CycloneDDS configured for multi-device
+
+### PyTorch Setup
+- [ ] PyTorch installation script run
+- [ ] PyTorch CUDA support verified
+- [ ] torchvision installed
+- [ ] Library paths configured
+- [ ] GPU tensor test passed
+
+### ROS2 Integration
+- [ ] Workspace created (`~/omega_ws`)
+- [ ] Packages built (`colcon build`)
+- [ ] Multi-device communication tested
+- [ ] Topics visible across devices
+
+### Performance Optimization
+- [ ] Maximum performance mode enabled
+- [ ] System monitoring tools installed
+- [ ] Performance benchmarks run
+
 ## 🔗 Related Documentation
 
 - [ROS2_MULTIDEVICE_SETUP.md](ROS2_MULTIDEVICE_SETUP.md) - Full multi-device guide
 - [ROS2_ARCHITECTURE.md](ROS2_ARCHITECTURE.md) - System architecture
 - [ROS2_OPENCV_INTEGRATION.md](ROS2_OPENCV_INTEGRATION.md) - OpenCV integration
 
+## 📚 Additional Resources
+
+- **NVIDIA PyTorch Forum**: https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048
+- **JetPack Documentation**: https://developer.nvidia.com/embedded/jetpack
+- **PyTorch Official Docs**: https://pytorch.org/get-started/locally/
+
 ---
 
 **Last Updated**: 2024  
 **Jetson IP**: 100.107.112.110 (Tailscale)  
-**SSH User**: omega1
+**SSH User**: omega1  
+**JetPack**: R36 (Revision 4.7)  
+**CUDA**: 12.6.68
 

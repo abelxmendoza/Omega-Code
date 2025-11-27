@@ -255,11 +255,47 @@ class FaceRecognizer:
     def _detect_faces(self, gray_frame: np.ndarray) -> Sequence[Tuple[int, int, int, int]]:
         if self._cascade is None:
             return []
+        
+        # Hardware-aware detection parameters
+        try:
+            import os
+            is_pi4b = False
+            is_jetson = False
+            if os.path.exists("/proc/device-tree/model"):
+                with open("/proc/device-tree/model", "r") as f:
+                    model = f.read().strip()
+                    if "Raspberry Pi 4" in model:
+                        is_pi4b = True
+                    elif "NVIDIA" in model or "Jetson" in model:
+                        is_jetson = True
+            
+            # Optimize parameters based on hardware
+            if is_pi4b:
+                # Faster detection for Pi 4B (less accurate but more performant)
+                scale_factor = 1.2
+                min_neighbors = 4
+                min_size = (50, 50)
+            elif is_jetson:
+                # High quality detection on Jetson
+                scale_factor = 1.1
+                min_neighbors = 6
+                min_size = (30, 30)
+            else:
+                # Default balanced settings
+                scale_factor = 1.1
+                min_neighbors = 5
+                min_size = (40, 40)
+        except Exception:
+            # Fallback to defaults
+            scale_factor = 1.1
+            min_neighbors = 5
+            min_size = (40, 40)
+        
         faces = self._cascade.detectMultiScale(
             gray_frame,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(40, 40),
+            scaleFactor=scale_factor,
+            minNeighbors=min_neighbors,
+            minSize=min_size,
         )
         if isinstance(faces, tuple):
             return faces

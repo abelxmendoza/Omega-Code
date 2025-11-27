@@ -513,7 +513,100 @@ export ROS_DOMAIN_ID=1  # Robot 1
 export ROS_DOMAIN_ID=2  # Robot 2
 ```
 
-### Docker Deployment
+### Docker Deployment on Raspberry Pi
+
+**Architecture**:
+```
+┌──────────────┐         ┌──────────────┐
+│   Laptop     │         │  Raspberry   │
+│  (Ubuntu)    │         │     Pi 4B    │
+│              │         │              │
+│ Native ROS2  │◄───────►│ Docker ROS2  │
+│   Rolling    │  DDS    │   Humble     │
+│              │ Network │              │
+│ • rclpy      │         │ • Containers │
+│ • Direct     │         │ • Pi OS      │
+└──────────────┘         └──────────────┘
+```
+
+**Pi Setup (Raspberry Pi OS)**:
+
+1. **Install Docker**:
+```bash
+# On Pi
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker pi
+```
+
+2. **Build ROS2 Docker Image**:
+```bash
+# On Pi
+cd ~/Omega-Code/docker/ros2_robot
+sudo docker build -t omega_robot:latest -f Dockerfile ../..
+```
+
+3. **Configure CycloneDDS**:
+Update `docker/ros2_robot/config/cyclonedds.xml` on Pi:
+```xml
+<CycloneDDS>
+  <Domain>
+    <General>
+      <NetworkInterfaceAddress>auto</NetworkInterfaceAddress>
+      <AllowMulticast>true</AllowMulticast>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <Peers>
+        <Peer address="192.168.1.100"/> <!-- Laptop IP -->
+        <Peer address="192.168.1.200"/> <!-- Jetson IP -->
+      </Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>
+```
+
+4. **Run Docker Compose**:
+```bash
+cd ~/Omega-Code/docker/ros2_robot
+docker-compose up -d
+
+# Check status
+docker-compose ps
+
+# View logs
+docker-compose logs -f telemetry_publisher
+```
+
+5. **Execute ROS2 Commands in Container**:
+```bash
+# List topics
+docker exec -it ros2_robot_telemetry_publisher_1 \
+  bash -c "source /opt/ros/humble/setup.bash && \
+           source /root/omega_ws/install/setup.bash && \
+           ros2 topic list"
+
+# Run nodes
+docker exec -it ros2_robot_telemetry_publisher_1 \
+  bash -c "source /opt/ros/humble/setup.bash && \
+           source /root/omega_ws/install/setup.bash && \
+           ros2 run omega_robot sensor_data_publisher"
+```
+
+**Communication Between Laptop and Pi**:
+
+- Laptop uses **native ROS2** (direct rclpy)
+- Pi uses **Docker ROS2** (containerized)
+- Both use same `ROS_DOMAIN_ID` (default: 0)
+- Both use CycloneDDS with peer addresses configured
+- Topics are visible across both devices
+
+**Benefits of Docker on Pi**:
+- ✅ Isolated environment
+- ✅ Easy updates (rebuild container)
+- ✅ Consistent ROS2 version
+- ✅ No conflicts with Pi OS packages
+- ✅ Easy cleanup (remove container)
 
 See `docker/ros2_robot/docker-compose.multidevice.yml` for containerized deployment.
 
