@@ -429,12 +429,15 @@ class Camera:
     """
     Public facade that selects a backend.
 
-    Selection order:
+    Selection order (legacy mode):
       • CAMERA_BACKEND=picamera2 -> Picamera2
       • CAMERA_BACKEND=v4l2      -> OpenCV/V4L2
       • CAMERA_BACKEND=auto (default):
             - If CAMERA_BACKENDS list is set, try in that order
             - Else try Picamera2 (if installed), then V4L2 (/dev/video0)
+    
+    New CameraManager mode (if OMEGA_USE_CAMERA_MANAGER=1):
+      Uses intelligent detection via CameraManager class.
     """
 
     def __init__(
@@ -449,6 +452,33 @@ class Camera:
         self.target_fps = int(target_fps)
         self.backend_name: Optional[str] = None
 
+        # Check if CameraManager should be used (enabled by default)
+        use_manager = os.getenv("OMEGA_USE_CAMERA_MANAGER", "1").lower() in ("1", "true", "yes")
+        
+        if use_manager:
+            try:
+                # Import here to avoid circular imports
+                try:
+                    from .camera_manager import CameraManager
+                except ImportError:
+                    # Fallback for different import paths
+                    import sys
+                    import os
+                    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+                    from video.camera_manager import CameraManager
+                
+                manager = CameraManager(width=self.width, height=self.height, fps=self.target_fps)
+                self._backend = manager.initialize_backend()
+                self.backend_name = manager.backend_type.value if manager.backend_type else "unknown"
+                atexit.register(self.stop)
+                return
+            except Exception as e:
+                log.warning(f"CameraManager failed, falling back to legacy mode: {e}")
+                import traceback
+                if os.getenv("OMEGA_DEBUG_CAMERA", "0").lower() in ("1", "true", "yes"):
+                    traceback.print_exc()
+
+        # Legacy mode (original implementation)
         want = (_env_str("CAMERA_BACKEND", "auto")).strip().lower()
         dev = _env_str("CAMERA_DEVICE", str(device))
 
