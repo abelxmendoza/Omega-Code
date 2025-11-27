@@ -74,21 +74,61 @@ class ObjectTracker:
                 else:
                     tracker_type = "KCF"  # Balanced default
             
-            OPENCV_OBJECT_TRACKERS = {
-                "CSRT": cv2.TrackerCSRT_create,
-                "KCF": cv2.TrackerKCF_create,
-                "MIL": cv2.TrackerMIL_create,
-                "MOSSE": cv2.legacy.TrackerMOSSE_create if hasattr(cv2.legacy, 'TrackerMOSSE_create') else None,
-            }
+            # Check which trackers are actually available
+            OPENCV_OBJECT_TRACKERS = {}
             
+            # Check CSRT
+            if hasattr(cv2, 'TrackerCSRT_create'):
+                try:
+                    OPENCV_OBJECT_TRACKERS["CSRT"] = cv2.TrackerCSRT_create
+                except AttributeError:
+                    pass
+            
+            # Check KCF
+            if hasattr(cv2, 'TrackerKCF_create'):
+                try:
+                    OPENCV_OBJECT_TRACKERS["KCF"] = cv2.TrackerKCF_create
+                except AttributeError:
+                    pass
+            
+            # Check MIL
+            if hasattr(cv2, 'TrackerMIL_create'):
+                try:
+                    OPENCV_OBJECT_TRACKERS["MIL"] = cv2.TrackerMIL_create
+                except AttributeError:
+                    pass
+            
+            # Check MOSSE (legacy)
+            if hasattr(cv2, 'legacy') and hasattr(cv2.legacy, 'TrackerMOSSE_create'):
+                try:
+                    OPENCV_OBJECT_TRACKERS["MOSSE"] = cv2.legacy.TrackerMOSSE_create
+                except AttributeError:
+                    pass
+            
+            # If requested tracker not available, try fallbacks
             if tracker_type not in OPENCV_OBJECT_TRACKERS:
-                log.warning(f"Unknown tracker type '{tracker_type}', using KCF")
-                tracker_type = "KCF"
+                log.warning(f"Tracker '{tracker_type}' not available, trying fallbacks...")
+                # Try KCF first (most common)
+                if "KCF" in OPENCV_OBJECT_TRACKERS:
+                    tracker_type = "KCF"
+                elif "MOSSE" in OPENCV_OBJECT_TRACKERS:
+                    tracker_type = "MOSSE"
+                elif "MIL" in OPENCV_OBJECT_TRACKERS:
+                    tracker_type = "MIL"
+                elif "CSRT" in OPENCV_OBJECT_TRACKERS:
+                    tracker_type = "CSRT"
+                else:
+                    log.warning("No OpenCV trackers available. Object tracking disabled.")
+                    self.tracker = None
+                    self.tracker_type = None
+                    return
             
             tracker_factory = OPENCV_OBJECT_TRACKERS.get(tracker_type)
             if tracker_factory is None:
-                log.warning(f"Tracker '{tracker_type}' not available, using KCF")
-                tracker_factory = OPENCV_OBJECT_TRACKERS["KCF"]
+                log.warning(f"Tracker '{tracker_type}' factory not available. Object tracking disabled.")
+                self.tracker = None
+                self.tracker_type = None
+                return
             
             try:
                 self.tracker = tracker_factory()
@@ -97,13 +137,20 @@ class ObjectTracker:
                         f"(hardware={'Pi4B' if _hardware['is_pi4b'] else 'Jetson' if _hardware['is_jetson'] else 'Other'})")
             except Exception as e:
                 log.error(f"Failed to create tracker '{tracker_type}': {e}")
-                # Fallback to KCF
-                try:
-                    self.tracker = OPENCV_OBJECT_TRACKERS["KCF"]()
-                    self.tracker_type = "KCF"
-                except Exception:
-                    self.tracker = None
-                    self.tracker_type = None
+                # Try fallback trackers
+                for fallback_type in ["KCF", "MOSSE", "MIL", "CSRT"]:
+                    if fallback_type in OPENCV_OBJECT_TRACKERS and fallback_type != tracker_type:
+                        try:
+                            self.tracker = OPENCV_OBJECT_TRACKERS[fallback_type]()
+                            self.tracker_type = fallback_type
+                            log.info(f"Fallback tracker '{fallback_type}' initialized successfully")
+                            return
+                        except Exception:
+                            continue
+                # If all trackers fail, disable tracking
+                log.warning("All tracker initialization attempts failed. Object tracking disabled.")
+                self.tracker = None
+                self.tracker_type = None
         
         self.bounding_box: Optional[Tuple[int, int, int, int]] = None
         self.tracking = False

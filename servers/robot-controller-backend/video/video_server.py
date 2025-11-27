@@ -478,8 +478,19 @@ def _create_camera(device: Optional[str] = None) -> bool:
             try:
                 camera = MockCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
                 camera.start()
-                motion_detector = MotionDetector()
-                tracker = ObjectTracker()
+                # Initialize motion detector and tracker, but don't fail if they don't work
+                try:
+                    motion_detector = MotionDetector()
+                except Exception as md_e:
+                    logging.warning(f"Motion detector initialization failed: {md_e}")
+                    motion_detector = None
+                
+                try:
+                    tracker = ObjectTracker()
+                except Exception as tr_e:
+                    logging.warning(f"Object tracker initialization failed: {tr_e}")
+                    tracker = None
+                
                 logging.info("Mock camera fallback successful.")
                 return True
             except Exception as mock_e:
