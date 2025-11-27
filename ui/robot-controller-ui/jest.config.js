@@ -30,4 +30,14 @@ module.exports = {
   ],
 
   moduleFileExtensions: ['js', 'jsx', 'ts', 'tsx', 'json', 'node'],
+  
+  // Coverage thresholds
+  coverageThreshold: {
+    global: {
+      statements: 80,
+      branches: 75,
+      lines: 80,
+      functions: 75,
+    },
+  },
 };

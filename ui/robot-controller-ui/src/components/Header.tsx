@@ -17,7 +17,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { CheckCircle, XCircle, Settings, Download } from 'lucide-react';
+import { CheckCircle, XCircle, Settings, Download, Activity } from 'lucide-react';
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { net } from '@/utils/netProfile';
@@ -280,6 +280,86 @@ function useNetSummary(intervalMs = 8000) {
 }
 
 /* ============================
+   Latency Metrics Hook
+   ============================ */
+interface LatencyMetrics {
+  piOnly?: {
+    total_processing_ms?: number;
+    encode_duration_ms?: number;
+  };
+  hybrid?: {
+    round_trip_ms?: {
+      avg: number;
+    };
+    inference_ms?: {
+      avg: number;
+    };
+  };
+}
+
+function useLatencyMetrics(intervalMs = 1000) {
+  const [metrics, setMetrics] = useState<LatencyMetrics>({});
+  const [loading, setLoading] = useState(true);
+
+  const fetchLatency = useCallback(async () => {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 2000);
+    try {
+      // Fetch Pi-only latency
+      const piRes = await fetch('/api/video-proxy/latency', {
+        method: 'GET',
+        signal: ac.signal,
+        cache: 'no-store',
+      }).catch(() => null);
+      
+      let piData: any = null;
+      if (piRes?.ok) {
+        try {
+          piData = await piRes.json();
+        } catch {}
+      }
+
+      // Fetch hybrid latency
+      const hybridRes = await fetch('/api/video-proxy/latency/hybrid', {
+        method: 'GET',
+        signal: ac.signal,
+        cache: 'no-store',
+      }).catch(() => null);
+      
+      let hybridData: any = null;
+      if (hybridRes?.ok) {
+        try {
+          hybridData = await hybridRes.json();
+        } catch {}
+      }
+
+      setMetrics({
+        piOnly: piData?.latencies_ms || undefined,
+        hybrid: hybridData?.ok ? {
+          round_trip_ms: hybridData.round_trip_ms,
+          inference_ms: hybridData.inference_ms,
+        } : undefined,
+      });
+    } catch (e) {
+      // Silently fail - latency is optional
+    } finally {
+      clearTimeout(t);
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let mounted = true;
+    (async () => { if (mounted) await fetchLatency(); })();
+    timer = setInterval(() => { void fetchLatency(); }, intervalMs);
+    return () => { mounted = false; if (timer) clearInterval(timer); };
+  }, [fetchLatency, intervalMs]);
+
+  return { metrics, loading };
+}
+
+/* ============================
    Quick Actions (PAN + Wi-Fi)
    ============================ */
 function useNetActions() {
@@ -491,6 +571,9 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
   // Net summary
   const netSummary = useNetSummary(8000);
 
+  // Latency metrics
+  const latencyMetrics = useLatencyMetrics(1000);
+
   const states = [move.status, ultra.status, line.status, light.status, video.status] as const;
   const upCount = states.filter((s) => s === 'connected').length;
   const allGood = upCount === states.length;
@@ -584,6 +667,32 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
           {/* Capability Status */}
           <div className="flex items-center text-sm ml-4 pl-4 border-l border-white/10">
             <CapabilityInfoModal />
+          </div>
+
+          {/* Latency Metrics */}
+          <div className="flex items-center text-sm ml-4 pl-4 border-l border-white/10 gap-2">
+            <Activity className="w-4 h-4 text-blue-400" />
+            {latencyMetrics.metrics.piOnly?.total_processing_ms !== undefined && (
+              <div className="flex items-center gap-1" title="Pi-only processing latency">
+                <span className="text-white/70 text-xs">Pi:</span>
+                <span className="text-blue-300 text-xs font-mono">
+                  {latencyMetrics.metrics.piOnly.total_processing_ms.toFixed(1)}ms
+                </span>
+              </div>
+            )}
+            {latencyMetrics.metrics.hybrid?.round_trip_ms?.avg !== undefined && (
+              <div className="flex items-center gap-1" title="Pi ↔ Orin round-trip latency">
+                <span className="text-white/70 text-xs">Hybrid:</span>
+                <span className="text-purple-300 text-xs font-mono">
+                  {latencyMetrics.metrics.hybrid.round_trip_ms.avg.toFixed(1)}ms
+                </span>
+                {latencyMetrics.metrics.hybrid.inference_ms?.avg !== undefined && (
+                  <span className="text-purple-200/70 text-xs font-mono">
+                    ({latencyMetrics.metrics.hybrid.inference_ms.avg.toFixed(1)}ms inf)
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

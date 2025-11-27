@@ -8,6 +8,14 @@ import logging
 from typing import Optional, Dict, Any
 import numpy as np
 
+# High-precision timestamp for latency measurement
+try:
+    from time import time_ns
+except ImportError:
+    # Fallback for Python < 3.7
+    def time_ns():
+        return int(time.time() * 1e9)
+
 try:
     import cv2  # type: ignore
 except ImportError:
@@ -47,6 +55,11 @@ class FrameOverlay:
         self._last_fps_time = time.time()
         self._frame_count = 0
         self._current_fps = 0.0
+        
+        # Latency measurement timestamps
+        self._capture_timestamp_ns: Optional[int] = None
+        self._encode_start_ns: Optional[int] = None
+        self._encode_end_ns: Optional[int] = None
     
     def update_fps(self):
         """Update FPS calculation."""
@@ -62,12 +75,13 @@ class FrameOverlay:
             self._frame_count = 0
             self._last_fps_time = now
     
-    def add_overlays(self, frame: np.ndarray) -> np.ndarray:
+    def add_overlays(self, frame: np.ndarray, capture_timestamp_ns: Optional[int] = None) -> np.ndarray:
         """
         Add overlays to frame.
         
         Args:
             frame: BGR frame
+            capture_timestamp_ns: High-precision capture timestamp (nanoseconds) for latency measurement
             
         Returns:
             Frame with overlays
@@ -75,19 +89,37 @@ class FrameOverlay:
         if cv2 is None or frame is None:
             return frame
         
+        # Store capture timestamp for latency measurement
+        if capture_timestamp_ns is not None:
+            self._capture_timestamp_ns = capture_timestamp_ns
+        else:
+            self._capture_timestamp_ns = time_ns()
+        
         try:
             h, w = frame.shape[:2]
             y_offset = 10
             
-            # Timestamp overlay
+            # Timestamp overlay (with high-precision timestamp embedded)
             if self.show_timestamp:
                 timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                # Embed high-precision timestamp in frame (bottom right corner, small)
+                timestamp_ns_str = str(self._capture_timestamp_ns)
                 cv2.putText(
                     frame, timestamp,
                     (10, y_offset),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
                     (255, 255, 255),
+                    1,
+                    cv2.LINE_AA
+                )
+                # Embed timestamp in bottom-right corner (very small, for extraction)
+                cv2.putText(
+                    frame, f"TS:{timestamp_ns_str[-12:]}",  # Last 12 digits for compactness
+                    (w - 150, h - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.3,
+                    (64, 64, 64),  # Very subtle
                     1,
                     cv2.LINE_AA
                 )
@@ -186,4 +218,28 @@ class FrameOverlay:
     def get_fps(self) -> float:
         """Get current FPS."""
         return self._current_fps
+    
+    def set_encode_timestamps(self, start_ns: int, end_ns: int):
+        """
+        Set encode timestamps for latency measurement.
+        
+        Args:
+            start_ns: Encode start time (nanoseconds)
+            end_ns: Encode end time (nanoseconds)
+        """
+        self._encode_start_ns = start_ns
+        self._encode_end_ns = end_ns
+    
+    def get_latency_metrics(self) -> Dict[str, Optional[int]]:
+        """
+        Get latency metrics.
+        
+        Returns:
+            Dict with capture, encode start, encode end timestamps (nanoseconds)
+        """
+        return {
+            "capture_timestamp_ns": self._capture_timestamp_ns,
+            "encode_start_ns": self._encode_start_ns,
+            "encode_end_ns": self._encode_end_ns,
+        }
 

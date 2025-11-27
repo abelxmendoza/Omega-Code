@@ -31,6 +31,8 @@ import ServoTelemetryPanel from '../components/control/ServoTelemetryPanel';
 import PerformanceDashboard from '../components/PerformanceDashboard';
 import EnhancedServoTelemetryPanel from '../components/control/EnhancedServoTelemetryPanel';
 import AutonomyPanel from '../components/control/AutonomyModal';
+import SystemModeDashboard from '../components/SystemModeDashboard';
+import LatencyDashboard from '../components/LatencyDashboard';
 import { useCommand } from '../context/CommandContext';
 import { COMMAND } from '../control_definitions';
 import Header from '../components/Header';
@@ -405,6 +407,24 @@ export default function Home() {
               <EnhancedServoTelemetryPanel />
             </div>
           </div>
+        </div>
+
+        {/* System Mode Dashboard */}
+        <div className="mt-8 flex justify-center">
+          <ErrorBoundary>
+            <div className="w-full max-w-4xl">
+              <SystemModeDashboard />
+            </div>
+          </ErrorBoundary>
+        </div>
+
+        {/* Latency Dashboard */}
+        <div className="mt-8 flex justify-center">
+          <ErrorBoundary>
+            <div className="w-full max-w-4xl">
+              <LatencyDashboard />
+            </div>
+          </ErrorBoundary>
         </div>
 
         {/* Performance Dashboard */}

@@ -110,6 +110,32 @@ except ImportError:
         ROS2VideoPublisher = None
         ROS2_AVAILABLE = False
 
+# Hybrid system integration (optional)
+try:
+    from .hybrid_system import get_hybrid_system_manager, SystemMode
+    from .hybrid_messages import TelemetryData, TrackingBBox, ArUcoMarker
+    HYBRID_SYSTEM_AVAILABLE = True
+except ImportError:
+    try:
+        from hybrid_system import get_hybrid_system_manager, SystemMode
+        from hybrid_messages import TelemetryData, TrackingBBox, ArUcoMarker
+        HYBRID_SYSTEM_AVAILABLE = True
+    except ImportError:
+        get_hybrid_system_manager = None
+        SystemMode = None
+        TelemetryData = None
+        TrackingBBox = None
+        ArUcoMarker = None
+        HYBRID_SYSTEM_AVAILABLE = False
+except Exception:
+    # Fallback if any other error occurs
+    get_hybrid_system_manager = None
+    SystemMode = None
+    TelemetryData = None
+    TrackingBBox = None
+    ArUcoMarker = None
+    HYBRID_SYSTEM_AVAILABLE = False
+
 # Local imports - try relative first, then absolute
 try:
     from .aruco_detection import ArucoDetector
@@ -325,6 +351,17 @@ ros2_publisher: Optional[ROS2VideoPublisher] = None
 
 # Feature flags
 ENABLE_ROS2 = os.getenv("ENABLE_ROS2", "0").lower() in ("1", "true", "yes") and ROS2_AVAILABLE
+ENABLE_HYBRID_SYSTEM = os.getenv("ENABLE_HYBRID_SYSTEM", "1").lower() in ("1", "true", "yes") and HYBRID_SYSTEM_AVAILABLE
+
+# Hybrid system manager
+hybrid_system_manager = None
+if ENABLE_HYBRID_SYSTEM and get_hybrid_system_manager is not None:
+    try:
+        hybrid_system_manager = get_hybrid_system_manager()
+        logging.info(f"✅ Hybrid System enabled: {hybrid_system_manager.get_system_mode().value}")
+    except Exception as e:
+        logging.warning(f"⚠️ Failed to initialize Hybrid System: {e}")
+        hybrid_system_manager = None
 
 # Multi-resolution streams
 ENABLE_MULTI_RESOLUTION = os.getenv("ENABLE_MULTI_RESOLUTION", "0").lower() in ("1", "true", "yes")
@@ -586,40 +623,101 @@ def generate_frames():
                 except Exception:
                     pass  # Continue if psutil fails
 
+            # Hybrid system: Check for throttling
+            # TODO: Integrate thermal/CPU watchdog with mode manager
+            should_throttle = False
+            throttle_priority = []
+            if hybrid_system_manager:
+                hybrid_system_manager.cpu_monitor.update_load()
+                should_throttle = hybrid_system_manager.should_throttle_modules()
+                throttle_priority = hybrid_system_manager.get_throttle_priority()
+                # Check and auto-switch mode if needed
+                hybrid_system_manager.check_and_auto_switch_mode()
+            
             # Motion overlay (with error handling, hardware-aware)
+            motion_detected = False
+            motion_regions = []
             if ENABLE_MOTION_HW and motion_detector is not None:
-                try:
-                    frame, _ = motion_detector.detect_motion(frame)
-                except Exception as e:
-                    logging.warning(f"⚠️ Motion detection error: {e}")
-                    _metrics["errors_total"] += 1
+                if not should_throttle or "motion" not in throttle_priority[:1]:  # Only throttle if priority allows
+                    try:
+                        frame, motion_detected = motion_detector.detect_motion(frame)
+                        # Extract motion regions for hybrid system
+                        if motion_detected and hybrid_system_manager:
+                            # Get motion regions from detector (if available)
+                            pass  # TODO: Extract regions from motion detector
+                    except Exception as e:
+                        logging.warning(f"⚠️ Motion detection error: {e}")
+                        _metrics["errors_total"] += 1
+            
+            # Publish motion event to Orin (hybrid system)
+            if hybrid_system_manager and motion_detected:
+                hybrid_system_manager.publish_motion_event(motion_detected, motion_regions)
 
             # Tracker overlay (optional)
+            tracking_bbox = None
             if tracking_enabled and tracker is not None:
-                try:
-                    frame, _ = tracker.update_tracking(frame)
-                except Exception as e:
-                    logging.warning(f"⚠️ Tracking error: {e}")
-                    _metrics["errors_total"] += 1
+                if not should_throttle or "tracking" not in throttle_priority[:2]:  # Only throttle if priority allows
+                    try:
+                        frame, tracking_info = tracker.update_tracking(frame)
+                        # Extract tracking bbox for hybrid system
+                        if tracking_info and hybrid_system_manager:
+                            # TODO: Extract bbox from tracker
+                            pass
+                    except Exception as e:
+                        logging.warning(f"⚠️ Tracking error: {e}")
+                        _metrics["errors_total"] += 1
+            
+            # Publish tracking bbox to Orin (hybrid system)
+            if hybrid_system_manager and tracking_bbox:
+                hybrid_system_manager.publish_tracking_bbox(tracking_bbox)
 
             if FACE_RECOGNITION_ENABLED and face_recognizer and face_recognizer.active:
-                try:
-                    frame, _ = face_recognizer.annotate(frame)
-                except Exception as e:
-                    logging.warning(f"⚠️ Face recognition error: {e}")
-                    _metrics["errors_total"] += 1
+                if not should_throttle or "face_detection" not in throttle_priority[:4]:  # Lowest priority
+                    try:
+                        frame, _ = face_recognizer.annotate(frame)
+                    except Exception as e:
+                        logging.warning(f"⚠️ Face recognition error: {e}")
+                        _metrics["errors_total"] += 1
 
+            # ArUco detection
+            aruco_markers = []
             if ARUCO_DETECTION_ENABLED and aruco_detector and aruco_detector.active:
-                try:
-                    frame, _ = aruco_detector.annotate(frame)
-                except Exception as e:
-                    logging.warning(f"⚠️ ArUco detection error: {e}")
-                    _metrics["errors_total"] += 1
+                if not should_throttle or "aruco" not in throttle_priority[:3]:  # Medium priority
+                    try:
+                        frame, detections = aruco_detector.annotate(frame)
+                        if detections and hybrid_system_manager:
+                            # Convert detections to hybrid messages format
+                            for det in detections:
+                                if hasattr(det, 'marker_id'):
+                                    marker = ArUcoMarker(
+                                        marker_id=det.marker_id,
+                                        corners=[[float(c[0]), float(c[1])] for c in det.corners],
+                                        centre=[float(det.centre[0]), float(det.centre[1])],
+                                        pose=getattr(det, 'pose', None)
+                                    )
+                                    aruco_markers.append(marker)
+                    except Exception as e:
+                        logging.warning(f"⚠️ ArUco detection error: {e}")
+                        _metrics["errors_total"] += 1
+            
+            # Publish ArUco markers to Orin (hybrid system)
+            if hybrid_system_manager and aruco_markers:
+                hybrid_system_manager.publish_aruco_markers(aruco_markers)
 
+            # TODO: Capture timestamp for latency measurement
+            # Capture timestamp for latency measurement
+            import time
+            try:
+                from time import time_ns
+            except ImportError:
+                def time_ns():
+                    return int(time.time() * 1e9)
+            capture_timestamp_ns = time_ns()
+            
             # Frame overlays (timestamp, FPS, telemetry)
             if ENABLE_OVERLAYS and frame_overlay is not None:
                 try:
-                    frame = frame_overlay.add_overlays(frame)
+                    frame = frame_overlay.add_overlays(frame, capture_timestamp_ns=capture_timestamp_ns)
                 except Exception as e:
                     logging.warning(f"⚠️ Overlay error: {e}")
                     _metrics["errors_total"] += 1
@@ -638,9 +736,41 @@ def generate_frames():
                     ros2_publisher.publish_frame(frame, compressed=True)
                 except Exception as e:
                     logging.warning(f"⚠️ ROS2 publish error: {e}")
+            
+            # Publish compressed frame to Orin (hybrid system)
+            if hybrid_system_manager and hybrid_system_manager.is_hybrid_mode():
+                try:
+                    hybrid_system_manager.publish_frame_to_orin(frame, quality=quality)
+                except Exception as e:
+                    logging.warning(f"⚠️ Hybrid system publish error: {e}")
+            
+            # Publish telemetry to Orin (hybrid system)
+            if hybrid_system_manager and hybrid_system_manager.is_hybrid_mode():
+                try:
+                    if psutil:
+                        cpu_usage = psutil.cpu_percent(interval=0.1)
+                        memory_usage = psutil.virtual_memory().percent
+                    else:
+                        cpu_usage = 0.0
+                        memory_usage = 0.0
+                    
+                    telemetry = TelemetryData(
+                        cpu_temp=hybrid_system_manager.thermal_monitor.get_temperature(),
+                        battery_voltage=0.0,  # TODO: Get from battery sensor
+                        battery_percentage=0.0,  # TODO: Get from battery sensor
+                        cpu_usage=cpu_usage,
+                        memory_usage=memory_usage
+                    )
+                    hybrid_system_manager.publish_telemetry(telemetry)
+                except Exception as e:
+                    logging.warning(f"⚠️ Telemetry publish error: {e}")
 
             # Encode JPEG with quality setting (hardware-optimized)
             import cv2 as _cv2  # type: ignore
+            
+            # TODO: Record encode timestamps for latency measurement
+            # Record encode start time for latency measurement
+            encode_start_ns = time_ns()
             
             # Adaptive quality based on hardware load (for Pi 4B)
             quality = JPEG_QUALITY
@@ -657,6 +787,17 @@ def generate_frames():
             
             encode_params = [_cv2.IMWRITE_JPEG_QUALITY, quality]
             ok, buf = _cv2.imencode(".jpg", frame, encode_params)
+            
+            # Record encode end time for latency measurement
+            encode_end_ns = time_ns()
+            
+            # TODO: Update frame overlay with encode timestamps for latency reporting
+            # Update frame overlay with encode timestamps
+            if frame_overlay is not None:
+                try:
+                    frame_overlay.set_encode_timestamps(encode_start_ns, encode_end_ns)
+                except Exception:
+                    pass
             if not ok:
                 logging.error("❌ JPEG encode failed.")
                 _metrics["errors_total"] += 1
@@ -1002,6 +1143,73 @@ def metrics():
         }
     
     return jsonify(payload), 200
+
+
+@app.get("/latency")
+def latency():
+    """
+    Latency metrics endpoint (Pi-only).
+    Returns frame processing latency metrics.
+    """
+    if not frame_overlay:
+        return jsonify({"ok": False, "error": "frame_overlay_not_available"}), 503
+    
+    try:
+        latency_metrics = frame_overlay.get_latency_metrics()
+        
+        # Calculate latencies if timestamps are available
+        latencies = {}
+        if latency_metrics.get("capture_timestamp_ns") and latency_metrics.get("encode_start_ns"):
+            capture_to_encode = (latency_metrics["encode_start_ns"] - latency_metrics["capture_timestamp_ns"]) / 1e6  # ms
+            latencies["capture_to_encode_ms"] = round(capture_to_encode, 2)
+        
+        if latency_metrics.get("encode_start_ns") and latency_metrics.get("encode_end_ns"):
+            encode_duration = (latency_metrics["encode_end_ns"] - latency_metrics["encode_start_ns"]) / 1e6  # ms
+            latencies["encode_duration_ms"] = round(encode_duration, 2)
+        
+        if latency_metrics.get("capture_timestamp_ns") and latency_metrics.get("encode_end_ns"):
+            total_processing = (latency_metrics["encode_end_ns"] - latency_metrics["capture_timestamp_ns"]) / 1e6  # ms
+            latencies["total_processing_ms"] = round(total_processing, 2)
+        
+        return jsonify({
+            "ok": True,
+            "type": "pi_only",
+            "timestamps_ns": latency_metrics,
+            "latencies_ms": latencies,
+            "ts": int(time.time() * 1000),
+        }), 200
+    
+    except Exception as e:
+        logging.error(f"Failed to get latency metrics: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.get("/latency/hybrid")
+def latency_hybrid():
+    """
+    Hybrid latency metrics endpoint (Pi ↔ Orin round-trip).
+    Returns round-trip latency and inference duration metrics.
+    """
+    try:
+        # Get latency stats from Pi sensor hub if available
+        if hybrid_system_manager and hybrid_system_manager.pi_sensor_hub:
+            latency_stats = hybrid_system_manager.pi_sensor_hub.get_latency_stats()
+            return jsonify({
+                "ok": True,
+                "type": "hybrid",
+                **latency_stats,
+                "ts": int(time.time() * 1000),
+            }), 200
+        else:
+            return jsonify({
+                "ok": False,
+                "error": "hybrid_system_not_available",
+                "message": "Hybrid system or Pi sensor hub not initialized"
+            }), 503
+    
+    except Exception as e:
+        logging.error(f"Failed to get hybrid latency metrics: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.post("/config")

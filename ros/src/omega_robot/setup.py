@@ -33,6 +33,7 @@ setup(
             'path_planner = omega_robot.path_planner:main',
             'vision_processor = omega_robot.vision_processor:main',
             'system_capabilities = omega_robot.system_capabilities:main',
+            'orin_ai_brain = omega_robot.orin_ai_brain:main',
         ],
     },
 )
