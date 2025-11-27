@@ -466,3 +466,42 @@ def shutdown_pi_sensor_hub():
         except Exception:
             pass
 
+
+# Main entry point for running as standalone script
+if __name__ == "__main__":
+    import signal
+    import sys
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    )
+    
+    log.info("🚀 Starting Pi Sensor Hub Node...")
+    
+    # Initialize sensor hub
+    node = init_pi_sensor_hub()
+    
+    if node is None:
+        log.error("❌ Failed to initialize Pi Sensor Hub. ROS2 may not be available.")
+        sys.exit(1)
+    
+    log.info("✅ Pi Sensor Hub Node running. Press Ctrl+C to stop.")
+    
+    # Signal handler for graceful shutdown
+    def signal_handler(sig, frame):
+        log.info("🛑 Shutting down Pi Sensor Hub...")
+        shutdown_pi_sensor_hub()
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Keep the main thread alive
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        signal_handler(None, None)
+
