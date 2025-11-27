@@ -24,7 +24,7 @@ echo "=========================================="
 # Frontend Unit Tests
 echo -e "\n${YELLOW}📱 Running Frontend Unit Tests...${NC}"
 cd ui/robot-controller-ui
-if npm test -- --watchAll=false --coverage; then
+if npm test -- --config=jest.config.js --watchAll=false --coverage; then
     FRONTEND_UNIT_PASSED=true
     echo -e "${GREEN}✅ Frontend unit tests passed${NC}"
 else

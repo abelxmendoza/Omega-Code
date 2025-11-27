@@ -76,7 +76,7 @@
     "@testing-library/user-event": "^14.5.1",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
-    "cypress": "^13.6.0",
+    "cypress": "^13.17.0",
     "depcheck": "^1.4.7",
     "eslint": "^8",
     "eslint-config-next": "14.2.4",
@@ -87,41 +87,8 @@
     "npm-check-updates": "^16.14.15",
     "prettier": "^3.1.1",
     "prettier-plugin-tailwindcss": "^0.5.7",
-    "snyk": "^1.1248.0"
-  },
-  "jest": {
-    "testEnvironment": "jsdom",
-    "setupFilesAfterEnv": [
-      "<rootDir>/jest.setup.js"
-    ],
-    "moduleNameMapping": {
-      "^@/(.*)$": "<rootDir>/src/$1"
-    },
-    "collectCoverageFrom": [
-      "src/**/*.{js,jsx,ts,tsx}",
-      "!src/**/*.d.ts",
-      "!src/**/*.stories.{js,jsx,ts,tsx}",
-      "!src/**/index.{js,jsx,ts,tsx}"
-    ],
-    "coverageThreshold": {
-      "global": {
-        "branches": 70,
-        "functions": 70,
-        "lines": 70,
-        "statements": 70
-      }
-    },
-    "testMatch": [
-      "<rootDir>/src/**/__tests__/**/*.{js,jsx,ts,tsx}",
-      "<rootDir>/src/**/*.{test,spec}.{js,jsx,ts,tsx}",
-      "<rootDir>/tests/**/*.{test,spec}.{js,jsx,ts,tsx}"
-    ],
-    "transform": {
-      "^.+\\.(js|jsx|ts|tsx)$": "babel-jest"
-    },
-    "transformIgnorePatterns": [
-      "node_modules/(?!(.*\\.mjs$))"
-    ]
+    "snyk": "^1.1248.0",
+    "whatwg-fetch": "^3.6.20"
   },
   "cypress": {
     "baseUrl": "http://localhost:3000",

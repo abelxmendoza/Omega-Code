@@ -1,12 +1,23 @@
 # File: /Omega-Code/servers/robot-controller-backend/tests/integration/video/test_video_server_integration.py
 
 import unittest
+import sys
+import os
 from unittest.mock import patch, MagicMock
+
+# Add parent directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
 try:
     import cv2  # type: ignore
 except ImportError:  # pragma: no cover
     cv2 = None  # type: ignore
-from video_server import app, VideoStreaming
+
+try:
+    from video.video_server import app, VideoStreaming
+except ImportError:
+    app = None
+    VideoStreaming = None
 
 class TestVideoServerIntegration(unittest.TestCase):
     def setUp(self):

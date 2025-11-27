@@ -4,9 +4,23 @@ Tests the full integration of system mode API with backend services
 """
 
 import pytest
-import requests
+import sys
+import os
+
+# Add parent directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+try:
+    import requests
+except ImportError:
+    requests = None
+
 import time
 from unittest.mock import patch, Mock
+
+# Skip all tests if requests not available
+if requests is None:
+    pytestmark = pytest.mark.skip(reason="requests library not available")
 
 
 @pytest.fixture

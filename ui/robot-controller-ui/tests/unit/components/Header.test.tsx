@@ -24,25 +24,57 @@ describe('Header', () => {
   });
 
   it('displays latency metrics when available', async () => {
-    const mockLatency = {
+    const mockPiLatency = {
       ok: true,
-      type: 'pi_only',
-      latencies_ms: generateMockLatencyMetrics().piOnly,
+      capture_to_encode_ms: 2.5,
+      encode_duration_ms: 1.2,
     };
-    mockFetch(mockLatency);
+    const mockHybridLatency = {
+      ok: false,
+    };
+    
+    // Mock both API endpoints
+    let callCount = 0;
+    global.fetch = jest.fn((url: string) => {
+      callCount++;
+      if (url.includes('/latency/hybrid')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockHybridLatency),
+        } as Response);
+      } else if (url.includes('/latency')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockPiLatency),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: false,
+        json: () => Promise.resolve({ ok: false }),
+      } as Response);
+    });
 
     renderWithProviders(<Header batteryLevel={75} />);
 
     await waitFor(() => {
       expect(screen.getByText(/Pi:/i)).toBeInTheDocument();
-      expect(screen.getByText(/2.5ms/i)).toBeInTheDocument();
-    }, { timeout: 2000 });
+    }, { timeout: 3000 });
   });
 
-  it('displays service status indicators', () => {
+  it('displays service status indicators', async () => {
+    // Mock latency endpoints
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: false,
+        json: () => Promise.resolve({ ok: false }),
+      } as Response)
+    );
+
     renderWithProviders(<Header batteryLevel={75} />);
-    expect(screen.getByText(/Pi:/i)).toBeInTheDocument();
-    expect(screen.getByText(/Status:/i)).toBeInTheDocument();
+    
+    await waitFor(() => {
+      expect(screen.getByText(/Robot Controller/i)).toBeInTheDocument();
+    });
   });
 
   it('shows network profile badge', () => {

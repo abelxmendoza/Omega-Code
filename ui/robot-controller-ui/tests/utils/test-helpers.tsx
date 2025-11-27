@@ -13,10 +13,11 @@ import { CapabilityProvider } from '@/context/CapabilityContext';
 
 // Mock store for testing
 export const createMockStore = (initialState = {}) => {
+  // Create a simple reducer that returns state as-is
+  const rootReducer = (state = initialState) => state;
+  
   return configureStore({
-    reducer: {
-      // Add your reducers here
-    },
+    reducer: rootReducer,
     preloadedState: initialState,
   });
 };
@@ -98,11 +99,16 @@ export const generateMockRobotState = () => ({
 });
 
 export const generateMockSystemMode = () => ({
+  ok: true,
   mode: 0,
+  mode_name: 'CAMERA_ONLY',
   description: 'Camera Only',
   manual_override: false,
   hybrid_mode: 'pi_only',
   orin_available: false,
+  thermal_temp: 50,
+  cpu_load: 30,
+  throttling: false,
 });
 
 export const generateMockLatencyMetrics = () => ({

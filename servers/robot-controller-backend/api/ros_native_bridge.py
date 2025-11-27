@@ -59,10 +59,10 @@ _ros_native_mode = os.getenv("ROS_NATIVE_MODE", "false").lower() == "true"
 if _rclpy_available and _ros_enabled:
     # ROS is available and enabled - use real implementation
     class ROS2NativeBridge(Node):
-    """
-    Native ROS2 bridge node that connects to ROS2 topics
-    and provides a bridge to the FastAPI backend.
-    """
+        """
+        Native ROS2 bridge node that connects to ROS2 topics
+        and provides a bridge to the FastAPI backend.
+        """
     
     def __init__(self, node_name: str = "omega_robot_bridge"):
         if not _rclpy_available:

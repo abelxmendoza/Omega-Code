@@ -1,5 +1,10 @@
 import unittest
+import sys
+import os
 from unittest.mock import patch, call
+
+# Add parent directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from controllers.lighting import basic_led_test
 

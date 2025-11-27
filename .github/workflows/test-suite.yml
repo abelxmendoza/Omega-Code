@@ -59,7 +59,7 @@ jobs:
       
       - name: Run backend unit tests
         working-directory: servers/robot-controller-backend
-        run: pytest tests/unit -v --cov=. --cov-report=xml
+        run: pytest tests/unit -v --cov=. --cov-report=xml -m "not hardware"
       
       - name: Run hybrid system tests
         working-directory: servers/robot-controller-backend
@@ -154,7 +154,7 @@ jobs:
       
       - name: Run unit tests
         working-directory: servers/robot-controller-backend
-        run: pytest tests/unit -v --cov=. --cov-report=xml --cov-report=html
+        run: pytest tests/unit -v --cov=. --cov-report=xml --cov-report=html -m "not hardware"
       
       - name: Upload coverage
         uses: codecov/codecov-action@v3

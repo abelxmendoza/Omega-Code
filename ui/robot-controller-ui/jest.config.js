@@ -20,7 +20,7 @@ module.exports = {
   },
 
   transformIgnorePatterns: [
-    '/node_modules/(?!react-leaflet|@react-leaflet|leaflet)',
+    '/node_modules/(?!react-leaflet|@react-leaflet|leaflet|msw|@mswjs|until-async)',
   ],
 
   testPathIgnorePatterns: [

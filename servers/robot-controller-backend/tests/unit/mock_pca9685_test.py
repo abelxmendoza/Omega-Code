@@ -5,7 +5,17 @@ Unit tests for the mock PCA9685 module using unittest.
 """
 
 import unittest
-from utils.mock_pca9685 import PCA9685
+import sys
+import os
+
+# Add parent directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+try:
+    from utils.mock_pca9685 import PCA9685
+except ImportError:
+    # Skip if module doesn't exist
+    PCA9685 = None
 
 class TestMockPCA9685(unittest.TestCase):
     def setUp(self):

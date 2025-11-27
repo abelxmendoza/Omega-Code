@@ -5,7 +5,27 @@ Unit tests for the servo control module using unittest and mock.
 """
 
 import unittest
+import sys
+import os
 from unittest.mock import patch, MagicMock
+
+# Add parent directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+# Mock PCA9685 module before importing servo_control
+import types
+class MockPCA9685Class:
+    def __init__(self, *args, **kwargs):
+        pass
+    def setPWMFreq(self, *args):
+        pass
+    def setServoPulse(self, *args):
+        pass
+
+mock_pca9685_module = types.ModuleType("utils.pca9685")
+mock_pca9685_module.PCA9685 = MockPCA9685Class
+sys.modules["utils.pca9685"] = mock_pca9685_module
+
 from controllers.servo_control import Servo
 
 class TestServoControl(unittest.TestCase):

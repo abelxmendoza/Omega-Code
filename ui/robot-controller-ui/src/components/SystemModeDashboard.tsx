@@ -199,7 +199,7 @@ export default function SystemModeDashboard() {
       {/* Mode Buttons */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[0, 1, 2, 3, 4, 5, 6, 7].map((mode) => {
-          const modeInfo = modes[mode];
+          const modeInfo = modes?.[mode];
           const isActive = currentMode === mode;
           const isAvailable = modeInfo?.available !== false;
           
