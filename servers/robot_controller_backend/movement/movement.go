@@ -1,5 +1,5 @@
 /*
-# File: /Omega-Code/servers/robot-controller-backend/movement/movement.go
+# File: /Omega-Code/servers/robot_controller_backend/movement/movement.go
 # Summary:
 Handles WebSocket commands for the car's bi-directional movement (forward, backward, stop).
 Also manages speed adjustments and buzzer control.

@@ -1,4 +1,4 @@
-// File: /Omega-Code/servers/robot-controller-backend/tests/integration/core/core_integration_test.go
+// File: /Omega-Code/servers/robot_controller_backend/tests/integration/core/core_integration_test.go
 
 package core
 

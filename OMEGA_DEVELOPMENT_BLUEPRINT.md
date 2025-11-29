@@ -18,7 +18,7 @@ Omega-Code/
       entrypoint.dev.sh
       config/cyclonedds.xml
   servers/
-    robot-controller-backend/
+    robot_controller_backend/
       video/
         pi_sensor_hub.py
         camera_manager.py

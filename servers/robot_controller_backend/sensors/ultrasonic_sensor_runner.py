@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# File: /Omega-Code/servers/robot-controller-backend/sensors/ultrasonic_sensor_runner.py
+# File: /Omega-Code/servers/robot_controller_backend/sensors/ultrasonic_sensor_runner.py
 
 """
 Optimized Ultrasonic Sensor Runner (Pi 5-Compatible – using lgpio)

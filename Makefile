@@ -141,7 +141,7 @@ install-backend: setup-venv
 
 setup-venv:
 	@echo "🐍 Setting up Python virtual environment..."
-	@if [ ! -d "servers/robot-controller-backend/venv" ]; then \
+	@if [ ! -d "servers/robot_controller_backend/venv" ]; then \
 		cd servers/robot_controller_backend && \
 		python3 -m venv venv && \
 		source venv/bin/activate && \
@@ -153,6 +153,6 @@ setup-venv:
 clean:
 	@echo "🧹 Cleaning build artifacts..."
 	cd ui/robot-controller-ui && rm -rf .next node_modules/.cache coverage
-	cd servers/robot-controller-backend && rm -rf __pycache__ .pytest_cache htmlcov .coverage *.pyc
+	cd servers/robot_controller_backend && rm -rf __pycache__ .pytest_cache htmlcov .coverage *.pyc
 	find . -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true

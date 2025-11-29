@@ -1,4 +1,4 @@
-# File: /Omega-Code/servers/robot-controller-backend/movement/test_motor_telemetry.py
+# File: /Omega-Code/servers/robot_controller_backend/movement/test_motor_telemetry.py
 """
 Simple test script for motor telemetry functionality.
 """

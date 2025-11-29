@@ -218,7 +218,7 @@ ros2 topic echo /plan
 
 ```bash
 # Start backend
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python main_api.py
 
 # Open browser and use MapViewer component

@@ -1,4 +1,4 @@
-// File: /Omega-Code/servers/robot-controller-backend/commands/ros_integration.go
+// File: /Omega-Code/servers/robot_controller_backend/commands/ros_integration.go
 
 // Package commands handles the processing and execution of various commands for the robot controller.
 package commands

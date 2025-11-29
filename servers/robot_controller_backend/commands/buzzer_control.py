@@ -1,4 +1,4 @@
-# File: /Omega-Code/servers/robot-controller-backend/commands/buzzer_control.py
+# File: /Omega-Code/servers/robot_controller_backend/commands/buzzer_control.py
 
 import lgpio
 import sys

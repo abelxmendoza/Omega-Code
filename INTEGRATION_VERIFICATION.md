@@ -103,7 +103,7 @@ NEXT_PUBLIC_VIDEO_STREAM_URL_TAILSCALE=http://100.93.225.61:5000/video_feed
 
 ### Backend (omega1)
 
-Create/edit `servers/robot-controller-backend/.env`:
+Create/edit `servers/robot_controller_backend/.env`:
 
 ```bash
 # Gateway Configuration
@@ -141,15 +141,15 @@ CAMERA_BACKEND=libcamera  # or picamera2
 ./scripts/ssh_omega1.sh tailscale
 
 # Start Gateway API
-cd ~/Omega-Code/servers/robot-controller-backend
+cd ~/Omega-Code/servers/robot_controller_backend
 uvicorn servers.gateway_api:app --host 0.0.0.0 --port 7070
 
 # In another terminal, start Movement WebSocket
-cd ~/Omega-Code/servers/robot-controller-backend/movement
+cd ~/Omega-Code/servers/robot_controller_backend/movement
 python3 movement_ws_server.py
 
 # In another terminal, start Video Server
-cd ~/Omega-Code/servers/robot-controller-backend
+cd ~/Omega-Code/servers/robot_controller_backend
 python3 video/video_server.py
 ```
 
@@ -236,7 +236,7 @@ wscat -c ws://100.93.225.61:7070/ws/movement
 1. **Check gateway logs:**
    ```bash
    # On omega1
-   tail -f ~/Omega-Code/servers/robot-controller-backend/logs/gateway.log
+   tail -f ~/Omega-Code/servers/robot_controller_backend/logs/gateway.log
    ```
 
 2. **Verify downstream services:**
@@ -260,7 +260,7 @@ wscat -c ws://100.93.225.61:7070/ws/movement
 2. **Test hardware directly:**
    ```bash
    # Run diagnostics
-   cd ~/Omega-Code/servers/robot-controller-backend
+   cd ~/Omega-Code/servers/robot_controller_backend
    python3 diagnostics.py
    ```
 
@@ -280,7 +280,7 @@ cd ui/robot-controller-ui
 npm run dev
 
 # Make changes to backend
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 # Edit files, test locally with mock hardware
 ```
 

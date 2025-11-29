@@ -52,7 +52,7 @@ source /opt/ros/rolling/setup.bash
 source ~/omega_ws/install/setup.bash
 
 # Start backend
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python main_api.py
 ```
 
@@ -190,7 +190,7 @@ source /opt/ros/rolling/setup.bash
 sudo apt install python3-opencv
 
 # In virtual environment (recommended)
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python3 -m venv venv
 source venv/bin/activate
 pip install opencv-python opencv-contrib-python
@@ -199,7 +199,7 @@ pip install opencv-python opencv-contrib-python
 ### Dependencies
 
 ```bash
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 pip install -r requirements.txt
 ```
 
@@ -231,7 +231,7 @@ source ~/omega_ws/install/setup.bash
 export ROS_NATIVE_MODE=true
 
 # 3. Start backend
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 source venv/bin/activate
 python main_api.py
 
@@ -357,7 +357,7 @@ export ROS_WORKSPACE_PATH=/custom/workspace
 
 For issues:
 1. Run verification script: `./scripts/verify_ros2_opencv_setup.sh`
-2. Check logs: `servers/robot-controller-backend/logs/`
+2. Check logs: `servers/robot_controller_backend/logs/`
 3. Verify environment variables
 4. Check ROS2 daemon: `ros2 daemon status`
 

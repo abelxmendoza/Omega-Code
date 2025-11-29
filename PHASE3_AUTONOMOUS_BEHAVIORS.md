@@ -63,7 +63,7 @@ ros2 run omega_robot obstacle_avoidance_action_server
 
 ### 2. Action Bridge
 
-**File**: `servers/robot-controller-backend/api/ros_action_bridge.py`
+**File**: `servers/robot_controller_backend/api/ros_action_bridge.py`
 
 **Features**:
 - WebSocket-based action goal sending
@@ -230,7 +230,7 @@ ros2 action info /navigate_to_goal
 
 ```bash
 # Start backend
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python main_api.py
 
 # Open browser and use AutonomousActions component

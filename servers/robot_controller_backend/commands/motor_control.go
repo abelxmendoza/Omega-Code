@@ -1,5 +1,5 @@
 /*
-# File: /Omega-Code/servers/robot-controller-backend/commands/motor_control.go
+# File: /Omega-Code/servers/robot_controller_backend/commands/motor_control.go
 # Summary:
 This file provides functionality for motor and buzzer control. Includes support for horn-like buzzer behavior.
 */

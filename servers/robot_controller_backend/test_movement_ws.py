@@ -50,7 +50,7 @@ async def test_movement():
             
     except ConnectionRefusedError:
         print(f"❌ Connection refused. Is the movement server running on {MOVEMENT_WS_URL}?")
-        print("   Start it with: cd servers/robot-controller-backend && python3 movement/movement_ws_server.py")
+        print("   Start it with: cd servers/robot_controller_backend && python3 movement/movement_ws_server.py")
         sys.exit(1)
     except Exception as e:
         print(f"❌ Error: {e}")

@@ -39,7 +39,7 @@ ros2 launch omega_robot robot_full.launch.py
 ```bash
 # Start backend (Lenovo with ROS2)
 export ROS_NATIVE_MODE=true
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 source venv/bin/activate
 python main_api.py
 

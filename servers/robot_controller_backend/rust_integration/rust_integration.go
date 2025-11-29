@@ -1,4 +1,4 @@
-// File: /Omega-Code/servers/robot-controller-backend/rust_integration/rust_integration.go
+// File: /Omega-Code/servers/robot_controller_backend/rust_integration/rust_integration.go
 
 /*
 Package rust_integration provides functions for integrating Rust modules with Go.

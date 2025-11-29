@@ -117,7 +117,7 @@ import { controlROSContainer } from '@/utils/rosApi';
 
 1. **Start Backend Services** (if not already running):
    ```bash
-   cd servers/robot-controller-backend
+   cd servers/robot_controller_backend
    ./scripts/run_gateway.sh
    ```
 

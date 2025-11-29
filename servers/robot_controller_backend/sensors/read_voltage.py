@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # File: sensors/read_voltage.py
-# Location: ~/Omega-Code/servers/robot-controller-backend/sensors/
+# Location: ~/Omega-Code/servers/robot_controller_backend/sensors/
 # Summary: 
 #   This script scans all 4 analog input channels (AIN0–AIN3) on an ADS1115 ADC
 #   connected via I2C and logs voltage readings. It uses auto-detection for the

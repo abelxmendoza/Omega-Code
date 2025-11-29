@@ -7,13 +7,13 @@ The Omega Hybrid Vision System has been fully implemented according to the bluep
 ## 📁 Files Created
 
 ### 1. Core Message Definitions
-- **`servers/robot-controller-backend/video/hybrid_messages.py`**
+- **`servers/robot_controller_backend/video/hybrid_messages.py`**
   - Custom message dataclasses for Pi↔Orin communication
   - `ArUcoMarker`, `TrackingBBox`, `MotionEvent`, `DetectionResult`, `NavigationCommand`, `TelemetryData`
   - JSON serialization helpers
 
 ### 2. Hybrid System Manager
-- **`servers/robot-controller-backend/video/hybrid_system.py`**
+- **`servers/robot_controller_backend/video/hybrid_system.py`**
   - `HybridSystemManager` - Main system coordinator
   - `SystemMode` enum (PI_ONLY, PI_ORIN_HYBRID, ORIN_ONLY)
   - `ThermalMonitor` - CPU temperature monitoring with throttling
@@ -22,7 +22,7 @@ The Omega Hybrid Vision System has been fully implemented according to the bluep
   - Capability management
 
 ### 3. Pi Sensor Hub Node
-- **`servers/robot-controller-backend/video/pi_sensor_hub.py`**
+- **`servers/robot_controller_backend/video/pi_sensor_hub.py`**
   - ROS2 node for Pi sensor hub
   - Publishes: compressed frames, ArUco markers, tracking bboxes, motion events, telemetry
   - Subscribes: detections, navigation commands, control commands
@@ -46,7 +46,7 @@ The Omega Hybrid Vision System has been fully implemented according to the bluep
   - Launches both Pi sensor hub and Orin AI brain nodes
 
 ### 6. Documentation
-- **`servers/robot-controller-backend/video/HYBRID_SYSTEM_README.md`**
+- **`servers/robot_controller_backend/video/HYBRID_SYSTEM_README.md`**
   - Complete usage guide
   - Architecture diagrams
   - Configuration instructions
@@ -55,7 +55,7 @@ The Omega Hybrid Vision System has been fully implemented according to the bluep
 ## 🔧 Files Modified
 
 ### 1. Video Server Integration
-- **`servers/robot-controller-backend/video/video_server.py`**
+- **`servers/robot_controller_backend/video/video_server.py`**
   - Added hybrid system integration
   - Publishes events to Orin when in hybrid mode
   - Thermal/CPU throttling support
@@ -117,7 +117,7 @@ The Omega Hybrid Vision System has been fully implemented according to the bluep
 
 ```bash
 # On Raspberry Pi
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python video_server.py
 ```
 
@@ -192,7 +192,7 @@ Pi (Sensor Hub)                    Orin (AI Brain)
 
 ```bash
 # Start video server
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python video_server.py
 
 # Check logs for:

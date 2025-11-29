@@ -1,4 +1,4 @@
-// File: /Omega-Code/servers/robot-controller-backend/gpio/gpio_mock.go
+// File: /Omega-Code/servers/robot_controller_backend/gpio/gpio_mock.go
 package gpio
 
 import "log"

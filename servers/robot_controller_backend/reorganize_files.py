@@ -6,7 +6,7 @@ from pathlib import Path
 # Define the paths and the new directory structure
 # Determine project root and backend directory
 PROJECT_ROOT = Path(os.environ.get("OMEGA_CODE_ROOT", Path(__file__).resolve().parents[1]))
-base_path = PROJECT_ROOT / "servers" / "robot-controller-backend"
+base_path = PROJECT_ROOT / "servers" / "robot_controller_backend"
 base_path = str(base_path)
 new_structure = {
     "commands": ["command_definitions.py", "command_processor.go"],

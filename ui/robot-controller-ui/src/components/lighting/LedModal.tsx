@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom';
 import type { ColorResult } from 'react-color';
 import { SketchPicker } from 'react-color';
 import { connectLightingWs } from '../../utils/connectLightingWs';
+import { Switch } from '../ui/switch';
 
 // Updated to match backend capabilities - optimized with cool patterns
 const LIGHTING_MODES = ['single', 'rainbow', 'dual'] as const;
@@ -273,8 +274,8 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleTogglePower = () => {
-    const newState = !ledOn;
+  const handleTogglePower = (checked: boolean) => {
+    const newState = checked;
     console.log(`[LedModal] 🔄 Toggle power: ${ledOn} -> ${newState}`);
     console.log(`[LedModal] WebSocket readyState: ${ws.current?.readyState} (OPEN=${WebSocket.OPEN}, CONNECTING=${WebSocket.CONNECTING})`);
     console.log(`[LedModal] Server status: ${serverStatus}`);
@@ -284,6 +285,7 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       console.error('[LedModal] WebSocket object:', ws.current);
       console.error('[LedModal] ReadyState:', ws.current?.readyState);
       setServerStatus('disconnected');
+      // Don't update state if WebSocket is not open
       return;
     }
 
@@ -297,7 +299,7 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         mode: 'single',
         pattern: 'off',
         interval: 0,
-        brightness: 0,
+        brightness: 0.0, // Explicitly send as float 0.0 (backend expects 0-1 range)
       };
       console.log('[LedModal] 🔴 Sending LED OFF command:', JSON.stringify(offCommand));
       try {
@@ -431,25 +433,23 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         </div>
 
         {/* LED Power Toggle */}
-        <div className="mt-2 mb-4 flex justify-between items-center">
-          <span className="text-[#00FF88] font-semibold text-lg" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
-            LED Status: <span className={ledOn ? 'text-[#00FF88]' : 'text-[#B0B0B0]'}>{ledOn ? 'On' : 'Off'}</span>
-          </span>
-          <button
-            onClick={handleTogglePower}
+        <div className="mt-2 mb-4 flex justify-between items-center rounded-lg border border-[#C400FF]/30 bg-[#1A1A1A]/50 px-4 py-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 text-[#00FF88] font-semibold text-lg" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
+              <span>LED Power:</span>
+              <span className={ledOn ? 'text-[#00FF88]' : 'text-[#B0B0B0]'}>{ledOn ? 'On' : 'Off'}</span>
+            </div>
+            {serverStatus !== 'connected' && (
+              <div className="text-[10px] text-[#FF0066] mt-1">Server unavailable - toggle disabled</div>
+            )}
+          </div>
+          <Switch 
+            checked={ledOn} 
+            onCheckedChange={handleTogglePower}
             disabled={serverStatus !== 'connected'}
-            className={`px-6 py-2.5 rounded-lg text-white font-semibold focus:outline-none focus:ring-2 transition-all shadow-lg ${
-              serverStatus !== 'connected'
-                ? 'bg-[#2A2A2A] cursor-not-allowed border border-[#4A4A4A]'
-                : ledOn
-                ? 'bg-[#FF0066] hover:bg-[#FF0048] focus:ring-[#FF0066]/50 hover:shadow-[#FF0066]/50 border border-[#FF0066]/50'
-                : 'bg-[#00FF88] hover:bg-[#00DD77] focus:ring-[#00FF88]/50 hover:shadow-[#00FF88]/50 border border-[#00FF88]/50 text-black'
-            }`}
-          >
-            {serverStatus !== 'connected'
-              ? 'Server Unavailable'
-              : `Turn ${ledOn ? 'Off' : 'On'}`}
-          </button>
+            aria-label="Toggle LED power"
+            className="scale-110"
+          />
         </div>
 
         <fieldset

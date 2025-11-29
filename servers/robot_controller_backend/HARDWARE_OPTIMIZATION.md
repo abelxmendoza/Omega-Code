@@ -92,7 +92,7 @@ After=network.target
 [Service]
 Type=simple
 User=omega1
-WorkingDirectory=/home/omega1/Omega-Code/servers/robot-controller-backend
+WorkingDirectory=/home/omega1/Omega-Code/servers/robot_controller_backend
 ExecStart=/bin/bash -c 'cd sensors && python3 line_tracking_ws_server.py & go run main_ultrasonic.go & cd ../video && python3 video_server.py'
 Restart=always
 RestartSec=5

@@ -1,4 +1,4 @@
-# File: /Omega-Code/servers/robot-controller-backend/video/camera.py
+# File: /Omega-Code/servers/robot_controller_backend/video/camera.py
 """
 Summary
 -------

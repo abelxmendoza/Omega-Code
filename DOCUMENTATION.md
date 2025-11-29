@@ -30,7 +30,7 @@ cd Omega-Code
 
 # 2. Configure environment
 cp .env.example .env
-cp servers/robot-controller-backend/.env.example servers/robot-controller-backend/.env
+cp servers/robot_controller_backend/.env.example servers/robot_controller_backend/.env
 cp ui/robot-controller-ui/env.example ui/robot-controller-ui/.env.local
 
 # 3. Install dependencies
@@ -189,7 +189,7 @@ Omega-Code is a **high-performance, production-ready** robotics control stack fo
 ### Backend Setup
 
 ```bash
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 
 # Go modules
 go mod download
@@ -551,7 +551,7 @@ NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LAN=ws://192.168.1.107:8081
 
 #### Hardware Diagnostics
 ```bash
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python diagnostics.py --log
 ```
 

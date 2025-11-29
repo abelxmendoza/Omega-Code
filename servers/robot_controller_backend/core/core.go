@@ -1,4 +1,4 @@
-// File: /Omega-Code/servers/robot-controller-backend/core/core.go
+// File: /Omega-Code/servers/robot_controller_backend/core/core.go
 
 /*
 Package core provides the main functionality for handling WebSocket connections

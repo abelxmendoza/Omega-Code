@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# File Location: ~/Omega-Code/servers/robot-controller-backend/diagnostics.py
+# File Location: ~/Omega-Code/servers/robot_controller_backend/diagnostics.py
 
 """
 Omega 1 Diagnostic Utility (Pi 5-Compatible – using lgpio)

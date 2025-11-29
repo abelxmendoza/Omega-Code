@@ -19,7 +19,7 @@
 
 ### 1. ROS2 Mode Handlers
 
-**File**: `servers/robot-controller-backend/autonomy/modes/ros2_modes.py`
+**File**: `servers/robot_controller_backend/autonomy/modes/ros2_modes.py`
 
 Created ROS2-based mode handlers that:
 - Use ROS2 action bridge to trigger actions
@@ -33,7 +33,7 @@ Created ROS2-based mode handlers that:
 
 ### 2. Auto-Registration
 
-**File**: `servers/robot-controller-backend/autonomy/__init__.py`
+**File**: `servers/robot_controller_backend/autonomy/__init__.py`
 
 Updated to:
 - Auto-detect ROS2 availability
@@ -104,7 +104,7 @@ ros2 topic echo /cmd_vel
 ```bash
 # Start backend with ROS2
 export ROS_NATIVE_MODE=true
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python main_api.py
 
 # In AutonomyModal:

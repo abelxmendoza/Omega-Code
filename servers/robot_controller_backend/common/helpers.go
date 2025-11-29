@@ -1,4 +1,4 @@
-// File: /Omega-Code/servers/robot-controller-backend/common/helpers.go
+// File: /Omega-Code/servers/robot_controller_backend/common/helpers.go
 
 // Package common contains utility functions that are used across the robot controller backend.
 package common

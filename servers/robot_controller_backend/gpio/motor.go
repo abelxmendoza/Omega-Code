@@ -1,4 +1,4 @@
-// File: /Omega-Code/servers/robot-controller-backend/gpio/motor.go
+// File: /Omega-Code/servers/robot_controller_backend/gpio/motor.go
 
 package gpio
 

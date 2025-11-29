@@ -1,4 +1,4 @@
-# File: /Omega-Code/servers/robot-controller-backend/controllers/servo_control.py
+# File: /Omega-Code/servers/robot_controller_backend/controllers/servo_control.py
 
 """
 This script controls the servo motors using the PCA9685 module.

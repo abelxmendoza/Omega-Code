@@ -62,7 +62,7 @@ source ~/omega_ws/install/setup.bash
 **Setup:**
 ```bash
 # No ROS2 needed - backend handles gracefully
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -103,7 +103,7 @@ ros2 run omega_robot telemetry_publisher
 cd ~/Omega-Code
 
 # Backend (no ROS2 needed)
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 source venv/bin/activate
 python main_api.py
 
@@ -124,7 +124,7 @@ The backend will:
 # On Lenovo - Start backend with ROS2
 export ROS_NATIVE_MODE=true
 export PI_SSH_HOST=pi@192.168.1.107
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 source venv/bin/activate
 python main_api.py
 
@@ -211,7 +211,7 @@ npm install  # Get latest changes
 ### Shared Code
 
 Both laptops share:
-- ✅ `servers/robot-controller-backend/` - Backend code
+- ✅ `servers/robot_controller_backend/` - Backend code
 - ✅ `ui/robot-controller-ui/` - UI code
 - ✅ `docker/ros2_robot/` - Docker configs
 - ✅ `scripts/` - Setup scripts
@@ -222,7 +222,7 @@ Both laptops share:
 
 ```bash
 # Test backend without ROS2
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 source venv/bin/activate
 pytest tests/  # Tests that don't require ROS2
 
@@ -239,7 +239,7 @@ cd ~/omega_ws
 colcon test
 
 # Test full system
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 pytest tests/  # All tests including ROS2
 ```
 

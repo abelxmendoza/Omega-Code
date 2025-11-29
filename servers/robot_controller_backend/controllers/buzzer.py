@@ -1,5 +1,5 @@
 """
-# File: /Omega-Code/servers/robot-controller-backend/controllers/buzzer.py
+# File: /Omega-Code/servers/robot_controller_backend/controllers/buzzer.py
 # Summary:
 Hardware controller for robot buzzer (horn).
 Call buzz_on() to activate (sound), buzz_off() to deactivate (silent).

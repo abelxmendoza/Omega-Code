@@ -80,7 +80,7 @@ export ROS_NATIVE_MODE=false
 export ROS_ENABLED=false
 
 # Start backend
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python main_api.py
 ```
 
@@ -95,7 +95,7 @@ export ROS_NATIVE_MODE=false
 export ROS_DOCKER_COMPOSE_PATH=/home/pi/Omega-Code/docker/ros2_robot/docker-compose.yml
 
 # Start backend
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python main_api.py
 ```
 
@@ -111,7 +111,7 @@ export ROS_ENABLED=true
 export ROS_NATIVE_MODE=true
 
 # Start backend
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python main_api.py
 ```
 

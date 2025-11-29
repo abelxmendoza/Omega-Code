@@ -75,7 +75,7 @@ npm test -- --watchAll=false --coverage
 
 ### Backend
 ```bash
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 source venv/bin/activate
 pytest tests/unit -v -m "not hardware"
 ```

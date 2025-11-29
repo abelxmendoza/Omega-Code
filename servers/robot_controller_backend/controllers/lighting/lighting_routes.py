@@ -2,7 +2,7 @@
 Lighting Control Routes (FastAPI)
 
 File Location:
-~/Omega-Code/servers/robot-controller-backend/controllers/lighting/lighting_routes.py
+~/Omega-Code/servers/robot_controller_backend/controllers/lighting/lighting_routes.py
 
 This module defines the FastAPI routes for controlling LED lighting on the robot.
 It receives JSON payloads from the frontend (via WebSocket or REST), parses

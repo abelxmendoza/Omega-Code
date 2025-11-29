@@ -57,9 +57,9 @@ The following files have been identified as redundant or overlapping:
 
 ### Keep in Component Directories
 - Component-specific docs stay in their directories:
-  - `servers/robot-controller-backend/README.md`
+  - `servers/robot_controller_backend/README.md`
   - `ui/robot-controller-ui/README.md`
-  - `servers/robot-controller-backend/video/VIDEO_SERVER_FEATURES.md`
+  - `servers/robot_controller_backend/video/VIDEO_SERVER_FEATURES.md`
   - etc.
 
 ### Archive (Redundant)

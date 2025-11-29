@@ -1,4 +1,4 @@
-// File: /Omega-Code/servers/robot-controller-backend/commands/init.go
+// File: /Omega-Code/servers/robot_controller_backend/commands/init.go
 
 // Package commands handles the processing and execution of various commands for the robot controller.
 package commands

@@ -12,7 +12,7 @@ Main Features:
 - Full global brightness support for all patterns
 
 File Location:
-~/Omega-Code/servers/robot-controller-backend/controllers/lighting/led_control.py
+~/Omega-Code/servers/robot_controller_backend/controllers/lighting/led_control.py
 """
 
 import sys

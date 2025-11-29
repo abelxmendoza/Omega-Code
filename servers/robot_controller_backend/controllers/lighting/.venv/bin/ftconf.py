@@ -1,4 +1,4 @@
-#!/home/omega1/Omega-Code/servers/robot-controller-backend/controllers/lighting/.venv/bin/python3
+#!/home/omega1/Omega-Code/servers/robot_controller_backend/controllers/lighting/.venv/bin/python3
 
 """Simple FTDI EEPROM configurator.
 """

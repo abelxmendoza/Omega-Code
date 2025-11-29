@@ -1,4 +1,4 @@
-#!/home/omega1/Omega-Code/servers/robot-controller-backend/controllers/lighting/.venv/bin/python3
+#!/home/omega1/Omega-Code/servers/robot_controller_backend/controllers/lighting/.venv/bin/python3
 # -*- coding: utf-8 -*-
 
 # Copyright (c) 2018-2024, Emmanuel Blot <emmanuel.blot@free.fr>

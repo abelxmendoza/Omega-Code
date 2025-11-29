@@ -346,12 +346,12 @@ When throttling activates, the system can automatically switch to low-power mode
 
 ### Backend Files
 
-- `servers/robot-controller-backend/video/system_state.py` - System state management
-- `servers/robot-controller-backend/api/system_mode_routes.py` - API endpoints
-- `servers/robot-controller-backend/video/hybrid_system.py` - Hybrid system manager
-- `servers/robot-controller-backend/video/pi_sensor_hub.py` - Pi sensor hub node
-- `servers/robot-controller-backend/video/frame_overlays.py` - Frame overlays with latency timestamps
-- `servers/robot-controller-backend/video/video_server.py` - Video server with latency endpoints
+- `servers/robot_controller_backend/video/system_state.py` - System state management
+- `servers/robot_controller_backend/api/system_mode_routes.py` - API endpoints
+- `servers/robot_controller_backend/video/hybrid_system.py` - Hybrid system manager
+- `servers/robot_controller_backend/video/pi_sensor_hub.py` - Pi sensor hub node
+- `servers/robot_controller_backend/video/frame_overlays.py` - Frame overlays with latency timestamps
+- `servers/robot_controller_backend/video/video_server.py` - Video server with latency endpoints
 
 ### Frontend Files
 

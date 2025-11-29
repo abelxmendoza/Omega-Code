@@ -37,7 +37,7 @@ This document tracks test coverage across the entire Omega Robot Controller appl
 - ⚠️ gateway - Needs tests
 - ⚠️ errorHandling - Needs tests
 
-### Backend (`servers/robot-controller-backend/`)
+### Backend (`servers/robot_controller_backend/`)
 
 #### API Routes
 - ✅ System Mode Routes - Unit + Integration tests
@@ -102,7 +102,7 @@ open coverage/lcov-report/index.html
 
 ### Backend Coverage
 ```bash
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 source venv/bin/activate
 pytest --cov=. --cov-report=html
 open htmlcov/index.html

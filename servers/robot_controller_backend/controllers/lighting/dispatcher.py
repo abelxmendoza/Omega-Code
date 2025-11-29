@@ -2,7 +2,7 @@
 Lighting Dispatcher Module
 
 File Location:
-~/Omega-Code/servers/robot-controller-backend/controllers/lighting/dispatcher.py
+~/Omega-Code/servers/robot_controller_backend/controllers/lighting/dispatcher.py
 
 Receives lighting control commands and routes them to the appropriate LED pattern functions
 based on UI input or WebSocket messages.

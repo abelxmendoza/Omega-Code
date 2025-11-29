@@ -1,4 +1,4 @@
-# /Omega-Code/servers/robot-controller-backend/movement/keyboard_forward_backward.py
+# /Omega-Code/servers/robot_controller_backend/movement/keyboard_forward_backward.py
 
 from minimal_motor_control import Motor
 from pynput import keyboard

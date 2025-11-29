@@ -121,7 +121,7 @@ bash scripts/run_all_tests_fixed.sh
 
 ### Backend Only:
 ```bash
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 source venv/bin/activate
 pytest tests/unit/ -v -k "not hardware"
 ```

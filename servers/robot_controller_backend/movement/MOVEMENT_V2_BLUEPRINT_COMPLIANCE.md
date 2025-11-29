@@ -121,7 +121,7 @@
 
 **Blueprint Required:**
 ```
-servers/robot-controller-backend/movement/
+servers/robot_controller_backend/movement/
     movement_ramp.py ✅
     movement_pid.py ✅
     movement_watchdog.py ✅
@@ -131,7 +131,7 @@ servers/robot-controller-backend/movement/
     movement_config.py ✅
     __init__.py ✅
 
-servers/robot-controller-backend/utils/
+servers/robot_controller_backend/utils/
     timing.py ✅
 ```
 

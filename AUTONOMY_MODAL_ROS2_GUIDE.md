@@ -134,7 +134,7 @@ export ROS_NATIVE_MODE=true
 source /opt/ros/rolling/setup.bash
 
 # Restart backend
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python main_api.py
 ```
 

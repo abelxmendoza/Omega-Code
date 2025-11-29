@@ -10,12 +10,12 @@ All features from the upgrade plan have been successfully implemented.
 
 ### Backend Files
 
-1. **`servers/robot-controller-backend/video/system_state.py`**
+1. **`servers/robot_controller_backend/video/system_state.py`**
    - System state management with thread-safe mode switching
    - Mode history tracking
    - System modes 0-7 enum and descriptions
 
-2. **`servers/robot-controller-backend/api/system_mode_routes.py`**
+2. **`servers/robot_controller_backend/api/system_mode_routes.py`**
    - REST API endpoints for mode management
    - `/api/system/mode/list` - List all modes
    - `/api/system/mode/status` - Get current status
@@ -50,27 +50,27 @@ All features from the upgrade plan have been successfully implemented.
 
 ### Backend Modifications
 
-1. **`servers/robot-controller-backend/api/__init__.py`**
+1. **`servers/robot_controller_backend/api/__init__.py`**
    - Added system mode router
 
-2. **`servers/robot-controller-backend/video/hybrid_system.py`**
+2. **`servers/robot_controller_backend/video/hybrid_system.py`**
    - Added manual mode override methods
    - Added `check_and_auto_switch_mode()` for thermal/CPU watchdog integration
    - Added TODO comments
 
-3. **`servers/robot-controller-backend/video/video_server.py`**
+3. **`servers/robot_controller_backend/video/video_server.py`**
    - Added `/latency` endpoint (Pi-only)
    - Added `/latency/hybrid` endpoint (Pi ↔ Orin)
    - Integrated timestamp capture for latency measurement
    - Integrated thermal/CPU watchdog checking
    - Added TODO comments
 
-4. **`servers/robot-controller-backend/video/frame_overlays.py`**
+4. **`servers/robot_controller_backend/video/frame_overlays.py`**
    - Added high-precision timestamp embedding
    - Added encode timestamp tracking
    - Added latency metrics methods
 
-5. **`servers/robot-controller-backend/video/pi_sensor_hub.py`**
+5. **`servers/robot_controller_backend/video/pi_sensor_hub.py`**
    - Added UUID generation and stamping
    - Added UUID tracking map for round-trip latency
    - Added `get_latency_stats()` method

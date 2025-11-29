@@ -1,4 +1,4 @@
-# File: /Omega-Code/servers/robot-controller-backend/utils/mock_pca9685.py
+# File: /Omega-Code/servers/robot_controller_backend/utils/mock_pca9685.py
 """
 This module provides a mock implementation of the PCA9685 class for testing purposes
 on non-Raspberry Pi environments. It mimics the behavior of the actual PCA9685 module.

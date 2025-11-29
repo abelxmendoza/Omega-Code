@@ -1,4 +1,4 @@
-// File: /Omega-Code/servers/robot-controller-backend/main.go
+// File: /Omega-Code/servers/robot_controller_backend/main.go
 
 /*
 This is the main entry point for starting the robot controller server.

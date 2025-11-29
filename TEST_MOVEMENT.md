@@ -9,7 +9,7 @@
 
 ### 1. Start Movement WebSocket Server
 ```bash
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 source venv/bin/activate  # if using venv
 export PORT_MOVEMENT=8081
 export ROBOT_SIM=0  # Set to 1 for simulation mode (no hardware)
@@ -19,7 +19,7 @@ python3 movement/movement_ws_server.py
 
 Or use the script:
 ```bash
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 ./scripts/run_movement_full.sh
 ```
 

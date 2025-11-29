@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# File: /Omega-Code/servers/robot-controller-backend/sensors/ultrasonic_sensor.py
+# File: /Omega-Code/servers/robot_controller_backend/sensors/ultrasonic_sensor.py
 
 """
 Ultrasonic Sensor Control (Pi 5-Compatible – using lgpio)

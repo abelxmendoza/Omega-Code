@@ -122,7 +122,7 @@ The backend can run on either laptop or Pi:
 
 ```bash
 # On Laptop
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 
 # Set environment
 export PI_SSH_HOST=pi@192.168.1.107
@@ -142,7 +142,7 @@ The backend will:
 
 ```bash
 # On Pi
-cd ~/Omega-Code/servers/robot-controller-backend
+cd ~/Omega-Code/servers/robot_controller_backend
 
 # Don't set PI_SSH_HOST (will use local Docker)
 # Don't set ROS_NATIVE_MODE (Pi uses Docker)

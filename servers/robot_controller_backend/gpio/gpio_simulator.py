@@ -1,4 +1,4 @@
-# File: /Omega-Code/servers/robot-controller-backend/gpio/gpio_simulator.py
+# File: /Omega-Code/servers/robot_controller_backend/gpio/gpio_simulator.py
 """
 This script simulates GPIO actions using the lgpio library.
 It provides basic GPIO operations like setting pin mode, outputting values, and cleanup.

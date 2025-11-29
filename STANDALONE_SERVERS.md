@@ -27,7 +27,7 @@ The robot controller consists of multiple independent WebSocket servers:
 **Standalone - No dependencies**
 
 ```bash
-cd servers/robot-controller-backend/sensors
+cd servers/robot_controller_backend/sensors
 go run main_ultrasonic.go
 ```
 
@@ -56,13 +56,13 @@ wscat -c ws://localhost:8080/ultrasonic
 
 **Python version:**
 ```bash
-cd servers/robot-controller-backend/movement
+cd servers/robot_controller_backend/movement
 python3 movement_ws_server.py
 ```
 
 **Go version:**
 ```bash
-cd servers/robot-controller-backend/movement
+cd servers/robot_controller_backend/movement
 go run movement.go
 ```
 
@@ -88,7 +88,7 @@ echo '{"type":"move","direction":"forward","speed":0.5}' | wscat -c ws://localho
 **Standalone - Requires LED hardware or simulation**
 
 ```bash
-cd servers/robot-controller-backend/controllers/lighting
+cd servers/robot_controller_backend/controllers/lighting
 go run main_lighting.go
 ```
 
@@ -112,7 +112,7 @@ echo '{"color":"#ff0000","mode":"single","pattern":"static","interval":0,"bright
 **Standalone - No dependencies**
 
 ```bash
-cd servers/robot-controller-backend/sensors
+cd servers/robot_controller_backend/sensors
 python3 line_tracking_ws_server.py
 ```
 
@@ -133,7 +133,7 @@ The UI connects directly to `ws://<host>:8090/line-tracker`. No main backend req
 **Standalone - Requires camera or simulation**
 
 ```bash
-cd servers/robot-controller-backend/video
+cd servers/robot_controller_backend/video
 python3 video_server.py
 ```
 
@@ -184,19 +184,19 @@ You can run multiple servers simultaneously:
 
 ```bash
 # Terminal 1: Ultrasonic
-cd servers/robot-controller-backend/sensors
+cd servers/robot_controller_backend/sensors
 go run main_ultrasonic.go
 
 # Terminal 2: Movement
-cd servers/robot-controller-backend/movement
+cd servers/robot_controller_backend/movement
 python3 movement_ws_server.py
 
 # Terminal 3: Lighting
-cd servers/robot-controller-backend/controllers/lighting
+cd servers/robot_controller_backend/controllers/lighting
 go run main_lighting.go
 
 # Terminal 4: Video
-cd servers/robot-controller-backend/video
+cd servers/robot_controller_backend/video
 python3 video_server.py
 ```
 
@@ -269,7 +269,7 @@ If you want to use the gateway (port 7070) instead of direct connections:
 
 ```bash
 # Start gateway
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python3 servers/gateway_api.py
 
 # Then configure UI to use gateway URLs:

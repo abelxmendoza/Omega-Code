@@ -1,4 +1,4 @@
-# File: /Omega-Code/servers/robot-controller-backend/tests/conftest.py
+# File: /Omega-Code/servers/robot_controller_backend/tests/conftest.py
 
 """
 This file configures the pytest setup, including the mocking of the rpi_ws281x library

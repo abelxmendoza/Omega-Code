@@ -55,7 +55,7 @@ NEXT_PUBLIC_WS_DEBUG=1  # Browser console debug for URL selection & socket lifec
 ## Backend (Python Services)
 
 ### Required Variables
-Create a `.env` file in the `servers/robot-controller-backend/` directory:
+Create a `.env` file in the `servers/robot_controller_backend/` directory:
 
 ```bash
 # Server configuration
@@ -90,7 +90,7 @@ ROS_WORKSPACE_PATH=/path/to/workspace                # ROS2 workspace path
 ## Quick Setup
 
 1. **Frontend**: Copy the example variables above to `ui/robot-controller-ui/.env.local`
-2. **Backend**: Copy the example variables above to `servers/robot-controller-backend/.env`
+2. **Backend**: Copy the example variables above to `servers/robot_controller_backend/.env`
 3. **Development**: Set `NEXT_PUBLIC_MOCK_WS=true` to use mock connections
 
 ## ROS 2 Configuration

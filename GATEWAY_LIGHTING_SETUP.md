@@ -8,13 +8,13 @@ The gateway (port 7070) can proxy lighting WebSocket connections to the direct l
 To enable gateway proxying for lighting, set this environment variable when starting the gateway:
 
 ```bash
-# In servers/robot-controller-backend/.env or when running gateway:
+# In servers/robot_controller_backend/.env or when running gateway:
 DS_LIGHT_WS=ws://127.0.0.1:8082/lighting
 ```
 
 ### Option 1: Add to .env file
 ```bash
-cd ~/Omega-Code/servers/robot-controller-backend
+cd ~/Omega-Code/servers/robot_controller_backend
 echo "DS_LIGHT_WS=ws://127.0.0.1:8082/lighting" >> .env
 ```
 

@@ -32,7 +32,7 @@ Omega-Code/
 │   ├── dev_workflow_sync.sh      # MacBook → GitHub → Pi sync
 │   └── setup_pi_docker.sh        # Initial Pi setup
 ├── servers/
-│   └── robot-controller-backend/ # Backend services
+│   └── robot_controller_backend/ # Backend services
 └── ui/
     └── robot-controller-ui/      # Frontend
 ```
@@ -74,7 +74,7 @@ Or use the helper script:
 
 2. **Edit code** using Cursor/VSCode:
    - Edit ROS2 packages in `ros/src/omega_robot/`
-   - Edit backend in `servers/robot-controller-backend/`
+   - Edit backend in `servers/robot_controller_backend/`
    - Edit frontend in `ui/robot-controller-ui/`
 
 3. **Test locally** (if applicable):
@@ -83,7 +83,7 @@ Or use the helper script:
    cd ui/robot-controller-ui && npm test
    
    # Backend tests
-   cd servers/robot-controller-backend && pytest tests/
+   cd servers/robot_controller_backend && pytest tests/
    ```
 
 4. **Commit and push**:
@@ -319,7 +319,7 @@ The Docker setup on Pi remains the same. Orin will run its own ROS2 nodes (eithe
 
 # Run tests
 cd ui/robot-controller-ui && npm test
-cd servers/robot-controller-backend && pytest tests/
+cd servers/robot_controller_backend && pytest tests/
 ```
 
 ### Pi Commands

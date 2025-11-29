@@ -1,4 +1,4 @@
-// File: /Omega-Code/servers/robot-controller-backend/controllers/lighting/main_lighting.go
+// File: /Omega-Code/servers/robot_controller_backend/controllers/lighting/main_lighting.go
 
 /*
 Lighting WebSocket Controller for LED Strips (NeoPixels)
@@ -66,7 +66,7 @@ func getRunLedPath() string {
 		}
 	}
 	// Fallback to absolute path (for Raspberry Pi)
-	return "/home/omega1/Omega-Code/servers/robot-controller-backend/controllers/lighting/run_led.sh"
+	return "/home/omega1/Omega-Code/servers/robot_controller_backend/controllers/lighting/run_led.sh"
 }
 
 // LightingCommand supports both string and int color fields for compatibility.
@@ -340,7 +340,7 @@ func main() {
 		log.Fatalf("❌ [FATAL] run_led.sh not found at %s\n"+
 			"   Solution: Set RUN_LED_PATH environment variable or ensure run_led.sh exists in:\n"+
 			"   - Current directory: %s\n"+
-			"   - Default path: /home/omega1/Omega-Code/servers/robot-controller-backend/controllers/lighting/run_led.sh",
+			"   - Default path: /home/omega1/Omega-Code/servers/robot_controller_backend/controllers/lighting/run_led.sh",
 			runLedPath, getRunLedPath())
 	} else if stat.Mode().Perm()&0111 == 0 {
 		log.Fatalf("❌ [FATAL] run_led.sh exists but is not executable: %s\n"+

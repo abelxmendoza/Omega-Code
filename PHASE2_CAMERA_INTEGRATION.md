@@ -36,7 +36,7 @@ ros2 run omega_robot camera_publisher
 
 ### 2. Web Bridge Support
 
-**Updated**: `servers/robot-controller-backend/api/ros_web_bridge.py`
+**Updated**: `servers/robot_controller_backend/api/ros_web_bridge.py`
 
 **Features**:
 - Supports `Image` message type
@@ -259,7 +259,7 @@ ros2 topic echo /camera/image_raw/compressed --once
 
 ```bash
 # Start backend
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python main_api.py
 
 # Open browser console and connect

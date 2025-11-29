@@ -128,7 +128,7 @@ Look for:
 ### Step 3: Run Diagnostic Script
 
 ```bash
-cd servers/robot-controller-backend/sensors
+cd servers/robot_controller_backend/sensors
 go run test_ultrasonic_hardware.go
 ```
 

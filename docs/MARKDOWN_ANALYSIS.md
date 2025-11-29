@@ -82,10 +82,10 @@ Total project markdown files: **78 files** (excluding node_modules, venv, libcam
 
 #### Keep:
 - ✅ `HARDWARE_PERFORMANCE_SUMMARY.md` - Root level summary
-- ✅ `servers/robot-controller-backend/HARDWARE_OPTIMIZATION.md` - Backend optimization
+- ✅ `servers/robot_controller_backend/HARDWARE_OPTIMIZATION.md` - Backend optimization
 
 #### Consolidate/Archive:
-- ⚠️ `servers/robot-controller-backend/hardware/optimization/HARDWARE_OPTIMIZATION_GUIDE.md` → Consolidate into backend HARDWARE_OPTIMIZATION.md
+- ⚠️ `servers/robot_controller_backend/hardware/optimization/HARDWARE_OPTIMIZATION_GUIDE.md` → Consolidate into backend HARDWARE_OPTIMIZATION.md
 
 **Action**: Consolidate into backend HARDWARE_OPTIMIZATION.md
 
@@ -100,10 +100,10 @@ Total project markdown files: **78 files** (excluding node_modules, venv, libcam
 ### 8. Component-Specific Documentation - KEEP IN PLACE
 
 These are component-specific and should stay:
-- ✅ `servers/robot-controller-backend/video/VIDEO_SERVER_FEATURES.md`
-- ✅ `servers/robot-controller-backend/video/IMPROVEMENTS_SUMMARY.md`
-- ✅ `servers/robot-controller-backend/controllers/lighting/*.md`
-- ✅ `servers/robot-controller-backend/sensors/*.md`
+- ✅ `servers/robot_controller_backend/video/VIDEO_SERVER_FEATURES.md`
+- ✅ `servers/robot_controller_backend/video/IMPROVEMENTS_SUMMARY.md`
+- ✅ `servers/robot_controller_backend/controllers/lighting/*.md`
+- ✅ `servers/robot_controller_backend/sensors/*.md`
 - ✅ `ui/robot-controller-ui/*.md`
 
 ## Consolidation Actions
@@ -166,9 +166,9 @@ Root Documentation:
 │   └── HARDWARE_PERFORMANCE_SUMMARY.md (✅ Keep)
 │
 └── Component Documentation (in respective directories):
-    ├── servers/robot-controller-backend/README.md
-    ├── servers/robot-controller-backend/HARDWARE_OPTIMIZATION.md
-    ├── servers/robot-controller-backend/video/VIDEO_SERVER_FEATURES.md
+    ├── servers/robot_controller_backend/README.md
+    ├── servers/robot_controller_backend/HARDWARE_OPTIMIZATION.md
+    ├── servers/robot_controller_backend/video/VIDEO_SERVER_FEATURES.md
     ├── ui/robot-controller-ui/README.md
     └── [other component docs]
 ```

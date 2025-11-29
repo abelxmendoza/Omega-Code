@@ -9,7 +9,7 @@ If you see repeated `⚠️ timeout waiting for echo` messages, the sensor is no
 Run the hardware test script:
 
 ```bash
-cd servers/robot-controller-backend/sensors
+cd servers/robot_controller_backend/sensors
 go run test_ultrasonic_hardware.go
 ```
 

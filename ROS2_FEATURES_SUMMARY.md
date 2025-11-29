@@ -27,7 +27,7 @@ Complete overview of ROS2 integration features for Omega Robot.
 ### 2. ROS2-Web Integration
 
 #### Web Bridge Service
-- **File**: `servers/robot-controller-backend/api/ros_web_bridge.py`
+- **File**: `servers/robot_controller_backend/api/ros_web_bridge.py`
 - **Purpose**: Real-time bidirectional ROS2-Web communication
 - **Features**:
   - Subscribe to ROS2 topics from web

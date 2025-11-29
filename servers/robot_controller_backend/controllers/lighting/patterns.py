@@ -2,7 +2,7 @@
 Lighting Patterns Module for WS2812/WS2811 LED Strips
 
 File Location:
-~/Omega-Code/servers/robot-controller-backend/controllers/lighting/patterns.py
+~/Omega-Code/servers/robot_controller_backend/controllers/lighting/patterns.py
 
 This module contains pattern functions for LED effects using the rpi_ws281x library.
 It supports basic patterns like static color wipe, dual color alternation, fade, blink,

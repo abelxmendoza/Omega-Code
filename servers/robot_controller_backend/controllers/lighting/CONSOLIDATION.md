@@ -83,7 +83,7 @@ RUN_LED_PATH=/path/to/run_led.sh      # Path to wrapper script (auto-detected)
 
 ```bash
 # Default (port 8082, path /lighting)
-cd servers/robot-controller-backend/controllers/lighting
+cd servers/robot_controller_backend/controllers/lighting
 go run main_lighting.go
 
 # Custom port
@@ -162,7 +162,7 @@ LIGHTING_PATH=/led go run main_lighting.go
 
 ### Test Standalone Server
 ```bash
-cd servers/robot-controller-backend/controllers/lighting
+cd servers/robot_controller_backend/controllers/lighting
 go run main_lighting.go
 ```
 

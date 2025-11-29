@@ -25,9 +25,9 @@ This document outlines the comprehensive augmentation plan for the Omega Robot C
 - Ensure thermal & CPU watchdog can force mode changes
 
 ### Test Files
-- `servers/robot-controller-backend/tests/hybrid/test_hybrid_mode_switching.py`
-- `servers/robot-controller-backend/tests/hybrid/test_mode_ws_updates.py`
-- `servers/robot-controller-backend/tests/hybrid/test_thermal_to_mode_transition.py`
+- `servers/robot_controller_backend/tests/hybrid/test_hybrid_mode_switching.py`
+- `servers/robot_controller_backend/tests/hybrid/test_mode_ws_updates.py`
+- `servers/robot_controller_backend/tests/hybrid/test_thermal_to_mode_transition.py`
 
 ---
 
@@ -40,10 +40,10 @@ This document outlines the comprehensive augmentation plan for the Omega Robot C
 - Test frame drop recovery
 
 ### Test Files
-- `servers/robot-controller-backend/tests/faults/test_orin_failure.py`
-- `servers/robot-controller-backend/tests/faults/test_pi_corrupted_frames.py`
-- `servers/robot-controller-backend/tests/faults/test_ros_bridge_delay.py`
-- `servers/robot-controller-backend/tests/faults/test_frame_drop_recovery.py`
+- `servers/robot_controller_backend/tests/faults/test_orin_failure.py`
+- `servers/robot_controller_backend/tests/faults/test_pi_corrupted_frames.py`
+- `servers/robot_controller_backend/tests/faults/test_ros_bridge_delay.py`
+- `servers/robot_controller_backend/tests/faults/test_frame_drop_recovery.py`
 
 ---
 
@@ -68,9 +68,9 @@ This document outlines the comprehensive augmentation plan for the Omega Robot C
 - Test failure modes
 
 ### Files
-- `servers/robot-controller-backend/tests/mocks/orin_mock/orin_mock_server.py`
-- `servers/robot-controller-backend/tests/mocks/orin_mock/messages.py`
-- `servers/robot-controller-backend/tests/mocks/orin_mock/fake_inference.py`
+- `servers/robot_controller_backend/tests/mocks/orin_mock/orin_mock_server.py`
+- `servers/robot_controller_backend/tests/mocks/orin_mock/messages.py`
+- `servers/robot_controller_backend/tests/mocks/orin_mock/fake_inference.py`
 
 ---
 

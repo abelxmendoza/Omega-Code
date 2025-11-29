@@ -100,7 +100,7 @@ This document provides a comprehensive summary of every file in the Omega-Code r
 
 ### Main Entry Points
 
-#### `servers/robot-controller-backend/main_api.py`
+#### `servers/robot_controller_backend/main_api.py`
 - **Purpose**: FastAPI application entry point
 - **Key Functions**: 
   - Creates FastAPI app with CORS middleware
@@ -110,21 +110,21 @@ This document provides a comprehensive summary of every file in the Omega-Code r
 - **Dependencies**: fastapi, uvicorn, api module
 - **Patterns**: API gateway pattern, modular routing
 
-#### `servers/robot-controller-backend/main.go`
+#### `servers/robot_controller_backend/main.go`
 - **Purpose**: Go WebSocket server entry point
 - **Key Functions**: Calls `core.StartServer()`
 - **Side Effects**: Starts HTTP/WebSocket server
 - **Dependencies**: Go 1.22+, core package
 - **Patterns**: Simple entry point pattern
 
-#### `servers/robot-controller-backend/main_combined.go`
+#### `servers/robot_controller_backend/main_combined.go`
 - **Purpose**: Combined Go server with multiple services
 - **Key Functions**: Unified server for multiple WebSocket endpoints
 - **Side Effects**: Starts multiple services in one process
 - **Dependencies**: Go 1.22+, core package
 - **Patterns**: Monolithic service pattern
 
-#### `servers/robot-controller-backend/robot_controller_server.py`
+#### `servers/robot_controller_backend/robot_controller_server.py`
 - **Purpose**: Python robot controller server
 - **Key Functions**: Main robot control logic
 - **Side Effects**: Manages robot state and commands

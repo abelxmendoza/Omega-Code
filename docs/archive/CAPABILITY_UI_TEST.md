@@ -5,7 +5,7 @@
 ### 1. Start Backend API
 
 ```bash
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python main_api.py
 ```
 

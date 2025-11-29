@@ -33,10 +33,10 @@ ui/robot-controller-ui/
 └── jest.config.js         # Jest configuration
 ```
 
-### Backend Tests (`servers/robot-controller-backend/tests/`)
+### Backend Tests (`servers/robot_controller_backend/tests/`)
 
 ```
-servers/robot-controller-backend/tests/
+servers/robot_controller_backend/tests/
 ├── unit/                  # Unit tests
 │   ├── api/              # API route tests
 │   ├── controllers/      # Controller tests
@@ -106,7 +106,7 @@ npm run security:scan
 
 ```bash
 # Activate virtual environment
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 source venv/bin/activate  # or your venv path
 
 # Unit tests
@@ -241,7 +241,7 @@ npm test -- --coverage
 open coverage/lcov-report/index.html
 
 # Backend
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 pytest --cov=. --cov-report=html
 open htmlcov/index.html
 ```

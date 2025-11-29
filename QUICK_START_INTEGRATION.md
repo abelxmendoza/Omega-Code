@@ -40,7 +40,7 @@
 
 ### On omega1 (Raspberry Pi)
 
-- [ ] Backend environment configured (`servers/robot-controller-backend/.env`)
+- [ ] Backend environment configured (`servers/robot_controller_backend/.env`)
 - [ ] Gateway API running (port 7070)
 - [ ] Movement WebSocket running (port 8081)
 - [ ] Video server running (port 5000)

@@ -22,7 +22,7 @@ export ULTRA_LOG_DELTA_CM=10         # Log when change >= this (default: 10cm)
 
 ### Running on omega1
 ```bash
-cd ~/Omega-Code/servers/robot-controller-backend/sensors
+cd ~/Omega-Code/servers/robot_controller_backend/sensors
 go run main_ultrasonic.go
 ```
 
@@ -98,7 +98,7 @@ The frontend ignores the welcome message by checking `if (data.distance_cm !== u
 ### 1. Start the Go server on omega1:
 ```bash
 ssh omega1-tailscale
-cd ~/Omega-Code/servers/robot-controller-backend/sensors
+cd ~/Omega-Code/servers/robot_controller_backend/sensors
 go run main_ultrasonic.go
 ```
 

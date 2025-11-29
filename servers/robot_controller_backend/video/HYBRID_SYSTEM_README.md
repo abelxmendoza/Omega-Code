@@ -109,7 +109,7 @@ This system enables the Pi to handle real-time sensor data and low-level vision 
 
 ```bash
 # On Raspberry Pi
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python video_server.py
 
 # Or via ROS2 launch
@@ -123,7 +123,7 @@ The system automatically detects Pi-only mode and operates accordingly.
 **On Raspberry Pi:**
 ```bash
 # Start video server (automatically detects Orin)
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 export ENABLE_HYBRID_SYSTEM=1
 python video_server.py
 ```

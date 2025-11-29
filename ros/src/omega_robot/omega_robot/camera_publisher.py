@@ -41,7 +41,7 @@ try:
         import os
         backend_path = os.path.join(
             os.path.dirname(__file__), 
-            '../../../../servers/robot-controller-backend'
+            '../../../../servers/robot_controller_backend'
         )
         if os.path.exists(backend_path):
             sys.path.insert(0, backend_path)

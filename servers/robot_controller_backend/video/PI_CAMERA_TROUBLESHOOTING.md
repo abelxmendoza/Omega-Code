@@ -186,7 +186,7 @@ chmod +x fix_pi_camera.sh
 
 ## Environment Variables
 
-Add to `.env` file in `servers/robot-controller-backend/`:
+Add to `.env` file in `servers/robot_controller_backend/`:
 
 ```bash
 # Camera backend (auto, picamera2, v4l2)

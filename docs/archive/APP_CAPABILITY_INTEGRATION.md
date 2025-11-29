@@ -8,13 +8,13 @@ The capability detection system has been integrated throughout the entire applic
 
 ### Backend (Python)
 
-**`servers/robot-controller-backend/api/capability_service.py`**
+**`servers/robot_controller_backend/api/capability_service.py`**
 - Detects system capabilities (Jetson, CUDA, ROS2)
 - Provides singleton service for capability queries
 - Integrates with ROS2 capability profile if available
 - Falls back to local detection
 
-**`servers/robot-controller-backend/api/capability_routes.py`**
+**`servers/robot_controller_backend/api/capability_routes.py`**
 - REST API endpoints:
   - `GET /api/capabilities` - Get full capability profile
   - `GET /api/capabilities/check?feature=X` - Check specific feature
@@ -234,7 +234,7 @@ Components can be conditionally rendered:
 
 ```bash
 # Start backend
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python main_api.py
 
 # Test endpoints

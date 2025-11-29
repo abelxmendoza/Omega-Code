@@ -227,7 +227,7 @@ ros2 launch omega_robot robot_full.launch.py
 **On Lenovo (with ROS2)**:
 ```bash
 export ROS_NATIVE_MODE=true
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python main_api.py
 ```
 
@@ -235,7 +235,7 @@ python main_api.py
 ```bash
 # Bridge will connect to Pi Docker ROS2
 export PI_SSH_HOST=pi@192.168.1.107
-cd servers/robot-controller-backend
+cd servers/robot_controller_backend
 python main_api.py
 ```
 

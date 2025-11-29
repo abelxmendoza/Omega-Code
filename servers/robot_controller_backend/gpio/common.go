@@ -1,4 +1,4 @@
-// File: /Omega-Code/servers/robot-controller-backend/gpio/common.go
+// File: /Omega-Code/servers/robot_controller_backend/gpio/common.go
 package gpio
 
 // GPIO interface defines methods for GPIO operations.

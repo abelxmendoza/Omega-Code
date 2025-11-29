@@ -1,4 +1,4 @@
-// File: /Omega-Code/servers/robot-controller-backend/gpio/gpio_real.go
+// File: /Omega-Code/servers/robot_controller_backend/gpio/gpio_real.go
 package gpio
 
 import "github.com/stianeikeland/go-rpio/v4"

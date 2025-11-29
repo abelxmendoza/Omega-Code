@@ -4,7 +4,7 @@
 ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
 # Define the base directory for tests
-BASE_DIR="$ROOT_DIR/servers/robot-controller-backend/tests"
+BASE_DIR="$ROOT_DIR/servers/robot_controller_backend/tests"
 
 # Create directories
 mkdir -p $BASE_DIR/unit

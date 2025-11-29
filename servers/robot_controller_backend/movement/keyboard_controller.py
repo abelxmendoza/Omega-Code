@@ -1,4 +1,4 @@
-# /Omega-Code/servers/robot-controller-backend/movement/keyboard_controller.py
+# /Omega-Code/servers/robot_controller_backend/movement/keyboard_controller.py
 # Control the bot from your Mac keyboard over WebSocket.
 
 import os, json, time
