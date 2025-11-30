@@ -352,7 +352,8 @@ class LedController:
                         time.sleep(pulse_delay)
                 self.is_on = True
             elif pattern in ("music", "music-reactive"):
-                update_ms = interval if isinstance(interval, (int, float)) and interval > 0 else 80
+                # Music reactive pattern - audio visualization
+                update_ms = max(50, interval) if interval > 0 else 80
                 duration = max(8.0, update_ms / 1000.0 * 80)
                 music_visualizer(
                     self.strip,
@@ -364,7 +365,7 @@ class LedController:
                 self.is_on = True
             elif pattern == "rave":
                 # Rave mode - energetic dancing lights (no audio required)
-                update_ms = interval if isinstance(interval, (int, float)) and interval > 0 else 50
+                update_ms = max(30, interval) if interval > 0 else 50
                 duration = max(10.0, update_ms / 1000.0 * 200)  # Run longer for rave mode
                 rave_mode(
                     self.strip,
@@ -376,17 +377,18 @@ class LedController:
                 self.is_on = True
             elif pattern == "breathing":
                 # Breathing effect - smooth pulse like breathing
+                breathing_interval = max(50, interval) if interval > 0 else 100
                 breathing(
                     self.strip,
                     base_rgb=(raw_r, raw_g, raw_b),
                     brightness=brightness,
-                    interval_ms=interval if interval > 0 else 50,
+                    interval_ms=int(breathing_interval),
                     cycles=5,
                 )
                 self.is_on = True
             elif pattern == "aurora":
                 # Aurora effect - flowing northern lights
-                update_ms = interval if isinstance(interval, (int, float)) and interval > 0 else 80
+                update_ms = max(50, interval) if interval > 0 else 80
                 duration = max(10.0, update_ms / 1000.0 * 250)
                 aurora(
                     self.strip,
@@ -398,7 +400,7 @@ class LedController:
                 self.is_on = True
             elif pattern == "matrix":
                 # Matrix rain effect
-                update_ms = interval if isinstance(interval, (int, float)) and interval > 0 else 100
+                update_ms = max(50, interval) if interval > 0 else 100
                 duration = max(10.0, update_ms / 1000.0 * 150)
                 matrix_rain(
                     self.strip,
@@ -410,7 +412,7 @@ class LedController:
                 self.is_on = True
             elif pattern == "fire":
                 # Fire effect - flickering flames
-                update_ms = interval if isinstance(interval, (int, float)) and interval > 0 else 50
+                update_ms = max(30, interval) if interval > 0 else 50
                 duration = max(10.0, update_ms / 1000.0 * 400)
                 fire_effect(
                     self.strip,
@@ -420,7 +422,10 @@ class LedController:
                 )
                 self.is_on = True
             else:
-                raise ValueError(f"Unknown pattern: {pattern} (supported: static, blink, pulse, fade, chase, rainbow, lightshow, music, rave, breathing, aurora, matrix, fire, off)")
+                # Unknown pattern - log error and fall back to static
+                print(f"⚠️ [WARN] Unknown pattern: {pattern}, falling back to static", file=sys.stderr)
+                self.color_wipe(Color(r, g, b), wait_ms=10)
+                self.is_on = True
 
             self.is_on = True
 
