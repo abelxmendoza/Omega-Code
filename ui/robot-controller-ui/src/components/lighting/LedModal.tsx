@@ -44,7 +44,7 @@ interface LedModalProps {
 type ServerStatus = 'connecting' | 'connected' | 'disconnected';
 
 const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
-  const [ledOn, setLedOn] = useState(true);
+  const [ledOn, setLedOn] = useState(false);
   const [color1, setColor1] = useState('#ffffff');
   const [mode, setMode] = useState<LightingMode>(LIGHTING_MODES[0]);
   const [pattern, setPattern] = useState<LightingPattern>(LIGHTING_PATTERNS[0]);
