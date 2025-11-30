@@ -148,6 +148,14 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         }
         ws.current = wsObj;
 
+        // Check if WebSocket is already open (connectLightingWs waits for OPEN)
+        if (wsObj.readyState === WebSocket.OPEN) {
+          console.log('[LedModal] ✅ WebSocket already open, setting status to connected');
+          setServerStatus('connected');
+          setLatencyMs(null);
+          startHeartbeat();
+        }
+
         wsObj.onopen = () => {
           if (!mounted.current) return;
           console.log('[LedModal] ✅ WebSocket opened successfully');
