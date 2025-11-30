@@ -197,6 +197,8 @@ func handleLighting(ws *websocket.Conn) {
 						}
 						if err := ws.WriteJSON(pongMsg); err != nil {
 							log.Printf("⚠️ [WARN] Failed to send pong to %s: %v", clientAddr, err)
+						} else {
+							log.Printf("   📤 [PONG] Sent pong response to %s", clientAddr)
 						}
 						pongPool.Put(pongMsg)
 						continue // Skip normal command handling
