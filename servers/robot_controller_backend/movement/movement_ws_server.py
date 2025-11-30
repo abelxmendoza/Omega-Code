@@ -513,6 +513,7 @@ def _call_motor(fn, speed: int):
 
 async def do_move(fn_name: str, speed: int):
     async with motor_lock:
+        log(f"[MOVE] do_move({fn_name}, {speed})")
         fn = getattr(motor, fn_name, None)
         if not callable(fn):
             # Use gentle turns instead of sharp pivots
@@ -521,7 +522,9 @@ async def do_move(fn_name: str, speed: int):
             elif fn_name == "right":
                 fn = getattr(motor, "right", None)
         if not callable(fn):
+            elog(f"[MOVE] motor missing method: {fn_name}")
             raise RuntimeError(f"motor missing method: {fn_name}")
+        log(f"[MOVE] Calling motor.{fn_name}({speed})")
         _call_motor(fn, speed)
 
 def norm_cmd_name(raw: str) -> str:
@@ -599,6 +602,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     continue
 
                 cmd = norm_cmd_name(cmd)
+                log(f"[CMD] Received: {cmd!r} (normalized from {parse_json_or_string(message)[0]!r})")
 
                 # reads
                 try:
@@ -616,27 +620,29 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     duration_ms = 0
 
                 # -------- MOVEMENT --------
-                    if cmd in {"forward", "backward", "left", "right"}:
-                        current_speed = speed
-                        await do_move(cmd, current_speed)
-                        await send_json(ws, ok(cmd, speed=current_speed))
+                if cmd in {"forward", "backward", "left", "right"}:
+                    log(f"[CMD] Executing movement: {cmd} at speed {speed}")
+                    current_speed = speed
+                    await do_move(cmd, current_speed)
+                    await send_json(ws, ok(cmd, speed=current_speed))
 
-                        if duration_ms > 0:
-                            _last_move_op_id += 1
-                            my_id = _last_move_op_id
-                            async def _auto_stop(delay: float, op_id: int):
-                                try:
-                                    await asyncio.sleep(delay)
-                                    if op_id == _last_move_op_id:
-                                        await do_stop()
-                                        await send_json(ws, ok("auto-stop"))
-                                except Exception as e:
-                                    log_error(e, "Auto-stop failed", ws)
-                            asyncio.create_task(_auto_stop(duration_ms/1000.0, my_id))
+                    if duration_ms > 0:
+                        _last_move_op_id += 1
+                        my_id = _last_move_op_id
+                        async def _auto_stop(delay: float, op_id: int):
+                            try:
+                                await asyncio.sleep(delay)
+                                if op_id == _last_move_op_id:
+                                    await do_stop()
+                                    await send_json(ws, ok("auto-stop"))
+                            except Exception as e:
+                                log_error(e, "Auto-stop failed", ws)
+                        asyncio.create_task(_auto_stop(duration_ms/1000.0, my_id))
 
-                    elif cmd == "stop":
-                        await do_stop()
-                        await send_json(ws, ok("stop"))
+                elif cmd == "stop":
+                    log(f"[CMD] Executing stop")
+                    await do_stop()
+                    await send_json(ws, ok("stop"))
 
                     # -------- STRAIGHT ASSIST --------
                     elif cmd in {"straight-assist", "straight-assist-config"}:
