@@ -201,9 +201,19 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
               console.log('[LedModal] 📨 Lighting result:', data);
               if (data?.ok === false) {
                 console.error('[LedModal] ❌ Lighting command failed:', data?.error);
+                // Revert toggle state if command failed
+                if (data?.error && typeof data.error === 'string') {
+                  if (data.error.includes('off') || data.error.includes('OFF')) {
+                    setLedOn(true); // Revert to ON if OFF command failed
+                  }
+                }
               } else {
                 console.log('[LedModal] ✅ Lighting command succeeded');
               }
+            }
+            if (data?.type === 'error') {
+              console.error('[LedModal] ❌ Server error:', data?.error);
+              // Don't revert state on server errors - let user retry
             }
           } catch (error) {
             console.error('[LedModal] ❌ Failed to parse message:', error, 'Raw:', event.data);
