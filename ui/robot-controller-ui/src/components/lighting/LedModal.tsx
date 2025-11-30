@@ -88,6 +88,7 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   const [mode, setMode] = useState<LightingMode>(LIGHTING_MODES[0]);
   const [pattern, setPattern] = useState<LightingPattern>('static');
   const [dualOrientation, setDualOrientation] = useState<DualOrientation>('alternate');
+  const [editingColor, setEditingColor] = useState<'color1' | 'color2'>('color1'); // Which color is being edited
   const [intervalMs, setIntervalMs] = useState(1000);
   const [brightness, setBrightness] = useState(35); // Default 35% brightness (0–100%)
 
@@ -323,14 +324,17 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   };
 
   // Handlers
-  const handleColor1Change = (color: ColorResult) => {
-    setColor1(color.hex);
+  const handleColorChange = (color: ColorResult) => {
+    if (editingColor === 'color1') {
+      setColor1(color.hex);
+    } else {
+      setColor2(color.hex);
+    }
     autoApplyIfOn();
   };
-  const handleColor2Change = (color: ColorResult) => {
-    setColor2(color.hex);
-    autoApplyIfOn();
-  };
+  
+  // Get current color being edited
+  const currentColor = editingColor === 'color1' ? color1 : color2;
   // Get available patterns for current mode
   const getAvailablePatterns = (): readonly LightingPattern[] => {
     switch (mode) {
