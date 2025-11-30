@@ -635,6 +635,35 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
               <div className="border border-[#C400FF]/30 rounded-lg p-2 bg-[#1A1A1A]/50">
                 <SketchPicker color={color2} onChange={handleColor2Change} />
               </div>
+
+              {/* Dual Color Orientation Selector */}
+              <div className="mt-4">
+                <label htmlFor="dualOrientation" className="block text-[#00FF88] font-semibold mb-1" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
+                  Color Layout (Chassis Perimeter):
+                </label>
+                <select
+                  id="dualOrientation"
+                  value={dualOrientation}
+                  onChange={(e) => {
+                    setDualOrientation(e.target.value as DualOrientation);
+                    autoApplyIfOn();
+                  }}
+                  className="w-full bg-[#1A1A1A] text-[#E0E0E0] p-2.5 rounded-lg border border-[#C400FF]/30 focus:border-[#C400FF] focus:ring-2 focus:ring-[#C400FF]/50 transition-all"
+                  style={{ 
+                    boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 10px rgba(196, 0, 255, 0.1)'
+                  }}
+                >
+                  <option value="alternate" className="bg-[#1A1A1A]">Alternate (Every Other LED)</option>
+                  <option value="front_back" className="bg-[#1A1A1A]">Front/Back Edges vs Left/Right</option>
+                  <option value="left_right" className="bg-[#1A1A1A]">Left/Right Edges vs Front/Back</option>
+                  <option value="sides" className="bg-[#1A1A1A]">Sides Alternate (Front/Back vs Left/Right)</option>
+                  <option value="corners" className="bg-[#1A1A1A]">Corners vs Edges</option>
+                  <option value="center_edge" className="bg-[#1A1A1A]">Center of Each Side vs Edges</option>
+                  <option value="gradient" className="bg-[#1A1A1A]">Gradient (Smooth Around Perimeter)</option>
+                  <option value="segments" className="bg-[#1A1A1A]">Segments (4 Sections)</option>
+                  <option value="thirds" className="bg-[#1A1A1A]">Thirds (3 Sections)</option>
+                </select>
+              </div>
             </>
           )}
 
