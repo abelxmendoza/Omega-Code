@@ -325,8 +325,13 @@ class LedController:
                 self.lightshow(color, interval=interval, brightness=brightness)
                 self.is_on = True
             elif pattern == "static":
-                # Static solid color
-                self.color_wipe(Color(r, g, b), wait_ms=10)
+                # Static solid color (or dual color if mode is dual)
+                if mode == "dual":
+                    from controllers.lighting.patterns import dual_color
+                    from rpi_ws281x import Color as WsColor
+                    dual_color(self.strip, WsColor(r, g, b), WsColor(r2, g2, b2))
+                else:
+                    self.color_wipe(Color(r, g, b), wait_ms=10)
                 self.is_on = True
             elif pattern == "blink":
                 # Blink pattern - on/off blinking (or between two colors in dual mode)
