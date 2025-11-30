@@ -74,6 +74,21 @@ MISSING_DEPS=0
 check_and_install "smbus2" "smbus2" || MISSING_DEPS=1
 check_and_install "websockets" "websockets" || MISSING_DEPS=1
 
+# Hardware dependencies (Raspberry Pi specific)
+# RPi.GPIO is needed for buzzer control (optional - won't fail if unavailable)
+echo -n "🔍 Checking RPi.GPIO... "
+if $PYTHON_CMD -c "import RPi" 2>/dev/null; then
+    echo "✅"
+else
+    echo "❌ Missing"
+    echo "   Installing RPi.GPIO..."
+    if $PIP_CMD install "RPi.GPIO" --quiet 2>/dev/null; then
+        echo "   ✅ Installed RPi.GPIO"
+    else
+        echo "   ⚠️  RPi.GPIO installation failed (buzzer may not work, continuing anyway)"
+    fi
+fi
+
 # Optional: Check for minimal requirements.txt dependencies
 # Only install core dependencies needed for movement server
 if [ -f "$BACKEND_DIR/requirements.txt" ]; then
