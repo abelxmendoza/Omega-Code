@@ -22,5 +22,5 @@ else
     exit 1
 fi
 
-# hex mode pattern interval brightness
-sudo -E "$PYTHON_CMD" led_control.py "$1" "$2" "$3" "$4" "$5"
+# hexColor hexColor2 mode pattern interval brightness
+sudo -E "$PYTHON_CMD" led_control.py "$1" "$2" "$3" "$4" "$5" "$6"

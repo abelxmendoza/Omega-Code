@@ -72,11 +72,12 @@ func getRunLedPath() string {
 // LightingCommand supports both string and int color fields for compatibility.
 // Brightness is a *float64 so we can tell if it was omitted (nil) vs provided (including 0).
 type LightingCommand struct {
-	Color      interface{} `json:"color"`                // Hex string "#rrggbb" or 24-bit int
-	Mode       string      `json:"mode"`                 // "single", "multi", "rainbow", etc.
-	Pattern    string      `json:"pattern"`              // "static", "blink", "fade", "off", etc.
-	Interval   int         `json:"interval"`             // ms (animation speed)
-	Brightness *float64    `json:"brightness,omitempty"` // [0,1]; nil => default 1.0
+	Color      interface{} `json:"color"`                 // Hex string "#rrggbb" or 24-bit int
+	Color2     interface{} `json:"color2,omitempty"`      // Hex string "#rrggbb" or 24-bit int (for dual mode)
+	Mode       string      `json:"mode"`                  // "single", "dual", "rainbow", etc.
+	Pattern    string      `json:"pattern"`               // "static", "blink", "fade", "off", etc.
+	Interval   int         `json:"interval"`              // ms (animation speed)
+	Brightness *float64    `json:"brightness,omitempty"`  // [0,1]; nil => default 1.0
 }
 
 // WebSocket upgrader with permissive CORS
@@ -236,6 +237,18 @@ func handleLighting(ws *websocket.Conn) {
 		}
 		log.Printf("   ✅ [PROCESS] Color parsed: #%s", hexColor)
 
+		// Parse color2 if provided (for dual mode)
+		hexColor2 := "000000" // Default to black if not provided
+		if command.Color2 != nil {
+			hexColor2Parsed, err2 := hexColorString(command.Color2)
+			if err2 != nil {
+				log.Printf("⚠️ [WARN] Color2 parsing failed, using default black: %v", err2)
+			} else {
+				hexColor2 = hexColor2Parsed
+				log.Printf("   ✅ [PROCESS] Color2 parsed: #%s", hexColor2)
+			}
+		}
+
 		// Brightness: default to 1.0 only when omitted; otherwise clamp to [0,1]
 		brightness := 1.0
 		if command.Brightness != nil {
@@ -255,8 +268,10 @@ func handleLighting(ws *websocket.Conn) {
 		}
 
 		// Build an arg list for the wrapper (no shell needed)
+		// Format: <hexColor> <hexColor2> <mode> <pattern> <interval> <brightness>
 		args := []string{
 			hexColor,
+			hexColor2,
 			command.Mode,
 			command.Pattern,
 			strconv.Itoa(command.Interval),

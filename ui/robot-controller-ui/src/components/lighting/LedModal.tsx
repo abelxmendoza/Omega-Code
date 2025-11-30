@@ -46,6 +46,7 @@ type ServerStatus = 'connecting' | 'connected' | 'disconnected';
 const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   const [ledOn, setLedOn] = useState(false);
   const [color1, setColor1] = useState('#ffffff');
+  const [color2, setColor2] = useState('#000000');
   const [mode, setMode] = useState<LightingMode>(LIGHTING_MODES[0]);
   const [pattern, setPattern] = useState<LightingPattern>(LIGHTING_PATTERNS[0]);
   const [intervalMs, setIntervalMs] = useState(1000);
@@ -257,13 +258,17 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       // Small delay to batch rapid changes
       setTimeout(() => {
         if (ledOn && wsOpen()) {
-          const commandData = {
+          const commandData: Record<string, unknown> = {
             color: color1,
             mode: mode,
             pattern: pattern,
             interval: pattern !== 'static' ? intervalMs : 0,
             brightness: brightness / 100,
           };
+          // Add color2 only when mode is dual
+          if (mode === 'dual') {
+            commandData.color2 = color2;
+          }
           try {
             send(commandData);
             console.log('[LedModal] 🔄 Auto-applied settings:', JSON.stringify(commandData));
@@ -278,6 +283,10 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   // Handlers
   const handleColor1Change = (color: ColorResult) => {
     setColor1(color.hex);
+    autoApplyIfOn();
+  };
+  const handleColor2Change = (color: ColorResult) => {
+    setColor2(color.hex);
     autoApplyIfOn();
   };
   const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -360,13 +369,17 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       }
     } else {
       // Turn ON: Send complete command with current settings
-      const onCommand = {
+      const onCommand: Record<string, unknown> = {
         color: color1,
         mode: mode,
         pattern: pattern,
         interval: pattern !== 'static' ? intervalMs : 0,
         brightness: brightness / 100, // Convert 0-100 to 0-1
       };
+      // Add color2 only when mode is dual
+      if (mode === 'dual') {
+        onCommand.color2 = color2;
+      }
       console.log('[LedModal] 🟢 Sending LED ON command:', JSON.stringify(onCommand));
       try {
         send(onCommand);
@@ -414,14 +427,18 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     }
     
     // Send complete command payload matching backend LightingCommand struct
-    // Backend expects: { color, mode, pattern, interval, brightness }
-    const commandData = {
+    // Backend expects: { color, color2 (optional), mode, pattern, interval, brightness }
+    const commandData: Record<string, unknown> = {
       color: color1, // Hex string like "#ff0000"
       mode: mode,
       pattern: pattern,
       interval: pattern !== 'static' ? intervalMs : 0,
       brightness: brightness / 100, // Convert 0-100% to 0-1.0
     };
+    // Add color2 only when mode is dual
+    if (mode === 'dual') {
+      commandData.color2 = color2;
+    }
     console.log('[LedModal] 📤 Applying LED settings:', JSON.stringify(commandData));
     try {
       send(commandData);
@@ -530,10 +547,24 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
           className={serverStatus === 'connected' ? '' : 'opacity-50'}
         >
           {/* Color Picker 1 */}
-          <label className="block text-[#00FF88] font-semibold mb-2 text-lg" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>Primary Color:</label>
+          <label className="block text-[#00FF88] font-semibold mb-2 text-lg" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
+            {mode === 'dual' ? 'Primary Color:' : 'Color:'}
+          </label>
           <div className="border border-[#C400FF]/30 rounded-lg p-2 bg-[#1A1A1A]/50">
             <SketchPicker color={color1} onChange={handleColor1Change} />
           </div>
+
+          {/* Color Picker 2 - Only show when mode is dual */}
+          {mode === 'dual' && (
+            <>
+              <label className="block text-[#00FF88] font-semibold mb-2 text-lg mt-4" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
+                Secondary Color:
+              </label>
+              <div className="border border-[#C400FF]/30 rounded-lg p-2 bg-[#1A1A1A]/50">
+                <SketchPicker color={color2} onChange={handleColor2Change} />
+              </div>
+            </>
+          )}
 
           {/* Mode Selector */}
           <div className="mt-4">

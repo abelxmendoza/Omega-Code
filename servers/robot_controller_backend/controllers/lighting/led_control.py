@@ -304,6 +304,15 @@ class LedController:
             g = int(raw_g * brightness)
             b = int(raw_b * brightness)
 
+            # Pre-compute RGB values for color2 (used in dual mode)
+            raw_r2 = (color2 >> 16) & 255
+            raw_g2 = (color2 >> 8) & 255
+            raw_b2 = color2 & 255
+
+            r2 = int(raw_r2 * brightness)
+            g2 = int(raw_g2 * brightness)
+            b2 = int(raw_b2 * brightness)
+
             # Pattern routing - check pattern first, then mode as fallback
             if pattern == "rainbow" or mode == "rainbow":
                 # Rainbow runs continuously - use iterations for duration control
@@ -319,21 +328,30 @@ class LedController:
                 self.color_wipe(Color(r, g, b), wait_ms=10)
                 self.is_on = True
             elif pattern == "blink":
-                # Blink pattern - on/off blinking
+                # Blink pattern - on/off blinking (or between two colors in dual mode)
                 from rpi_ws281x import Color as WsColor
                 blink_delay = max(0.05, interval / 1000.0) if interval > 0 else 0.5
-                blink(self.strip, WsColor(r, g, b), WsColor(0, 0, 0), delay=blink_delay)
+                if mode == "dual":
+                    blink(self.strip, WsColor(r, g, b), WsColor(r2, g2, b2), delay=blink_delay)
+                else:
+                    blink(self.strip, WsColor(r, g, b), WsColor(0, 0, 0), delay=blink_delay)
                 self.is_on = True
             elif pattern == "fade":
-                # Fade pattern - smooth color transitions
+                # Fade pattern - smooth color transitions (between two colors in dual mode)
                 fade_delay = max(0.01, interval / 1000.0 / 50) if interval > 0 else 0.02
-                fade(self.strip, (r, g, b), None, steps=50, delay=fade_delay)
+                if mode == "dual":
+                    fade(self.strip, (r, g, b), (r2, g2, b2), steps=50, delay=fade_delay)
+                else:
+                    fade(self.strip, (r, g, b), None, steps=50, delay=fade_delay)
                 self.is_on = True
             elif pattern == "chase":
-                # Chase pattern - moving chase effect
+                # Chase pattern - moving chase effect (between two colors in dual mode)
                 from rpi_ws281x import Color as WsColor
                 chase_delay = max(0.01, interval / 1000.0 / self.num_pixels) if interval > 0 else 0.05
-                chase(self.strip, WsColor(r, g, b), WsColor(0, 0, 0), delay=chase_delay)
+                if mode == "dual":
+                    chase(self.strip, WsColor(r, g, b), WsColor(r2, g2, b2), delay=chase_delay)
+                else:
+                    chase(self.strip, WsColor(r, g, b), WsColor(0, 0, 0), delay=chase_delay)
                 self.is_on = True
             elif pattern == "pulse":
                 # Pulse pattern - fade in/out
@@ -469,7 +487,7 @@ class LedController:
 LedControl = LedController
 
 if __name__ == "__main__":
-    # CLI usage: python3 led_control.py <hexcolor> <mode> <pattern> <interval> <brightness>
+    # CLI usage: python3 led_control.py <hexcolor> <hexcolor2> <mode> <pattern> <interval> <brightness>
     #           python3 led_control.py off
     #           python3 led_control.py toggle
     if len(sys.argv) == 2 and sys.argv[1] == "off":
@@ -483,22 +501,23 @@ if __name__ == "__main__":
         led.toggle_light()
         sys.exit(0)
 
-    if len(sys.argv) not in (5, 6):
-        print("Usage: python3 led_control.py <hexcolor> <mode> <pattern> <interval> <brightness>")
+    if len(sys.argv) not in (6, 7):
+        print("Usage: python3 led_control.py <hexcolor> <hexcolor2> <mode> <pattern> <interval> <brightness>")
         print("   or: python3 led_control.py off")
         print("   or: python3 led_control.py toggle")
         sys.exit(1)
 
     try:
         color = int(sys.argv[1], 16)
-        mode = sys.argv[2]
-        pattern = sys.argv[3]
-        interval = int(sys.argv[4])
-        brightness = float(sys.argv[5]) if len(sys.argv) == 6 else 1.0
+        color2 = int(sys.argv[2], 16) if len(sys.argv) >= 7 else 0x000000
+        mode = sys.argv[3]
+        pattern = sys.argv[4]
+        interval = int(sys.argv[5])
+        brightness = float(sys.argv[6]) if len(sys.argv) == 7 else 1.0
 
-        print(f"🎨 [LED] Setting: color=#{color:06x}, mode={mode}, pattern={pattern}, interval={interval}ms, brightness={brightness}")
+        print(f"🎨 [LED] Setting: color=#{color:06x}, color2=#{color2:06x}, mode={mode}, pattern={pattern}, interval={interval}ms, brightness={brightness}")
         led_control = LedController()
-        led_control.set_led(color, mode, pattern, interval, brightness)
+        led_control.set_led(color, mode, pattern, interval, brightness, color2=color2)
         print(f"✅ [SUCCESS] LED command completed")
     except ValueError as e:
         print(f"❌ [ERROR] Invalid input: {e}")
