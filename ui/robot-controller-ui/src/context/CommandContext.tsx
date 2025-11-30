@@ -308,6 +308,12 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
             addCommand('WebSocket connection verified');
           }
 
+          // Welcome message from server
+          if (data?.type === 'welcome') {
+            addCommand(`Connected to ${data?.service || 'server'}: ${data?.status || 'connected'}`);
+            return;
+          }
+
           // Heartbeat pong
           if (data?.type === 'pong') {
             const end = performance.now();
