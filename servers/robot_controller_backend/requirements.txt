@@ -4,6 +4,7 @@ asyncio-mqtt>=0.13.0
 
 # Hardware control libraries
 RPi.GPIO>=0.7.1
+rpi-ws281x>=5.0.0  # NeoPixel/WS2812 LED strip control
 adafruit-circuitpython-neopixel>=6.4.1
 adafruit-circuitpython-dht>=3.4.0
 adafruit-circuitpython-hcsr04>=3.3.0
