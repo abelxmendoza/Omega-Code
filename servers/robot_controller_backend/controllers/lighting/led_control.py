@@ -304,40 +304,52 @@ class LedController:
             g = int(raw_g * brightness)
             b = int(raw_b * brightness)
 
-            if mode == "rainbow" or pattern == "rainbow":
+            # Pattern routing - check pattern first, then mode as fallback
+            if pattern == "rainbow" or mode == "rainbow":
                 # Rainbow runs continuously - use iterations for duration control
                 iterations = max(1, int(interval / 20)) if interval > 0 else 1
                 self.rainbow(interval if interval > 0 else 20, brightness, iterations)
-            elif pattern == "lightshow" or mode == "lightshow":
+                self.is_on = True
+            elif pattern == "lightshow":
+                # Lightshow pattern - multi-stage animation
                 self.lightshow(color, interval=interval, brightness=brightness)
+                self.is_on = True
             elif pattern == "static":
+                # Static solid color
                 self.color_wipe(Color(r, g, b), wait_ms=10)
+                self.is_on = True
             elif pattern == "blink":
-                # Use pattern function for consistency
+                # Blink pattern - on/off blinking
                 from rpi_ws281x import Color as WsColor
-                blink(self.strip, WsColor(r, g, b), WsColor(0, 0, 0), delay=interval / 1000.0)
+                blink_delay = max(0.05, interval / 1000.0) if interval > 0 else 0.5
+                blink(self.strip, WsColor(r, g, b), WsColor(0, 0, 0), delay=blink_delay)
                 self.is_on = True
             elif pattern == "fade":
                 # Fade pattern - smooth color transitions
-                fade(self.strip, (r, g, b), None, steps=50, delay=interval / 1000.0 / 50)
+                fade_delay = max(0.01, interval / 1000.0 / 50) if interval > 0 else 0.02
+                fade(self.strip, (r, g, b), None, steps=50, delay=fade_delay)
                 self.is_on = True
             elif pattern == "chase":
                 # Chase pattern - moving chase effect
                 from rpi_ws281x import Color as WsColor
-                chase(self.strip, WsColor(r, g, b), WsColor(0, 0, 0), delay=interval / 1000.0 / self.num_pixels)
+                chase_delay = max(0.01, interval / 1000.0 / self.num_pixels) if interval > 0 else 0.05
+                chase(self.strip, WsColor(r, g, b), WsColor(0, 0, 0), delay=chase_delay)
                 self.is_on = True
             elif pattern == "pulse":
-                for _ in range(5):
+                # Pulse pattern - fade in/out
+                pulse_cycles = max(3, int(interval / 200)) if interval > 0 else 5
+                pulse_delay = max(0.01, interval / 1000.0 / 50) if interval > 0 else 0.02
+                for _ in range(pulse_cycles):
                     # Fade in
                     for i in range(0, 256, 5):
                         step_brightness = brightness * (i / 255.0)
                         self._apply_brightness(color, step_brightness)
-                        time.sleep(interval / 1000 / 50)
+                        time.sleep(pulse_delay)
                     # Fade out
                     for i in range(255, 0, -5):
                         step_brightness = brightness * (i / 255.0)
                         self._apply_brightness(color, step_brightness)
-                        time.sleep(interval / 1000 / 50)
+                        time.sleep(pulse_delay)
                 self.is_on = True
             elif pattern in ("music", "music-reactive"):
                 update_ms = interval if isinstance(interval, (int, float)) and interval > 0 else 80
