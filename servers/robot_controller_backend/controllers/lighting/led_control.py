@@ -329,6 +329,8 @@ class LedController:
                 self.is_on = True
             elif pattern == "static":
                 # Static solid color (or dual color if mode is dual)
+                if mode == "rainbow":
+                    raise ValueError("Static pattern not available in rainbow mode. Use rainbow, lightshow, rave, or aurora patterns.")
                 if mode == "dual":
                     from controllers.lighting.patterns import dual_color
                     from rpi_ws281x import Color as WsColor
@@ -338,6 +340,8 @@ class LedController:
                 self.is_on = True
             elif pattern == "blink":
                 # Blink pattern - on/off blinking (or between two colors in dual mode)
+                if mode == "rainbow":
+                    raise ValueError("Blink pattern not available in rainbow mode. Use rainbow, lightshow, rave, or aurora patterns.")
                 from rpi_ws281x import Color as WsColor
                 blink_delay = max(0.05, interval / 1000.0) if interval > 0 else 0.5
                 if mode == "dual":
@@ -347,6 +351,8 @@ class LedController:
                 self.is_on = True
             elif pattern == "fade":
                 # Fade pattern - smooth color transitions (between two colors in dual mode)
+                if mode == "rainbow":
+                    raise ValueError("Fade pattern not available in rainbow mode. Use rainbow, lightshow, rave, or aurora patterns.")
                 fade_delay = max(0.01, interval / 1000.0 / 50) if interval > 0 else 0.02
                 if mode == "dual":
                     fade(self.strip, (r, g, b), (r2, g2, b2), steps=50, delay=fade_delay)
@@ -355,6 +361,8 @@ class LedController:
                 self.is_on = True
             elif pattern == "chase":
                 # Chase pattern - moving chase effect (between two colors in dual mode)
+                if mode == "rainbow":
+                    raise ValueError("Chase pattern not available in rainbow mode. Use rainbow, lightshow, rave, or aurora patterns.")
                 from rpi_ws281x import Color as WsColor
                 chase_delay = max(0.01, interval / 1000.0 / self.num_pixels) if interval > 0 else 0.05
                 if mode == "dual":
