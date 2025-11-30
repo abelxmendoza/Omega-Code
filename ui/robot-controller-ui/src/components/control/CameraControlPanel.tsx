@@ -170,15 +170,28 @@ export default function CameraControlPanel() {
     onPointerLeave: (e: React.PointerEvent) => { e.preventDefault(); stopRepeatSilent(); },
   });
 
-  const btnClass = (dir: Dir) =>
-    `p-4 m-1 rounded-lg text-white font-semibold select-none
+  // Color mapping for camera directions - always show colors
+  const directionColors: Record<Dir, { normal: string; pressed: string }> = {
+    up: { normal: 'bg-sky-600', pressed: 'bg-sky-700 ring-sky-300' },
+    down: { normal: 'bg-sky-600', pressed: 'bg-sky-700 ring-sky-300' },
+    left: { normal: 'bg-sky-600', pressed: 'bg-sky-700 ring-sky-300' },
+    right: { normal: 'bg-sky-600', pressed: 'bg-sky-700 ring-sky-300' },
+  };
+
+  const btnClass = (dir: Dir) => {
+    const colors = directionColors[dir];
+    const baseColor = pressed[dir] ? colors.pressed : colors.normal;
+    return `p-4 m-1 rounded-lg text-white font-semibold select-none
      w-14 h-14 flex items-center justify-center outline-none
      transition-colors duration-100
-     ${disabled 
-       ? 'bg-zinc-600 cursor-not-allowed opacity-50' 
-       : pressed[dir] 
-       ? 'bg-emerald-600 ring-2 ring-emerald-300' 
-       : 'bg-zinc-800 hover:bg-zinc-700'}`;
+     ${baseColor} ${
+       disabled 
+         ? 'cursor-not-allowed opacity-50' 
+         : pressed[dir]
+         ? 'ring-2'
+         : 'hover:opacity-90'
+     }`;
+  };
 
   return (
     <div className={`flex flex-col items-center ${disabled ? 'opacity-75' : ''}`}>

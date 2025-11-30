@@ -230,8 +230,8 @@ const SpeedControl: React.FC = () => {
       {/* Control Buttons */}
       <div className="grid grid-cols-2 gap-3 w-full">
         <button
-          className={`py-2 rounded text-white transition-colors ${
-            disabled ? 'bg-blue-900 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+          className={`py-2 rounded text-white transition-colors bg-blue-600 hover:bg-blue-700 ${
+            disabled ? 'cursor-not-allowed opacity-50' : ''
           }`}
           onClick={decreaseSpeed}
           disabled={disabled}
@@ -242,8 +242,8 @@ const SpeedControl: React.FC = () => {
         </button>
 
         <button
-          className={`py-2 rounded text-white transition-colors ${
-            disabled ? 'bg-blue-900 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+          className={`py-2 rounded text-white transition-colors bg-blue-600 hover:bg-blue-700 ${
+            disabled ? 'cursor-not-allowed opacity-50' : ''
           }`}
           onClick={increaseSpeed}
           disabled={disabled}
@@ -254,8 +254,8 @@ const SpeedControl: React.FC = () => {
         </button>
 
         <button
-          className={`col-span-2 py-2 rounded text-white transition-colors ${
-            disabled ? 'bg-red-900 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'
+          className={`col-span-2 py-2 rounded text-white transition-colors bg-red-600 hover:bg-red-700 ${
+            disabled ? 'cursor-not-allowed opacity-50' : ''
           }`}
           onClick={emergencyStop}
           disabled={disabled}
@@ -275,8 +275,8 @@ const SpeedControl: React.FC = () => {
         </button>
 
         <button
-          className={`col-span-2 py-2 rounded text-white select-none transition-colors ${
-            disabled ? 'bg-purple-900 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'
+          className={`col-span-2 py-2 rounded text-white select-none transition-colors bg-purple-600 hover:bg-purple-700 ${
+            disabled ? 'cursor-not-allowed opacity-50' : ''
           }`}
           {...hornPointerHandlers}
           disabled={disabled}

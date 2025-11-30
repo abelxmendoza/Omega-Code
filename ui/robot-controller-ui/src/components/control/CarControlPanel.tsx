@@ -157,25 +157,33 @@ const CarControlPanel: React.FC = () => {
     void stopAll();
   };
 
-  const btnBase =
-    'select-none p-4 m-1 rounded-lg text-white font-semibold transition-all ' +
-    'duration-100 min-w-[3.25rem] min-h-[3.25rem] outline-none focus:ring-2 ' +
-    'active:scale-[0.98]';
+  // Color mapping for car directions - always show colors (same as camera panel)
+  const directionColors: Record<Direction, { normal: string; pressed: string }> = {
+    up: { normal: 'bg-sky-600', pressed: 'bg-sky-700 ring-sky-300' },
+    down: { normal: 'bg-sky-600', pressed: 'bg-sky-700 ring-sky-300' },
+    left: { normal: 'bg-sky-600', pressed: 'bg-sky-700 ring-sky-300' },
+    right: { normal: 'bg-sky-600', pressed: 'bg-sky-700 ring-sky-300' },
+  };
 
-  // Match Camera panel active color/ring
-  const buttonClass = (direction: Direction) =>
-    `${btnBase} ${
-      disabled
-        ? 'bg-gray-600 cursor-not-allowed opacity-50'
-        : pressed[direction]
-        ? 'bg-emerald-600 ring-emerald-300'
-        : 'bg-gray-800 hover:bg-gray-700'
-    }`;
+  const buttonClass = (direction: Direction) => {
+    const colors = directionColors[direction];
+    const baseColor = pressed[direction] ? colors.pressed : colors.normal;
+    return `p-4 m-1 rounded-lg text-white font-semibold select-none
+     w-14 h-14 flex items-center justify-center outline-none
+     transition-colors duration-100
+     ${baseColor} ${
+       disabled 
+         ? 'cursor-not-allowed opacity-50' 
+         : pressed[direction]
+         ? 'ring-2'
+         : 'hover:opacity-90'
+     }`;
+  };
 
   return (
-    <div className={`flex flex-col items-center gap-2 ${disabled ? 'opacity-50' : ''}`} onContextMenu={(e) => e.preventDefault()}>
-      <div className="flex items-center gap-2">
-        <h2 className="text-lg font-bold">Car Control</h2>
+    <div className={`flex flex-col items-center ${disabled ? 'opacity-75' : ''}`} onContextMenu={(e) => e.preventDefault()}>
+      <div className="flex items-center gap-2 mb-2">
+        <div className="text-lg font-bold">Car Control</div>
         <span className={`inline-block rounded-full ${status === 'connected' ? 'bg-emerald-500' : status === 'connecting' ? 'bg-slate-500' : 'bg-rose-500'}`} style={{ width: 8, height: 8 }} title={`Movement server: ${status}`} />
       </div>
 
@@ -193,7 +201,7 @@ const CarControlPanel: React.FC = () => {
         W
       </button>
 
-      <div className="flex gap-2">
+      <div className="flex space-x-2">
         <button
           disabled={disabled}
           aria-label="Move Left (A)"
