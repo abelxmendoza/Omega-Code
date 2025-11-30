@@ -70,10 +70,10 @@ class UnifiedNetworkManager {
       gatewayHost: 'omega1-1.hartley-ghost.ts.net',
       gatewayPort: '7070',
       wsEndpoints: {
-        movement: 'ws://omega1-1.hartley-ghost.ts.net:7070/ws/movement',
-        ultrasonic: 'ws://omega1-1.hartley-ghost.ts.net:7070/ws/ultrasonic',
+        movement: 'ws://omega1-1.hartley-ghost.ts.net:8081/',
+        ultrasonic: 'ws://omega1-1.hartley-ghost.ts.net:8080/ultrasonic',
         lineTracker: 'ws://omega1-1.hartley-ghost.ts.net:7070/ws/line',
-        lighting: 'ws://omega1-1.hartley-ghost.ts.net:7070/ws/lighting',
+        lighting: 'ws://100.93.225.61:8082/lighting',
         video: 'ws://omega1-1.hartley-ghost.ts.net:7070/video_feed'
       },
       httpEndpoints: {
@@ -100,10 +100,10 @@ class UnifiedNetworkManager {
       gatewayHost: '192.168.6.164',
       gatewayPort: '7070',
       wsEndpoints: {
-        movement: 'ws://192.168.6.164:7070/ws/movement',
-        ultrasonic: 'ws://192.168.6.164:7070/ws/ultrasonic',
+        movement: 'ws://192.168.1.107:8081/',
+        ultrasonic: 'ws://192.168.1.107:8080/ultrasonic',
         lineTracker: 'ws://192.168.6.164:7070/ws/line',
-        lighting: 'ws://192.168.6.164:7070/ws/lighting',
+        lighting: 'ws://192.168.1.107:8082/lighting',
         video: 'ws://192.168.6.164:7070/video_feed'
       },
       httpEndpoints: {
@@ -130,10 +130,10 @@ class UnifiedNetworkManager {
       gatewayHost: '192.168.6.164', // Same as WiFi but with mobile optimizations
       gatewayPort: '7070',
       wsEndpoints: {
-        movement: 'ws://192.168.6.164:7070/ws/movement',
-        ultrasonic: 'ws://192.168.6.164:7070/ws/ultrasonic',
+        movement: 'ws://192.168.1.107:8081/',
+        ultrasonic: 'ws://192.168.1.107:8080/ultrasonic',
         lineTracker: 'ws://192.168.6.164:7070/ws/line',
-        lighting: 'ws://192.168.6.164:7070/ws/lighting',
+        lighting: 'ws://192.168.1.107:8082/lighting',
         video: 'ws://192.168.6.164:7070/video_feed'
       },
       httpEndpoints: {
@@ -160,10 +160,10 @@ class UnifiedNetworkManager {
       gatewayHost: '100.93.225.61', // Direct Tailscale IP
       gatewayPort: '7070',
       wsEndpoints: {
-        movement: 'ws://100.93.225.61:7070/ws/movement',
-        ultrasonic: 'ws://100.93.225.61:7070/ws/ultrasonic',
+        movement: 'ws://100.93.225.61:8081/',
+        ultrasonic: 'ws://100.93.225.61:8080/ultrasonic',
         lineTracker: 'ws://100.93.225.61:7070/ws/line',
-        lighting: 'ws://100.93.225.61:7070/ws/lighting',
+        lighting: 'ws://100.93.225.61:8082/lighting',
         video: 'ws://100.93.225.61:7070/video_feed'
       },
       httpEndpoints: {
@@ -190,10 +190,10 @@ class UnifiedNetworkManager {
       gatewayHost: 'localhost',
       gatewayPort: '7070',
       wsEndpoints: {
-        movement: 'ws://localhost:7070/ws/movement',
-        ultrasonic: 'ws://localhost:7070/ws/ultrasonic',
+        movement: 'ws://localhost:8081/',
+        ultrasonic: 'ws://localhost:8080/ultrasonic',
         lineTracker: 'ws://localhost:7070/ws/line',
-        lighting: 'ws://localhost:7070/ws/lighting',
+        lighting: 'ws://localhost:8082/lighting',
         video: 'ws://localhost:7070/video_feed'
       },
       httpEndpoints: {
