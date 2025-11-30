@@ -131,6 +131,15 @@ export function useWsStatus(url: string | undefined, opts: Options = {}): Result
           return;
         }
 
+        // Handle welcome messages (reset watchdog, confirm connection)
+        if (parsed && (parsed.status === 'connected' || parsed.type === 'welcome' || parsed.service)) {
+          if (pongTimerRef.current) clearTimeout(pongTimerRef.current);
+          setStatus('connected');
+          // Re-arm watchdog - server is alive, now wait for pong
+          schedulePongWatchdog();
+          return;
+        }
+
         // Streaming-alive mode: any message counts as life-sign
         if (treatAnyMessageAsAlive) {
           if (pongTimerRef.current) clearTimeout(pongTimerRef.current);
