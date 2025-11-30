@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Simple wrapper to run movement_ws_server.py with venv Python
+# Usage: ./movement_server
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BACKEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Try venv Python first
+if [ -f "$BACKEND_DIR/venv/bin/python3" ]; then
+    exec "$BACKEND_DIR/venv/bin/python3" "$SCRIPT_DIR/movement_ws_server.py" "$@"
+elif [ -f "$BACKEND_DIR/../venv/bin/python3" ]; then
+    exec "$BACKEND_DIR/../venv/bin/python3" "$SCRIPT_DIR/movement_ws_server.py" "$@"
+else
+    # Fallback to system Python (with warning)
+    echo "⚠️  Warning: No venv found, using system Python. Hardware may not work."
+    exec python3 "$SCRIPT_DIR/movement_ws_server.py" "$@"
+fi
+
