@@ -411,7 +411,9 @@ class LedController:
                 )
                 self.is_on = True
             elif pattern == "fire":
-                # Fire effect - flickering flames
+                # Fire effect - flickering flames (uses predefined fire colors)
+                # Note: Fire effect uses orange/red/yellow colors by design for realism
+                # The selected color is ignored to maintain authentic fire appearance
                 update_ms = max(30, interval) if interval > 0 else 50
                 duration = max(10.0, update_ms / 1000.0 * 400)
                 fire_effect(
