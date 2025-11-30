@@ -286,6 +286,8 @@ class LedController:
                 raise ValueError(f"color must be 0-16777215 (0xFFFFFF), got {color}")
             if not isinstance(brightness, (int, float)) or brightness < 0 or brightness > 1:
                 raise ValueError(f"brightness must be 0.0-1.0, got {brightness}")
+            # Clamp brightness to minimum 0.35 (35%) for safety unless explicitly set higher
+            brightness = max(0.35, float(brightness))
             if not isinstance(interval, int) or interval < 0:
                 raise ValueError(f"interval must be >= 0, got {interval}")
             
@@ -315,7 +317,8 @@ class LedController:
             b2 = int(raw_b2 * brightness)
 
             # Pattern routing - check pattern first, then mode as fallback
-            if pattern == "rainbow" or mode == "rainbow":
+            # Rainbow patterns only work in rainbow mode
+            if pattern == "rainbow" or (mode == "rainbow" and pattern in ("rainbow", "lightshow", "rave", "aurora")):
                 # Rainbow runs continuously - use iterations for duration control
                 iterations = max(1, int(interval / 20)) if interval > 0 else 1
                 self.rainbow(interval if interval > 0 else 20, brightness, iterations)
@@ -360,7 +363,9 @@ class LedController:
                     chase(self.strip, WsColor(r, g, b), WsColor(0, 0, 0), delay=chase_delay)
                 self.is_on = True
             elif pattern == "pulse":
-                # Pulse pattern - fade in/out
+                # Pulse pattern - fade in/out (only for single and dual modes)
+                if mode == "rainbow":
+                    raise ValueError("Pulse pattern not available in rainbow mode. Use rainbow, lightshow, rave, or aurora patterns.")
                 pulse_cycles = max(3, int(interval / 200)) if interval > 0 else 5
                 pulse_delay = max(0.01, interval / 1000.0 / 50) if interval > 0 else 0.02
                 for _ in range(pulse_cycles):
@@ -376,7 +381,9 @@ class LedController:
                         time.sleep(pulse_delay)
                 self.is_on = True
             elif pattern in ("music", "music-reactive"):
-                # Music reactive pattern - audio visualization
+                # Music reactive pattern - audio visualization (only for single mode)
+                if mode != "single":
+                    raise ValueError("Music pattern only available in single mode.")
                 update_ms = max(50, interval) if interval > 0 else 80
                 duration = max(8.0, update_ms / 1000.0 * 80)
                 music_visualizer(
@@ -388,7 +395,9 @@ class LedController:
                 )
                 self.is_on = True
             elif pattern == "rave":
-                # Rave mode - energetic dancing lights (no audio required)
+                # Rave mode - energetic dancing lights (available in single and rainbow modes)
+                if mode == "dual":
+                    raise ValueError("Rave pattern not available in dual mode. Use static, blink, fade, chase, or pulse patterns.")
                 update_ms = max(30, interval) if interval > 0 else 50
                 duration = max(10.0, update_ms / 1000.0 * 200)  # Run longer for rave mode
                 rave_mode(
@@ -400,7 +409,9 @@ class LedController:
                 )
                 self.is_on = True
             elif pattern == "breathing":
-                # Breathing effect - smooth pulse like breathing
+                # Breathing effect - smooth pulse like breathing (only for single mode)
+                if mode != "single":
+                    raise ValueError("Breathing pattern only available in single mode.")
                 breathing_interval = max(50, interval) if interval > 0 else 100
                 breathing(
                     self.strip,
@@ -411,7 +422,9 @@ class LedController:
                 )
                 self.is_on = True
             elif pattern == "aurora":
-                # Aurora effect - flowing northern lights
+                # Aurora effect - flowing northern lights (available in single and rainbow modes)
+                if mode == "dual":
+                    raise ValueError("Aurora pattern not available in dual mode. Use static, blink, fade, chase, or pulse patterns.")
                 update_ms = max(50, interval) if interval > 0 else 80
                 duration = max(10.0, update_ms / 1000.0 * 250)
                 aurora(
@@ -423,7 +436,9 @@ class LedController:
                 )
                 self.is_on = True
             elif pattern == "matrix":
-                # Matrix rain effect
+                # Matrix rain effect (only for single mode)
+                if mode != "single":
+                    raise ValueError("Matrix pattern only available in single mode.")
                 update_ms = max(50, interval) if interval > 0 else 100
                 duration = max(10.0, update_ms / 1000.0 * 150)
                 matrix_rain(
@@ -435,9 +450,11 @@ class LedController:
                 )
                 self.is_on = True
             elif pattern == "fire":
-                # Fire effect - flickering flames (uses predefined fire colors)
+                # Fire effect - flickering flames (only for single mode)
                 # Note: Fire effect uses orange/red/yellow colors by design for realism
                 # The selected color is ignored to maintain authentic fire appearance
+                if mode != "single":
+                    raise ValueError("Fire pattern only available in single mode.")
                 update_ms = max(30, interval) if interval > 0 else 50
                 duration = max(10.0, update_ms / 1000.0 * 400)
                 fire_effect(

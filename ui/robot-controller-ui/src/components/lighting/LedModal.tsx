@@ -17,20 +17,43 @@ import { Switch } from '../ui/switch';
 
 // Updated to match backend capabilities - optimized with cool patterns
 const LIGHTING_MODES = ['single', 'rainbow', 'dual'] as const;
-const LIGHTING_PATTERNS = [
+
+// Patterns organized by mode
+const SINGLE_MODE_PATTERNS = [
   'static',      // Solid color
   'pulse',       // Fade in/out
   'blink',       // On/off blinking
   'fade',        // Smooth transitions
   'chase',       // Moving chase effect
-  'rainbow',     // Spectrum sweep
-  'lightshow',   // Multi-stage animation
-  'music',       // Audio reactive
-  'rave',        // Energetic dancing lights
   'breathing',   // Smooth breathing pulse
   'aurora',      // Flowing northern lights
   'matrix',      // Matrix rain effect
   'fire',        // Flickering fire effect
+  'lightshow',   // Multi-stage animation
+  'music',       // Audio reactive
+  'rave',        // Energetic dancing lights
+] as const;
+
+const DUAL_MODE_PATTERNS = [
+  'static',      // Alternating colors
+  'blink',       // Blink between two colors
+  'fade',        // Fade between two colors
+  'chase',       // Chase with two colors
+  'pulse',       // Pulse between two colors
+] as const;
+
+const RAINBOW_MODE_PATTERNS = [
+  'rainbow',     // Spectrum sweep
+  'lightshow',   // Multi-stage animation
+  'rave',        // Energetic dancing lights
+  'aurora',      // Flowing northern lights
+] as const;
+
+// All patterns combined (for type definition)
+const LIGHTING_PATTERNS = [
+  ...SINGLE_MODE_PATTERNS,
+  ...DUAL_MODE_PATTERNS,
+  ...RAINBOW_MODE_PATTERNS,
 ] as const;
 
 type LightingMode = (typeof LIGHTING_MODES)[number];
@@ -48,9 +71,9 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   const [color1, setColor1] = useState('#ffffff');
   const [color2, setColor2] = useState('#000000');
   const [mode, setMode] = useState<LightingMode>(LIGHTING_MODES[0]);
-  const [pattern, setPattern] = useState<LightingPattern>(LIGHTING_PATTERNS[0]);
+  const [pattern, setPattern] = useState<LightingPattern>('static');
   const [intervalMs, setIntervalMs] = useState(1000);
-  const [brightness, setBrightness] = useState(100); // 0–100%
+  const [brightness, setBrightness] = useState(35); // Default 35% brightness (0–100%)
 
   // --- connection status & heartbeat state ---
   const [serverStatus, setServerStatus] = useState<ServerStatus>('disconnected');
@@ -258,12 +281,14 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       // Small delay to batch rapid changes
       setTimeout(() => {
         if (ledOn && wsOpen()) {
+          // Always use at least 35% brightness (0.35) unless user set it higher
+          const effectiveBrightness = Math.max(0.35, brightness / 100);
           const commandData: Record<string, unknown> = {
             color: color1,
             mode: mode,
             pattern: pattern,
             interval: pattern !== 'static' ? intervalMs : 0,
-            brightness: brightness / 100,
+            brightness: effectiveBrightness,
           };
           // Add color2 only when mode is dual
           if (mode === 'dual') {
@@ -289,8 +314,32 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     setColor2(color.hex);
     autoApplyIfOn();
   };
+  // Get available patterns for current mode
+  const getAvailablePatterns = (): readonly LightingPattern[] => {
+    switch (mode) {
+      case 'single':
+        return SINGLE_MODE_PATTERNS;
+      case 'dual':
+        return DUAL_MODE_PATTERNS;
+      case 'rainbow':
+        return RAINBOW_MODE_PATTERNS;
+      default:
+        return SINGLE_MODE_PATTERNS;
+    }
+  };
+
   const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setMode(e.target.value as LightingMode);
+    const newMode = e.target.value as LightingMode;
+    setMode(newMode);
+    
+    // Reset pattern to first available pattern for new mode
+    const availablePatterns = newMode === 'single' ? SINGLE_MODE_PATTERNS 
+                           : newMode === 'dual' ? DUAL_MODE_PATTERNS 
+                           : RAINBOW_MODE_PATTERNS;
+    if (!availablePatterns.includes(pattern as any)) {
+      setPattern(availablePatterns[0] as LightingPattern);
+    }
+    
     autoApplyIfOn();
   };
   const handlePatternChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -369,12 +418,14 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       }
     } else {
       // Turn ON: Send complete command with current settings
+      // Always use at least 35% brightness (0.35) unless user set it higher
+      const effectiveBrightness = Math.max(0.35, brightness / 100);
       const onCommand: Record<string, unknown> = {
         color: color1,
         mode: mode,
         pattern: pattern,
         interval: pattern !== 'static' ? intervalMs : 0,
-        brightness: brightness / 100, // Convert 0-100 to 0-1
+        brightness: effectiveBrightness, // Convert 0-100 to 0-1, minimum 0.35
       };
       // Add color2 only when mode is dual
       if (mode === 'dual') {
@@ -428,12 +479,14 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     
     // Send complete command payload matching backend LightingCommand struct
     // Backend expects: { color, color2 (optional), mode, pattern, interval, brightness }
+    // Always use at least 35% brightness (0.35) unless user set it higher
+    const effectiveBrightness = Math.max(0.35, brightness / 100);
     const commandData: Record<string, unknown> = {
       color: color1, // Hex string like "#ff0000"
       mode: mode,
       pattern: pattern,
       interval: pattern !== 'static' ? intervalMs : 0,
-      brightness: brightness / 100, // Convert 0-100% to 0-1.0
+      brightness: effectiveBrightness, // Convert 0-100% to 0-1.0, minimum 0.35
     };
     // Add color2 only when mode is dual
     if (mode === 'dual') {

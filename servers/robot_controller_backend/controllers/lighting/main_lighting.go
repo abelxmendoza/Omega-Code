@@ -249,13 +249,15 @@ func handleLighting(ws *websocket.Conn) {
 			}
 		}
 
-		// Brightness: default to 1.0 only when omitted; otherwise clamp to [0,1]
-		brightness := 1.0
+		// Brightness: default to 0.35 (35%) for safety, clamp to [0.35,1.0] to prevent full brightness unless explicitly set
+		brightness := 0.35
 		if command.Brightness != nil {
-			brightness = clampFloat(*command.Brightness, 0.0, 1.0)
+			brightness = clampFloat(*command.Brightness, 0.35, 1.0)
 			if brightness != *command.Brightness {
-				log.Printf("⚠️ [WARN] Brightness clamped from %.3f to %.3f", *command.Brightness, brightness)
+				log.Printf("⚠️ [WARN] Brightness clamped from %.3f to %.3f (minimum 0.35)", *command.Brightness, brightness)
 			}
+		} else {
+			log.Printf("   💡 [INFO] Using default brightness: 0.35 (35%%)")
 		}
 
 		// Interval: guard against negatives and set reasonable maximum
