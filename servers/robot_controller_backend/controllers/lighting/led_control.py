@@ -99,6 +99,7 @@ class LedController:
         
         self.num_pixels = num_pixels
         self.is_on = False
+        self._is_stub = False
         
         try:
             print(f"🔧 [INIT] Initializing LED strip: {num_pixels} pixels, pin {pin}, brightness {brightness}")
@@ -114,16 +115,24 @@ class LedController:
             )
             self.strip.begin()
             print(f"✅ [SUCCESS] LED strip initialized successfully")
+            self._is_stub = False
         except ImportError as e:
             print(f"❌ [ERROR] rpi_ws281x library not available: {e}")
             print(f"   Falling back to StubPixelStrip (no hardware output)")
             self.strip = StubPixelStrip(num_pixels)
+            self._is_stub = True
         except Exception as exc:
-            print(f"❌ [ERROR] Failed to initialize LED strip: {exc}")
-            print(f"   Error type: {type(exc).__name__}")
-            print(f"   Falling back to StubPixelStrip (no hardware output)")
-            traceback.print_exc()
+            # Check if it's a permission error (expected when not running as root)
+            if "Permission denied" in str(exc) or "mmap() failed" in str(exc) or "code -5" in str(exc):
+                print(f"⚠️  [WARN] Hardware access denied (need sudo for hardware control)")
+                print(f"   Falling back to StubPixelStrip (no hardware output)")
+                print(f"   To control hardware LEDs, run with: sudo python3 ...")
+            else:
+                print(f"❌ [ERROR] Failed to initialize LED strip: {exc}")
+                print(f"   Error type: {type(exc).__name__}")
+                print(f"   Falling back to StubPixelStrip (no hardware output)")
             self.strip = StubPixelStrip(num_pixels)
+            self._is_stub = True
 
     def color_wipe(self, color, wait_ms=50):
         """Optimized color wipe using batch operations."""
@@ -422,6 +431,21 @@ class LedController:
 
     def get_status(self):
         return "ON" if self.is_on else "OFF"
+    
+    def cleanup(self):
+        """Clean up resources. Safe to call multiple times."""
+        try:
+            if not self._is_stub and hasattr(self.strip, 'cleanup'):
+                self.strip.cleanup()
+        except Exception:
+            pass  # Ignore cleanup errors
+    
+    def __del__(self):
+        """Destructor - ensure cleanup on deletion."""
+        try:
+            self.cleanup()
+        except Exception:
+            pass  # Ignore errors during destruction
 
 
 # Backwards compatible aliases expected by older modules/tests

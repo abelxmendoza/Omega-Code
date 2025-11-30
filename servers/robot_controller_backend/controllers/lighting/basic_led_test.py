@@ -32,9 +32,10 @@ from controllers.lighting.led_control import LedController
 from rpi_ws281x import Color
 
 if __name__ == "__main__":
-    led = LedController()
+    try:
+        led = LedController()
 
-    if len(sys.argv) == 2:
+        if len(sys.argv) == 2:
         # Named color mode
         c = sys.argv[1].lower()
         if c == 'red':
@@ -60,8 +61,21 @@ if __name__ == "__main__":
             print("Invalid RGB values. Please provide integers from 0 to 255.")
             sys.exit(1)
 
-    else:
-        # No arguments: cycle through red, green, and blue (functionality test)
-        print("🚦 Starting LED functionality test. Press Ctrl+C to exit.")
-        led.test_colors()
-        print("✅ LED test complete.")
+        else:
+            # No arguments: cycle through red, green, and blue (functionality test)
+            print("🚦 Starting LED functionality test. Press Ctrl+C to exit.")
+            led.test_colors()
+            print("✅ LED test complete.")
+    except KeyboardInterrupt:
+        print("\n⚠️  Test interrupted by user")
+        sys.exit(0)
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        sys.exit(1)
+    finally:
+        # Ensure cleanup
+        if 'led' in locals():
+            try:
+                led.cleanup()
+            except Exception:
+                pass
