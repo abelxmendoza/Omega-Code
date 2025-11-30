@@ -1,6 +1,7 @@
 #!/bin/bash
 # Script to consolidate robot-controller-backend and robot_controller_backend directories
 # This script safely merges any differences and removes the duplicate directory
+# NOTE: robot_controller_backend is the PRIMARY/ORIGINAL directory
 
 set -e
 
@@ -14,6 +15,9 @@ echo "🔍 Backend Directory Consolidation Script"
 echo "=========================================="
 echo ""
 echo "Checking directories in: $SERVERS_DIR"
+echo ""
+echo "⚠️  IMPORTANT: $NEW_DIR is the PRIMARY directory (original)"
+echo "   $OLD_DIR will be merged INTO $NEW_DIR and then removed"
 echo ""
 
 # Check if both directories exist
@@ -35,6 +39,8 @@ if [ ! -d "$NEW_DIR" ]; then
 fi
 
 echo "📋 Both directories exist. Analyzing differences..."
+echo "   Primary: $NEW_DIR (will keep this)"
+echo "   Merge from: $OLD_DIR (will merge into primary, then remove)"
 echo ""
 
 # Create temporary directory for comparison
@@ -94,13 +100,16 @@ echo ""
 # Show files only in old directory
 if [ ! -z "$ONLY_IN_OLD" ]; then
     echo "📁 Files only in $OLD_DIR (will be copied to $NEW_DIR):"
-    echo "$ONLY_IN_OLD" | sed 's/^/   - /'
+    echo "$ONLY_IN_OLD" | head -20 | sed 's/^/   - /'
+    if [ $(echo "$ONLY_IN_OLD" | wc -l) -gt 20 ]; then
+        echo "   ... and $(($(echo "$ONLY_IN_OLD" | wc -l) - 20)) more"
+    fi
     echo ""
 fi
 
 # Show files only in new directory
 if [ ! -z "$ONLY_IN_NEW" ]; then
-    echo "📁 Files only in $NEW_DIR (already present):"
+    echo "📁 Files only in $NEW_DIR (already present - will keep):"
     echo "$ONLY_IN_NEW" | head -10 | sed 's/^/   - /'
     if [ $(echo "$ONLY_IN_NEW" | wc -l) -gt 10 ]; then
         echo "   ... and $(($(echo "$ONLY_IN_NEW" | wc -l) - 10)) more"
@@ -116,14 +125,16 @@ if [ ! -z "$DIFFERENT_FILES" ]; then
         echo "   ... and $(($(echo "$DIFFERENT_FILES" | wc -l) - 10)) more"
     fi
     echo ""
-    echo "   These files will be backed up before overwriting."
+    echo "   ⚠️  STRATEGY: Since $NEW_DIR is the PRIMARY directory,"
+    echo "      we will KEEP the version in $NEW_DIR and IGNORE $OLD_DIR versions"
+    echo "      (unless you want to manually review differences)"
     echo ""
 fi
 
 # Ask for confirmation
 echo "⚠️  This will:"
 echo "   1. Copy unique files from $OLD_DIR to $NEW_DIR"
-echo "   2. Backup differing files in $NEW_DIR before overwriting"
+echo "   2. KEEP existing files in $NEW_DIR (primary directory)"
 echo "   3. Remove $OLD_DIR after successful merge"
 echo ""
 read -p "Continue with merge? (y/N) " -n 1 -r
@@ -133,50 +144,35 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 1
 fi
 
-# Create backup directory
-BACKUP_DIR="${NEW_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
+# Create backup directory (just in case)
+BACKUP_DIR="${OLD_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
 echo ""
-echo "💾 Creating backup: $BACKUP_DIR"
-cp -r "$NEW_DIR" "$BACKUP_DIR"
+echo "💾 Creating backup of $OLD_DIR: $BACKUP_DIR"
+cp -r "$OLD_DIR" "$BACKUP_DIR"
 echo "✅ Backup created"
 echo ""
 
 # Copy files only in old directory
 if [ ! -z "$ONLY_IN_OLD" ]; then
     echo "📋 Copying unique files from $OLD_DIR to $NEW_DIR..."
+    COPIED=0
     echo "$ONLY_IN_OLD" | while read -r file; do
         src="$OLD_DIR/$file"
         dst="$NEW_DIR/$file"
         dst_dir=$(dirname "$dst")
         mkdir -p "$dst_dir"
-        cp -v "$src" "$dst"
+        if cp -v "$src" "$dst" 2>/dev/null; then
+            COPIED=$((COPIED + 1))
+        fi
     done
     echo "✅ Unique files copied"
     echo ""
 fi
 
-# Handle differing files - backup new version, then copy old version
+# Note about differing files - we keep NEW_DIR versions
 if [ ! -z "$DIFFERENT_FILES" ]; then
-    echo "⚠️  Handling differing files..."
-    echo "$DIFFERENT_FILES" | while read -r file; do
-        src="$OLD_DIR/$file"
-        dst="$NEW_DIR/$file"
-        backup="$BACKUP_DIR/$file"
-        
-        # Backup the new version if it exists
-        if [ -f "$dst" ]; then
-            echo "   Backing up: $file"
-            mkdir -p "$(dirname "$backup")"
-            cp "$dst" "$backup"
-        fi
-        
-        # Copy old version
-        echo "   Copying: $file"
-        dst_dir=$(dirname "$dst")
-        mkdir -p "$dst_dir"
-        cp "$src" "$dst"
-    done
-    echo "✅ Differing files handled"
+    echo "ℹ️  Differing files: Keeping versions from $NEW_DIR (primary)"
+    echo "   If you need files from $OLD_DIR, check backup: $BACKUP_DIR"
     echo ""
 fi
 
@@ -191,9 +187,9 @@ echo ""
 echo "📋 Summary:"
 echo "   - Backup created: $BACKUP_DIR"
 echo "   - Unique files copied: $(echo "$ONLY_IN_OLD" | grep -c . || echo 0)"
-echo "   - Differing files merged: $(echo "$DIFFERENT_FILES" | grep -c . || echo 0)"
+echo "   - Differing files: Kept versions from $NEW_DIR (primary)"
 echo "   - Old directory removed: $OLD_DIR"
 echo ""
 echo "⚠️  Review the backup if needed: $BACKUP_DIR"
-echo "   You can remove it once you've verified everything works."
-
+echo "   You can remove it once you've verified everything works:"
+echo "   rm -rf $BACKUP_DIR"
