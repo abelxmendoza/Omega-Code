@@ -32,22 +32,27 @@ const directionToCommand: Record<Direction, string> = {
 const MOVE_STOP = COMMAND.MOVE_STOP || 'move-stop';
 
 const CarControlPanel: React.FC = () => {
-  const { sendCommand, addCommand } = useCommand();
+  const { sendCommand, addCommand, status } = useCommand();
 
   const [pressed, setPressed] = useState<Record<Direction, boolean>>({
     up: false, down: false, left: false, right: false,
   });
 
   const activeDirRef = useRef<Direction | null>(null);
+  const disabled = status !== 'connected';
 
-  const send = useCallback(async (cmd: string) => {
+  const send = useCallback((cmd: string) => {
+    if (disabled) {
+      addCommand(`Cannot send ${cmd}: WebSocket not connected`);
+      return;
+    }
     try {
-      await sendCommand(cmd);
+      sendCommand(cmd);
       addCommand(`Command Sent: ${cmd}`);
     } catch (e: any) {
       addCommand(`Command Error: ${cmd} — ${e?.message ?? e}`);
     }
-  }, [sendCommand, addCommand]);
+  }, [sendCommand, addCommand, disabled]);
 
   const pressOnly = useCallback((dir: Direction | null) => {
     setPressed({
@@ -160,71 +165,82 @@ const CarControlPanel: React.FC = () => {
   // Match Camera panel active color/ring
   const buttonClass = (direction: Direction) =>
     `${btnBase} ${
-      pressed[direction]
+      disabled
+        ? 'bg-gray-600 cursor-not-allowed opacity-50'
+        : pressed[direction]
         ? 'bg-emerald-600 ring-emerald-300'
         : 'bg-gray-800 hover:bg-gray-700'
     }`;
 
   return (
-    <div className="flex flex-col items-center gap-2" onContextMenu={(e) => e.preventDefault()}>
-      <h2 className="text-lg font-bold">Car Control</h2>
+    <div className={`flex flex-col items-center gap-2 ${disabled ? 'opacity-50' : ''}`} onContextMenu={(e) => e.preventDefault()}>
+      <div className="flex items-center gap-2">
+        <h2 className="text-lg font-bold">Car Control</h2>
+        <span className={`inline-block rounded-full ${status === 'connected' ? 'bg-emerald-500' : status === 'connecting' ? 'bg-slate-500' : 'bg-rose-500'}`} style={{ width: 8, height: 8 }} title={`Movement server: ${status}`} />
+      </div>
 
       <button
+        disabled={disabled}
         aria-label="Move Up (W)"
         aria-pressed={pressed.up}
-        title="Move Up (W)"
+        title={`Move Up (W)${disabled ? ' - Disconnected' : ''}`}
         className={buttonClass('up')}
-        onPointerDown={onPointerDown('up')}
-        onPointerUp={onPointerUp('up')}
-        onPointerCancel={onPointerCancel('up')}
-        onPointerLeave={onPointerLeave('up')}
+        onPointerDown={disabled ? undefined : onPointerDown('up')}
+        onPointerUp={disabled ? undefined : onPointerUp('up')}
+        onPointerCancel={disabled ? undefined : onPointerCancel('up')}
+        onPointerLeave={disabled ? undefined : onPointerLeave('up')}
       >
         W
       </button>
 
       <div className="flex gap-2">
         <button
+          disabled={disabled}
           aria-label="Move Left (A)"
           aria-pressed={pressed.left}
-          title="Move Left (A)"
+          title={`Move Left (A)${disabled ? ' - Disconnected' : ''}`}
           className={buttonClass('left')}
-          onPointerDown={onPointerDown('left')}
-          onPointerUp={onPointerUp('left')}
-          onPointerCancel={onPointerCancel('left')}
-          onPointerLeave={onPointerLeave('left')}
+          onPointerDown={disabled ? undefined : onPointerDown('left')}
+          onPointerUp={disabled ? undefined : onPointerUp('left')}
+          onPointerCancel={disabled ? undefined : onPointerCancel('left')}
+          onPointerLeave={disabled ? undefined : onPointerLeave('left')}
         >
           A
         </button>
 
         <button
+          disabled={disabled}
           aria-label="Move Right (D)"
           aria-pressed={pressed.right}
-          title="Move Right (D)"
+          title={`Move Right (D)${disabled ? ' - Disconnected' : ''}`}
           className={buttonClass('right')}
-          onPointerDown={onPointerDown('right')}
-          onPointerUp={onPointerUp('right')}
-          onPointerCancel={onPointerCancel('right')}
-          onPointerLeave={onPointerLeave('right')}
+          onPointerDown={disabled ? undefined : onPointerDown('right')}
+          onPointerUp={disabled ? undefined : onPointerUp('right')}
+          onPointerCancel={disabled ? undefined : onPointerCancel('right')}
+          onPointerLeave={disabled ? undefined : onPointerLeave('right')}
         >
           D
         </button>
       </div>
 
       <button
+        disabled={disabled}
         aria-label="Move Down (S)"
         aria-pressed={pressed.down}
-        title="Move Down (S)"
+        title={`Move Down (S)${disabled ? ' - Disconnected' : ''}`}
         className={buttonClass('down')}
-        onPointerDown={onPointerDown('down')}
-        onPointerUp={onPointerUp('down')}
-        onPointerCancel={onPointerCancel('down')}
-        onPointerLeave={onPointerLeave('down')}
+        onPointerDown={disabled ? undefined : onPointerDown('down')}
+        onPointerUp={disabled ? undefined : onPointerUp('down')}
+        onPointerCancel={disabled ? undefined : onPointerCancel('down')}
+        onPointerLeave={disabled ? undefined : onPointerLeave('down')}
       >
         S
       </button>
 
       {/* No explicit Stop button — Spacebar remains the emergency stop. */}
-      <p className="text-xs text-zinc-400 mt-1">Tips: W/A/S/D to drive • Space to Stop</p>
+      <p className="text-xs text-zinc-400 mt-1">
+        {disabled ? `Status: ${status}` : 'Tips: W/A/S/D to drive • Space to Stop'}
+      </p>
     </div>
   );
 };
