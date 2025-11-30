@@ -121,6 +121,7 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
   // Reconnect control
   const shouldReconnect = useRef(true);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backoffRef = useRef(1000); // Start at 1s, exponential backoff
   
   // Connection verification: wait for server confirmation before marking as connected
   const connectionVerified = useRef(false);
@@ -270,12 +271,15 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
       setWsUrl(wsInstance.url);
 
       wsInstance.onopen = () => {
+        // Reset backoff on successful connection
+        backoffRef.current = 1000;
+        
         // Don't mark as connected yet - wait for verification
         connectionVerified.current = false;
         setStatus('connecting'); // Keep as connecting until verified
         setLatencyMs(null);
         addCommand('WebSocket opened, verifying connection...');
-        
+
         // Set a timeout: if we don't get any message within 3 seconds, mark as disconnected
         if (verificationTimeout.current) {
           clearTimeout(verificationTimeout.current);
@@ -373,8 +377,10 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         cleanupHeartbeat();
 
         if (shouldReconnect.current) {
-          const backoff = 2000; // keep your original cadence
-          reconnectTimer.current = setTimeout(connectAndSetup, backoff);
+          // Exponential backoff: 1s, 2s, 4s, 8s, max 10s
+          const delay = Math.min(backoffRef.current, 10000);
+          reconnectTimer.current = setTimeout(connectAndSetup, delay);
+          backoffRef.current = Math.min(backoffRef.current * 2, 10000);
         }
       };
 
@@ -390,12 +396,20 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
     const connectAndSetup = () => {
       setStatus('connecting');
       connectMovementWs()
-        .then(setupWebSocket)
+        .then((wsInstance) => {
+          // Reset backoff on successful connection
+          backoffRef.current = 1000;
+          setupWebSocket(wsInstance);
+        })
         .catch((err) => {
           const errorMsg = err?.message || String(err) || 'Unknown error';
           console.error('[CommandContext] WebSocket connection failed:', errorMsg);
           addCommand(`WebSocket failed to connect: ${errorMsg}`);
-          reconnectTimer.current = setTimeout(connectAndSetup, 2000);
+          
+          // Exponential backoff: 1s, 2s, 4s, 8s, max 10s
+          const delay = Math.min(backoffRef.current, 10000);
+          reconnectTimer.current = setTimeout(connectAndSetup, delay);
+          backoffRef.current = Math.min(backoffRef.current * 2, 10000);
         });
     };
 

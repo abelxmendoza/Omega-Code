@@ -413,6 +413,10 @@ if OPTIMIZATION_AVAILABLE:
 # Track connected clients to avoid stopping on non-last disconnects
 CLIENTS: Set[WebSocketServerProtocol] = set()
 
+# Connection limits and cleanup
+MAX_CLIENTS = 10  # Limit concurrent connections
+CONNECTION_TIMEOUT = 300  # 5 minutes idle timeout
+
 # ---------- helpers ----------
 
 def origin_ok(ws: WebSocketServerProtocol) -> bool:
@@ -559,6 +563,17 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
     request_path = _extract_request_path(ws, request_path)
     peer = getattr(ws, "remote_address", None)
 
+    # Check connection limit
+    if len(CLIENTS) >= MAX_CLIENTS:
+        await send_json(ws, err("server-busy", message="Too many connections"))
+        await ws.close(code=1013, reason="Server at capacity")
+        log(f"REJECTED {peer} - server at capacity ({len(CLIENTS)}/{MAX_CLIENTS})")
+        return
+
+    # Track connection start time and last activity
+    ws._connection_start = time.time()
+    ws._last_activity = time.time()
+
     CLIENTS.add(ws)
     log(f"CONNECTED {peer} path={request_path!r} clients={len(CLIENTS)}")
 
@@ -585,6 +600,9 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
         })
 
         async for message in ws:
+            # Update last activity timestamp
+            ws._last_activity = time.time()
+            
             try:
                 # JSON heartbeat
                 if isinstance(message, str) and message.startswith('{"type":"ping"'):
@@ -980,17 +998,49 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
 
 # ---------- serve ----------
 
+async def cleanup_stale_connections():
+    """Periodically clean up stale/idle connections"""
+    while True:
+        await asyncio.sleep(60)  # Check every minute
+        current_time = time.time()
+        stale_clients = []
+        
+        for client in CLIENTS.copy():
+            last_activity = getattr(client, '_last_activity', current_time)
+            if current_time - last_activity > CONNECTION_TIMEOUT:
+                stale_clients.append(client)
+        
+        for client in stale_clients:
+            try:
+                await client.close(code=1008, reason="Idle timeout")
+                log(f"Closed stale connection: {getattr(client, 'remote_address', 'unknown')}")
+            except Exception as e:
+                log_error(e, "Error closing stale connection", client)
+            finally:
+                CLIENTS.discard(client)
+        
+        if stale_clients:
+            log(f"Cleaned up {len(stale_clients)} stale connection(s)")
+
 async def main():
     log(f"listening on ws://0.0.0.0:{PORT}{'' if PATH=='/' else PATH}")
     log(f"ORIGIN_ALLOW={','.join(sorted(_ALLOWED_ORIGINS)) or '(none)'} "
         f"ALLOW_NO_ORIGIN={ALLOW_NO_ORIGIN} SIM_MODE={SIM_MODE}")
+    log(f"Connection limits: MAX_CLIENTS={MAX_CLIENTS}, CONNECTION_TIMEOUT={CONNECTION_TIMEOUT}s")
+    
+    # Start cleanup task
+    asyncio.create_task(cleanup_stale_connections())
+    
     async with websockets.serve(
         handler,
         "0.0.0.0",
         PORT,
-        ping_interval=None,
-        max_size=64 * 1024,
-        max_queue=64,
+        ping_interval=20,      # Send ping every 20 seconds
+        ping_timeout=10,       # Close if no pong within 10 seconds
+        close_timeout=10,      # Wait 10s for graceful close
+        max_size=32 * 1024,    # Reduce from 64KB to 32KB
+        max_queue=32,          # Reduce from 64 to 32
+        read_limit=32 * 1024,  # Limit read buffer
     ):
         await asyncio.Future()  # run forever
 
