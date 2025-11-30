@@ -66,13 +66,15 @@ interface LedModalProps {
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected';
 
-// Dual color orientations
+// Dual color orientations (for LEDs arranged around chassis perimeter)
 const DUAL_ORIENTATIONS = [
-  'alternate',     // Every other LED
-  'front_back',    // Front half / back half
-  'left_right',    // Left half / right half
-  'center_edge',   // Center LEDs / edge LEDs
-  'gradient',      // Smooth transition
+  'alternate',     // Every other LED alternates colors
+  'front_back',    // Front & back edges vs left & right edges
+  'left_right',    // Left & right edges vs front & back edges
+  'sides',         // Each side alternates (front/back=color1, left/right=color2)
+  'corners',       // Corner LEDs vs edge LEDs
+  'center_edge',   // Center of each side vs edges of each side
+  'gradient',      // Smooth transition around perimeter
   'segments',      // 4 segments alternating
   'thirds',        // 3 segments alternating
 ] as const;

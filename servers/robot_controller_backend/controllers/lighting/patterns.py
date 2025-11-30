@@ -51,13 +51,18 @@ def color_wipe(strip, color):
 def dual_color(strip, color1, color2=Color(0,0,0), orientation="alternate"):
     """
     Apply two colors to the strip with different orientations.
+    Designed for LEDs arranged around a chassis perimeter.
     Args:
         strip: The initialized NeoPixel strip object.
         color1: Color object for primary color.
         color2: Color object for secondary color.
-        orientation: Layout pattern - "alternate", "front_back", "left_right", "center_edge", "gradient", "segments", "thirds"
+        orientation: Layout pattern for chassis perimeter LEDs
     """
     num_pixels = strip.numPixels()
+    
+    # Assume LEDs are arranged around chassis: front -> right -> back -> left (or similar)
+    # Divide into 4 sides for chassis-aware orientations
+    quarter = num_pixels // 4
     
     if orientation == "alternate":
         # Every other LED alternates colors
@@ -65,26 +70,58 @@ def dual_color(strip, color1, color2=Color(0,0,0), orientation="alternate"):
             strip.setPixelColor(i, color1 if i % 2 == 0 else color2)
     
     elif orientation == "front_back":
-        # Front half one color, back half another
-        midpoint = num_pixels // 2
+        # Front and back edges one color, left and right edges another
+        # Front: 0 to quarter, Back: 2*quarter to 3*quarter
+        # Left: 3*quarter to end, Right: quarter to 2*quarter
         for i in range(num_pixels):
-            strip.setPixelColor(i, color1 if i < midpoint else color2)
+            # Front or back edge
+            if (0 <= i < quarter) or (2 * quarter <= i < 3 * quarter):
+                strip.setPixelColor(i, color1)
+            else:
+                # Left or right edge
+                strip.setPixelColor(i, color2)
     
     elif orientation == "left_right":
-        # Left half one color, right half another (same as front_back for linear strip)
-        midpoint = num_pixels // 2
+        # Left and right edges one color, front and back edges another
         for i in range(num_pixels):
-            strip.setPixelColor(i, color1 if i < midpoint else color2)
+            # Left or right edge
+            if (quarter <= i < 2 * quarter) or (3 * quarter <= i < num_pixels):
+                strip.setPixelColor(i, color1)
+            else:
+                # Front or back edge
+                strip.setPixelColor(i, color2)
+    
+    elif orientation == "corners":
+        # Corner LEDs one color, edge LEDs another
+        # Corners are at: 0, quarter, 2*quarter, 3*quarter
+        corner_positions = [0, quarter, 2 * quarter, 3 * quarter]
+        # Also include LEDs near corners (within 2 LEDs)
+        corner_range = 2
+        for i in range(num_pixels):
+            is_corner = False
+            for corner in corner_positions:
+                if abs(i - corner) <= corner_range or abs(i - corner - num_pixels) <= corner_range:
+                    is_corner = True
+                    break
+            strip.setPixelColor(i, color1 if is_corner else color2)
+    
+    elif orientation == "sides":
+        # Each side alternates: front=color1, right=color2, back=color1, left=color2
+        for i in range(num_pixels):
+            side = i // quarter
+            strip.setPixelColor(i, color1 if side % 2 == 0 else color2)
     
     elif orientation == "center_edge":
-        # Center LEDs one color, edges another
-        center_start = num_pixels // 4
-        center_end = (3 * num_pixels) // 4
+        # Center LEDs of each side one color, edge LEDs another
+        # For each side, use color1 for middle LEDs, color2 for edges
         for i in range(num_pixels):
-            if center_start <= i < center_end:
-                strip.setPixelColor(i, color1)  # Center
+            side = i // quarter
+            pos_in_side = i % quarter
+            # Middle 50% of each side gets color1, edges get color2
+            if quarter // 4 <= pos_in_side < 3 * quarter // 4:
+                strip.setPixelColor(i, color1)
             else:
-                strip.setPixelColor(i, color2)  # Edges
+                strip.setPixelColor(i, color2)
     
     elif orientation == "gradient":
         # Smooth gradient transition from color1 to color2
