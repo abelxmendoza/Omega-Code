@@ -622,53 +622,92 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
           disabled={serverStatus !== 'connected'}
           className={serverStatus === 'connected' ? '' : 'opacity-50'}
         >
-          {/* Color Picker 1 */}
-          <label className="block text-[#00FF88] font-semibold mb-2 text-lg" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
-            {mode === 'dual' ? 'Primary Color:' : 'Color:'}
-          </label>
-          <div className="border border-[#C400FF]/30 rounded-lg p-2 bg-[#1A1A1A]/50">
-            <SketchPicker color={color1} onChange={handleColor1Change} />
+          {/* Single Color Picker - works for both single and dual modes */}
+          <div>
+            {mode === 'dual' ? (
+              <>
+                <label className="block text-[#00FF88] font-semibold mb-2 text-lg" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
+                  Color Selection:
+                </label>
+                {/* Color selection buttons for dual mode */}
+                <div className="flex gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditingColor('color1')}
+                    className={`flex-1 px-4 py-2 rounded-lg font-semibold transition-all ${
+                      editingColor === 'color1'
+                        ? 'bg-gradient-to-r from-[#C400FF] to-[#8B00FF] text-white border-2 border-[#C400FF] shadow-lg'
+                        : 'bg-[#1A1A1A] text-[#E0E0E0] border border-[#4A4A4A] hover:border-[#C400FF]/50'
+                    }`}
+                    style={{
+                      boxShadow: editingColor === 'color1' ? '0 0 15px rgba(196, 0, 255, 0.4)' : 'none'
+                    }}
+                  >
+                    Primary Color
+                    <div 
+                      className="w-6 h-6 rounded-full mx-auto mt-1 border-2 border-white/30"
+                      style={{ backgroundColor: color1 }}
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingColor('color2')}
+                    className={`flex-1 px-4 py-2 rounded-lg font-semibold transition-all ${
+                      editingColor === 'color2'
+                        ? 'bg-gradient-to-r from-[#C400FF] to-[#8B00FF] text-white border-2 border-[#C400FF] shadow-lg'
+                        : 'bg-[#1A1A1A] text-[#E0E0E0] border border-[#4A4A4A] hover:border-[#C400FF]/50'
+                    }`}
+                    style={{
+                      boxShadow: editingColor === 'color2' ? '0 0 15px rgba(196, 0, 255, 0.4)' : 'none'
+                    }}
+                  >
+                    Secondary Color
+                    <div 
+                      className="w-6 h-6 rounded-full mx-auto mt-1 border-2 border-white/30"
+                      style={{ backgroundColor: color2 }}
+                    />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <label className="block text-[#00FF88] font-semibold mb-2 text-lg" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
+                Color:
+              </label>
+            )}
+            <div className="border border-[#C400FF]/30 rounded-lg p-2 bg-[#1A1A1A]/50">
+              <SketchPicker color={currentColor} onChange={handleColorChange} />
+            </div>
           </div>
 
-          {/* Color Picker 2 - Only show when mode is dual */}
+          {/* Dual Color Orientation Selector - Only show when mode is dual */}
           {mode === 'dual' && (
-            <>
-              <label className="block text-[#00FF88] font-semibold mb-2 text-lg mt-4" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
-                Secondary Color:
+            <div className="mt-4">
+              <label htmlFor="dualOrientation" className="block text-[#00FF88] font-semibold mb-1" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
+                Color Layout (Chassis Perimeter):
               </label>
-              <div className="border border-[#C400FF]/30 rounded-lg p-2 bg-[#1A1A1A]/50">
-                <SketchPicker color={color2} onChange={handleColor2Change} />
-              </div>
-
-              {/* Dual Color Orientation Selector */}
-              <div className="mt-4">
-                <label htmlFor="dualOrientation" className="block text-[#00FF88] font-semibold mb-1" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>
-                  Color Layout (Chassis Perimeter):
-                </label>
-                <select
-                  id="dualOrientation"
-                  value={dualOrientation}
-                  onChange={(e) => {
-                    setDualOrientation(e.target.value as DualOrientation);
-                    autoApplyIfOn();
-                  }}
-                  className="w-full bg-[#1A1A1A] text-[#E0E0E0] p-2.5 rounded-lg border border-[#C400FF]/30 focus:border-[#C400FF] focus:ring-2 focus:ring-[#C400FF]/50 transition-all"
-                  style={{ 
-                    boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 10px rgba(196, 0, 255, 0.1)'
-                  }}
-                >
-                  <option value="alternate" className="bg-[#1A1A1A]">Alternate (Every Other LED)</option>
-                  <option value="front_back" className="bg-[#1A1A1A]">Front/Back Edges vs Left/Right</option>
-                  <option value="left_right" className="bg-[#1A1A1A]">Left/Right Edges vs Front/Back</option>
-                  <option value="sides" className="bg-[#1A1A1A]">Sides Alternate (Front/Back vs Left/Right)</option>
-                  <option value="corners" className="bg-[#1A1A1A]">Corners vs Edges</option>
-                  <option value="center_edge" className="bg-[#1A1A1A]">Center of Each Side vs Edges</option>
-                  <option value="gradient" className="bg-[#1A1A1A]">Gradient (Smooth Around Perimeter)</option>
-                  <option value="segments" className="bg-[#1A1A1A]">Segments (4 Sections)</option>
-                  <option value="thirds" className="bg-[#1A1A1A]">Thirds (3 Sections)</option>
-                </select>
-              </div>
-            </>
+              <select
+                id="dualOrientation"
+                value={dualOrientation}
+                onChange={(e) => {
+                  setDualOrientation(e.target.value as DualOrientation);
+                  autoApplyIfOn();
+                }}
+                className="w-full bg-[#1A1A1A] text-[#E0E0E0] p-2.5 rounded-lg border border-[#C400FF]/30 focus:border-[#C400FF] focus:ring-2 focus:ring-[#C400FF]/50 transition-all"
+                style={{ 
+                  boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 10px rgba(196, 0, 255, 0.1)'
+                }}
+              >
+                <option value="alternate" className="bg-[#1A1A1A]">Alternate (Every Other LED)</option>
+                <option value="front_back" className="bg-[#1A1A1A]">Front/Back Edges vs Left/Right</option>
+                <option value="left_right" className="bg-[#1A1A1A]">Left/Right Edges vs Front/Back</option>
+                <option value="sides" className="bg-[#1A1A1A]">Sides Alternate (Front/Back vs Left/Right)</option>
+                <option value="corners" className="bg-[#1A1A1A]">Corners vs Edges</option>
+                <option value="center_edge" className="bg-[#1A1A1A]">Center of Each Side vs Edges</option>
+                <option value="gradient" className="bg-[#1A1A1A]">Gradient (Smooth Around Perimeter)</option>
+                <option value="segments" className="bg-[#1A1A1A]">Segments (4 Sections)</option>
+                <option value="thirds" className="bg-[#1A1A1A]">Thirds (3 Sections)</option>
+              </select>
+            </div>
           )}
 
           {/* Mode Selector */}
