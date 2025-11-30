@@ -427,8 +427,6 @@ class LedController:
                 self.color_wipe(Color(r, g, b), wait_ms=10)
                 self.is_on = True
 
-            self.is_on = True
-
         except ValueError as e:
             print(f"❌ [ERROR] Invalid LED command: {e}")
             raise
