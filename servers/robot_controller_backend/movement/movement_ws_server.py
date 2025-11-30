@@ -1040,7 +1040,6 @@ async def main():
         close_timeout=10,      # Wait 10s for graceful close
         max_size=32 * 1024,    # Reduce from 64KB to 32KB
         max_queue=32,          # Reduce from 64 to 32
-        read_limit=32 * 1024,  # Limit read buffer
     ):
         await asyncio.Future()  # run forever
 
