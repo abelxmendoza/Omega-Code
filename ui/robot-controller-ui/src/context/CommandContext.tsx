@@ -349,8 +349,10 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
       setStatus('connecting');
       connectMovementWs()
         .then(setupWebSocket)
-        .catch(() => {
-          addCommand('WebSocket failed to connect (Tailscale and LAN)');
+        .catch((err) => {
+          const errorMsg = err?.message || String(err) || 'Unknown error';
+          console.error('[CommandContext] WebSocket connection failed:', errorMsg);
+          addCommand(`WebSocket failed to connect: ${errorMsg}`);
           reconnectTimer.current = setTimeout(connectAndSetup, 2000);
         });
     };
