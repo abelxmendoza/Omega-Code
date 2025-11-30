@@ -248,16 +248,16 @@ export default function CameraControlPanel() {
         <button
           disabled={disabled}
           onClick={() => {
-            // Center pan to 70° (your specified center position)
-            sendJson(SERVO_H, { angle: 70 });
-            // Center tilt to 20° (your specified center position)
+            // Center pan to 50° (center position)
+            sendJson(SERVO_H, { angle: 50 });
+            // Center tilt to 20° (center position)
             sendJson(SERVO_V, { angle: 20 });
           }}
           className={`px-3 py-2 rounded-md text-white font-semibold transition-colors ${
             disabled ? 'bg-sky-800 cursor-not-allowed opacity-50' : 'bg-sky-600 hover:bg-sky-500'
           }`}
-          title={`Center camera to Pan: 70°, Tilt: 20° (C / Home)${disabled ? ' - Disconnected' : ''}`}
-          aria-label={`Center camera to Pan: 70°, Tilt: 20° (C / Home)${disabled ? ' - Disconnected' : ''}`}
+          title={`Center camera to Pan: 50°, Tilt: 20° (C / Home)${disabled ? ' - Disconnected' : ''}`}
+          aria-label={`Center camera to Pan: 50°, Tilt: 20° (C / Home)${disabled ? ' - Disconnected' : ''}`}
         >
           Center
         </button>
