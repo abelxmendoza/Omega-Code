@@ -33,28 +33,40 @@ fi
 echo "✅ Using virtual environment Python: $VENV_PYTHON"
 echo ""
 
-# Check if rpi-ws281x is already installed
-echo "🔍 Checking for rpi-ws281x..."
-if "$VENV_PYTHON" -c "import rpi_ws281x" 2>/dev/null; then
-    echo "✅ rpi-ws281x is already installed"
-    "$VENV_PIP" show rpi-ws281x | grep -E "Name|Version|Location"
-else
-    echo "❌ rpi-ws281x not found"
-    echo "📦 Installing rpi-ws281x..."
+# Check and install dependencies
+echo "🔍 Checking dependencies..."
+
+# Function to check and install a package
+check_and_install_pkg() {
+    local package=$1
+    local import_name=${2:-$package}
     
-    # Upgrade pip first (required for some packages)
-    "$VENV_PIP" install --upgrade pip --quiet
-    
-    # Install rpi-ws281x
-    if "$VENV_PIP" install rpi-ws281x --quiet; then
-        echo "✅ Successfully installed rpi-ws281x"
-        "$VENV_PIP" show rpi-ws281x | grep -E "Name|Version|Location"
+    if "$VENV_PYTHON" -c "import $import_name" 2>/dev/null; then
+        echo "✅ $package is already installed"
+        "$VENV_PIP" show "$package" | grep -E "Name|Version|Location" || true
+        return 0
     else
-        echo "❌ Failed to install rpi-ws281x"
-        echo "💡 Try manually: $VENV_PIP install rpi-ws281x"
-        exit 1
+        echo "❌ $package not found"
+        echo "📦 Installing $package..."
+        if "$VENV_PIP" install "$package" --quiet; then
+            echo "✅ Successfully installed $package"
+            return 0
+        else
+            echo "❌ Failed to install $package"
+            return 1
+        fi
     fi
-fi
+}
+
+# Upgrade pip first (required for some packages)
+echo "📦 Upgrading pip..."
+"$VENV_PIP" install --upgrade pip --quiet >/dev/null 2>&1 || true
+
+# Install rpi-ws281x (required for LED control)
+check_and_install_pkg "rpi-ws281x" "rpi_ws281x" || exit 1
+
+# Install numpy (required for patterns.py)
+check_and_install_pkg "numpy" "numpy" || exit 1
 
 echo ""
 echo "✅ LED dependencies installed successfully!"
