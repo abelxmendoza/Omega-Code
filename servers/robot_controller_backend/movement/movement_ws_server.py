@@ -644,319 +644,319 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     await do_stop()
                     await send_json(ws, ok("stop"))
 
-                    # -------- STRAIGHT ASSIST --------
-                    elif cmd in {"straight-assist", "straight-assist-config"}:
-                        status_payload = STRAIGHT_ASSIST.status()
+                # -------- STRAIGHT ASSIST --------
+                elif cmd in {"straight-assist", "straight-assist-config"}:
+                    status_payload = STRAIGHT_ASSIST.status()
 
-                        bool_enable = _as_bool(data.get("enable"), None)
-                        if bool_enable is None:
-                            bool_enable = _as_bool(data.get("enabled"), None)
-                        if bool_enable is not None:
-                            status_payload = STRAIGHT_ASSIST.set_enabled(bool_enable)
+                    bool_enable = _as_bool(data.get("enable"), None)
+                    if bool_enable is None:
+                        bool_enable = _as_bool(data.get("enabled"), None)
+                    if bool_enable is not None:
+                        status_payload = STRAIGHT_ASSIST.set_enabled(bool_enable)
 
-                        bool_disable = _as_bool(data.get("disable"), None)
-                        if bool_disable is not None:
-                            status_payload = STRAIGHT_ASSIST.set_enabled(not bool_disable)
+                    bool_disable = _as_bool(data.get("disable"), None)
+                    if bool_disable is not None:
+                        status_payload = STRAIGHT_ASSIST.set_enabled(not bool_disable)
 
-                        step_val = _as_int(data.get("step"), None)
-                        if step_val is not None:
-                            status_payload = STRAIGHT_ASSIST.set_step(step_val)
+                    step_val = _as_int(data.get("step"), None)
+                    if step_val is not None:
+                        status_payload = STRAIGHT_ASSIST.set_step(step_val)
 
-                        max_val = _as_int(data.get("maxTrim", data.get("max_trim")), None)
-                        if max_val is not None:
-                            status_payload = STRAIGHT_ASSIST.set_max_trim(max_val)
+                    max_val = _as_int(data.get("maxTrim", data.get("max_trim")), None)
+                    if max_val is not None:
+                        status_payload = STRAIGHT_ASSIST.set_max_trim(max_val)
 
-                        left_val = data.get("leftTrim", data.get("left_trim"))
-                        right_val = data.get("rightTrim", data.get("right_trim"))
-                        trim_kwargs = {}
-                        if left_val is not None:
-                            parsed = _as_int(left_val, None)
-                            if parsed is not None:
-                                trim_kwargs["left"] = parsed
-                        if right_val is not None:
-                            parsed = _as_int(right_val, None)
-                            if parsed is not None:
-                                trim_kwargs["right"] = parsed
-                        if trim_kwargs:
-                            status_payload = STRAIGHT_ASSIST.set_trim(**trim_kwargs)
+                    left_val = data.get("leftTrim", data.get("left_trim"))
+                    right_val = data.get("rightTrim", data.get("right_trim"))
+                    trim_kwargs = {}
+                    if left_val is not None:
+                        parsed = _as_int(left_val, None)
+                        if parsed is not None:
+                            trim_kwargs["left"] = parsed
+                    if right_val is not None:
+                        parsed = _as_int(right_val, None)
+                        if parsed is not None:
+                            trim_kwargs["right"] = parsed
+                    if trim_kwargs:
+                        status_payload = STRAIGHT_ASSIST.set_trim(**trim_kwargs)
 
-                        await send_json(ws, ok("straight-assist", straightAssist=status_payload))
+                    await send_json(ws, ok("straight-assist", straightAssist=status_payload))
 
-                    elif cmd == "straight-assist-nudge":
-                        direction = data.get("direction") or data.get("drift") or data.get("dir")
-                        amount = _as_int(data.get("amount", data.get("step", data.get("by"))), None)
-                        if not direction:
-                            await send_json(ws, err("invalid-straight-assist", detail="direction required"))
-                        else:
-                            try:
-                                status_payload = STRAIGHT_ASSIST.nudge(direction, amount)
-                                await send_json(ws, ok("straight-assist-nudge", straightAssist=status_payload))
-                            except ValueError as exc:
-                                await send_json(ws, err("invalid-straight-assist", detail=str(exc)))
-
-                    elif cmd in {"straight-assist-reset", "straight-assist-clear"}:
-                        status_payload = STRAIGHT_ASSIST.reset()
-                        await send_json(ws, ok(cmd, straightAssist=status_payload))
-
-                    elif cmd == "straight-assist-status":
-                        await send_json(ws, ok("straight-assist-status", straightAssist=STRAIGHT_ASSIST.status()))
-
-                    # -------- SPEED --------
-                    elif cmd == "increase-speed":
-                        current_speed = clamp(current_speed + DEFAULT_SPEED_STEP, SPEED_MIN, SPEED_MAX)
-                        await send_json(ws, ok("increase-speed", speed=current_speed))
-
-                    elif cmd == "decrease-speed":
-                        current_speed = clamp(current_speed - DEFAULT_SPEED_STEP, SPEED_MIN, SPEED_MAX)
-                        await send_json(ws, ok("decrease-speed", speed=current_speed))
-
-                    elif cmd == "set-speed":
+                elif cmd == "straight-assist-nudge":
+                    direction = data.get("direction") or data.get("drift") or data.get("dir")
+                    amount = _as_int(data.get("amount", data.get("step", data.get("by"))), None)
+                    if not direction:
+                        await send_json(ws, err("invalid-straight-assist", detail="direction required"))
+                    else:
                         try:
-                            val = int(data.get("value", data.get("speed", current_speed)))
-                        except Exception:
-                            val = current_speed
-                        current_speed = clamp(val, SPEED_MIN, SPEED_MAX)
-                        await send_json(ws, ok("set-speed", speed=current_speed))
+                            status_payload = STRAIGHT_ASSIST.nudge(direction, amount)
+                            await send_json(ws, ok("straight-assist-nudge", straightAssist=status_payload))
+                        except ValueError as exc:
+                            await send_json(ws, err("invalid-straight-assist", detail=str(exc)))
 
-                    # -------- BUZZER --------
-                    elif cmd == "buzz":
-                        cancel_buzz_task()
-                        await buzz_on_safe()
-                        await send_json(ws, ok("buzz"))
+                elif cmd in {"straight-assist-reset", "straight-assist-clear"}:
+                    status_payload = STRAIGHT_ASSIST.reset()
+                    await send_json(ws, ok(cmd, straightAssist=status_payload))
 
-                    elif cmd == "buzz-stop":
-                        cancel_buzz_task()
-                        await buzz_off_safe()
-                        await send_json(ws, ok("buzz-stop"))
+                elif cmd == "straight-assist-status":
+                    await send_json(ws, ok("straight-assist-status", straightAssist=STRAIGHT_ASSIST.status()))
 
-                    elif cmd == "buzz-for":
-                        # one-shot beep for durationMs (10..10000 ms)
-                        try:
-                            dur = int(data.get("durationMs", 0))
-                        except Exception:
-                            dur = 0
-                        dur = clamp(dur, 10, 10000)
-                        if dur <= 0:
-                            await send_json(ws, err("bad-duration"))
-                        else:
-                            cancel_buzz_task()
-                            _last_buzz_op_id += 1
-                            my_id = _last_buzz_op_id
+                # -------- SPEED --------
+                elif cmd == "increase-speed":
+                    current_speed = clamp(current_speed + DEFAULT_SPEED_STEP, SPEED_MIN, SPEED_MAX)
+                    await send_json(ws, ok("increase-speed", speed=current_speed))
 
-                            async def _beep_once(ms: int, op_id: int):
-                                try:
-                                    await buzz_on_safe()
-                                    await asyncio.sleep(ms / 1000.0)
-                                except asyncio.CancelledError:
-                                    pass
-                                finally:
-                                    # Only the latest op is allowed to turn off
-                                    if op_id == _last_buzz_op_id:
-                                        await buzz_off_safe()
+                elif cmd == "decrease-speed":
+                    current_speed = clamp(current_speed - DEFAULT_SPEED_STEP, SPEED_MIN, SPEED_MAX)
+                    await send_json(ws, ok("decrease-speed", speed=current_speed))
 
-                            _buzz_task = asyncio.create_task(_beep_once(dur, my_id))
-                            await send_json(ws, ok("buzz-for", durationMs=dur))
+                elif cmd == "set-speed":
+                    try:
+                        val = int(data.get("value", data.get("speed", current_speed)))
+                    except Exception:
+                        val = current_speed
+                    current_speed = clamp(val, SPEED_MIN, SPEED_MAX)
+                    await send_json(ws, ok("set-speed", speed=current_speed))
 
-                    elif cmd == "buzz-pulse":
-                        # pulse pattern: onMs, offMs, repeat (defaults: 150,120,3)
-                        def _ival(x, d): 
-                            try:
-                                return int(x)
-                            except Exception:
-                                return d
-                        on_ms  = clamp(_ival(data.get("onMs"), 150), 5, 2000)
-                        off_ms = clamp(_ival(data.get("offMs"), 120), 5, 3000)
-                        repeat = clamp(_ival(data.get("repeat"), 3), 1, 50)
+                # -------- BUZZER --------
+                elif cmd == "buzz":
+                    cancel_buzz_task()
+                    await buzz_on_safe()
+                    await send_json(ws, ok("buzz"))
 
+                elif cmd == "buzz-stop":
+                    cancel_buzz_task()
+                    await buzz_off_safe()
+                    await send_json(ws, ok("buzz-stop"))
+
+                elif cmd == "buzz-for":
+                    # one-shot beep for durationMs (10..10000 ms)
+                    try:
+                        dur = int(data.get("durationMs", 0))
+                    except Exception:
+                        dur = 0
+                    dur = clamp(dur, 10, 10000)
+                    if dur <= 0:
+                        await send_json(ws, err("bad-duration"))
+                    else:
                         cancel_buzz_task()
                         _last_buzz_op_id += 1
                         my_id = _last_buzz_op_id
 
-                        async def _pulse(on_ms: int, off_ms: int, n: int, op_id: int):
+                        async def _beep_once(ms: int, op_id: int):
                             try:
-                                for _ in range(n):
-                                    if op_id != _last_buzz_op_id:
-                                        break
-                                    await buzz_on_safe()
-                                    await asyncio.sleep(on_ms / 1000.0)
-                                    if op_id != _last_buzz_op_id:
-                                        break
-                                    await buzz_off_safe()
-                                    await asyncio.sleep(off_ms / 1000.0)
+                                await buzz_on_safe()
+                                await asyncio.sleep(ms / 1000.0)
                             except asyncio.CancelledError:
                                 pass
                             finally:
+                                # Only the latest op is allowed to turn off
                                 if op_id == _last_buzz_op_id:
                                     await buzz_off_safe()
 
-                        _buzz_task = asyncio.create_task(_pulse(on_ms, off_ms, repeat, my_id))
-                        await send_json(ws, ok("buzz-pulse", onMs=on_ms, offMs=off_ms, repeat=repeat))
+                        _buzz_task = asyncio.create_task(_beep_once(dur, my_id))
+                        await send_json(ws, ok("buzz-for", durationMs=dur))
 
-                    # -------- AUTONOMY --------
-                    elif cmd == "autonomy-start":
-                        mode = data.get("mode")
+                elif cmd == "buzz-pulse":
+                    # pulse pattern: onMs, offMs, repeat (defaults: 150,120,3)
+                    def _ival(x, d): 
                         try:
-                            status = await AUTONOMY.start(mode, data.get("params") or {})
-                        except AutonomyError as exc:
-                            await send_json(ws, err("autonomy-error", detail=str(exc)))
-                        else:
-                            await send_json(ws, ok("autonomy-start", autonomy=status))
+                            return int(x)
+                        except Exception:
+                            return d
+                    on_ms  = clamp(_ival(data.get("onMs"), 150), 5, 2000)
+                    off_ms = clamp(_ival(data.get("offMs"), 120), 5, 3000)
+                    repeat = clamp(_ival(data.get("repeat"), 3), 1, 50)
 
-                    elif cmd == "autonomy-stop":
+                    cancel_buzz_task()
+                    _last_buzz_op_id += 1
+                    my_id = _last_buzz_op_id
+
+                    async def _pulse(on_ms: int, off_ms: int, n: int, op_id: int):
                         try:
-                            status = await AUTONOMY.stop()
-                        except AutonomyError as exc:
-                            await send_json(ws, err("autonomy-error", detail=str(exc)))
-                        else:
-                            await send_json(ws, ok("autonomy-stop", autonomy=status))
+                            for _ in range(n):
+                                if op_id != _last_buzz_op_id:
+                                    break
+                                await buzz_on_safe()
+                                await asyncio.sleep(on_ms / 1000.0)
+                                if op_id != _last_buzz_op_id:
+                                    break
+                                await buzz_off_safe()
+                                await asyncio.sleep(off_ms / 1000.0)
+                        except asyncio.CancelledError:
+                            pass
+                        finally:
+                            if op_id == _last_buzz_op_id:
+                                await buzz_off_safe()
 
-                    elif cmd == "autonomy-update":
-                        try:
-                            status = await AUTONOMY.update(data.get("params") or {})
-                        except AutonomyError as exc:
-                            await send_json(ws, err("autonomy-error", detail=str(exc)))
-                        else:
-                            await send_json(ws, ok("autonomy-update", autonomy=status))
+                    _buzz_task = asyncio.create_task(_pulse(on_ms, off_ms, repeat, my_id))
+                    await send_json(ws, ok("buzz-pulse", onMs=on_ms, offMs=off_ms, repeat=repeat))
 
-                    elif cmd == "autonomy-dock":
-                        try:
-                            status = await AUTONOMY.dock()
-                        except AutonomyError as exc:
-                            await send_json(ws, err("autonomy-error", detail=str(exc)))
-                        else:
-                            await send_json(ws, ok("autonomy-dock", autonomy=status))
+                # -------- AUTONOMY --------
+                elif cmd == "autonomy-start":
+                    mode = data.get("mode")
+                    try:
+                        status = await AUTONOMY.start(mode, data.get("params") or {})
+                    except AutonomyError as exc:
+                        await send_json(ws, err("autonomy-error", detail=str(exc)))
+                    else:
+                        await send_json(ws, ok("autonomy-start", autonomy=status))
 
-                    elif cmd == "autonomy-set_waypoint":
-                        try:
-                            status = await AUTONOMY.set_waypoint(
-                                data.get("label", ""),
-                                data.get("lat"),
-                                data.get("lon"),
-                            )
-                        except AutonomyError as exc:
-                            await send_json(ws, err("autonomy-error", detail=str(exc)))
-                        else:
-                            await send_json(ws, ok("autonomy-set_waypoint", autonomy=status))
+                elif cmd == "autonomy-stop":
+                    try:
+                        status = await AUTONOMY.stop()
+                    except AutonomyError as exc:
+                        await send_json(ws, err("autonomy-error", detail=str(exc)))
+                    else:
+                        await send_json(ws, ok("autonomy-stop", autonomy=status))
 
-                    # -------- SERVOS --------
-                    elif cmd == "servo-horizontal":
-                        delta = int(data.get("angle", 0))
-                        current_horizontal_angle = clamp(current_horizontal_angle + delta, SERVO_MIN, SERVO_MAX)
-                        try:
-                            servo.setServoPwm("horizontal", current_horizontal_angle)
-                        except Exception as e:
-                            elog("servo H failed:", repr(e))
-                            raise
-                        await send_json(ws, ok(
-                            "servo-horizontal",
-                            angle=current_horizontal_angle,
-                            **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
-                        ))
+                elif cmd == "autonomy-update":
+                    try:
+                        status = await AUTONOMY.update(data.get("params") or {})
+                    except AutonomyError as exc:
+                        await send_json(ws, err("autonomy-error", detail=str(exc)))
+                    else:
+                        await send_json(ws, ok("autonomy-update", autonomy=status))
 
-                    elif cmd == "servo-vertical":
-                        delta = int(data.get("angle", 0))
-                        current_vertical_angle = clamp(current_vertical_angle + delta, SERVO_MIN, SERVO_MAX)
-                        try:
-                            servo.setServoPwm("vertical", current_vertical_angle)
-                        except Exception as e:
-                            elog("servo V failed:", repr(e))
-                            raise
-                        await send_json(ws, ok(
-                            "servo-vertical",
-                            angle=current_vertical_angle,
-                            **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
-                        ))
+                elif cmd == "autonomy-dock":
+                    try:
+                        status = await AUTONOMY.dock()
+                    except AutonomyError as exc:
+                        await send_json(ws, err("autonomy-error", detail=str(exc)))
+                    else:
+                        await send_json(ws, ok("autonomy-dock", autonomy=status))
 
-                    elif cmd == "set-servo-position":
-                        h = data.get("horizontal", None)
-                        v = data.get("vertical", None)
-                        if h is None and v is None:
-                            await send_json(ws, err("missing-servo-fields"))
-                        else:
-                            if h is not None:
-                                current_horizontal_angle = clamp(int(h), SERVO_MIN, SERVO_MAX)
-                                servo.setServoPwm("horizontal", current_horizontal_angle)
-                            if v is not None:
-                                current_vertical_angle = clamp(int(v), SERVO_MIN, SERVO_MAX)
-                                servo.setServoPwm("vertical", current_vertical_angle)
-                            await send_json(ws, ok(
-                                "set-servo-position",
-                                horizontal=current_horizontal_angle,
-                                vertical=current_vertical_angle,
-                                **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
-                            ))
+                elif cmd == "autonomy-set_waypoint":
+                    try:
+                        status = await AUTONOMY.set_waypoint(
+                            data.get("label", ""),
+                            data.get("lat"),
+                            data.get("lon"),
+                        )
+                    except AutonomyError as exc:
+                        await send_json(ws, err("autonomy-error", detail=str(exc)))
+                    else:
+                        await send_json(ws, ok("autonomy-set_waypoint", autonomy=status))
 
-                    elif cmd == "reset-servo":
-                        # Use current positions as the new "center" positions
-                        # Horizontal: 90°, Vertical: 90°
-                        current_horizontal_angle = 90
-                        current_vertical_angle = 90
+                # -------- SERVOS --------
+                elif cmd == "servo-horizontal":
+                    delta = int(data.get("angle", 0))
+                    current_horizontal_angle = clamp(current_horizontal_angle + delta, SERVO_MIN, SERVO_MAX)
+                    try:
                         servo.setServoPwm("horizontal", current_horizontal_angle)
+                    except Exception as e:
+                        elog("servo H failed:", repr(e))
+                        raise
+                    await send_json(ws, ok(
+                        "servo-horizontal",
+                        angle=current_horizontal_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
+
+                elif cmd == "servo-vertical":
+                    delta = int(data.get("angle", 0))
+                    current_vertical_angle = clamp(current_vertical_angle + delta, SERVO_MIN, SERVO_MAX)
+                    try:
                         servo.setServoPwm("vertical", current_vertical_angle)
+                    except Exception as e:
+                        elog("servo V failed:", repr(e))
+                        raise
+                    await send_json(ws, ok(
+                        "servo-vertical",
+                        angle=current_vertical_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
+
+                elif cmd == "set-servo-position":
+                    h = data.get("horizontal", None)
+                    v = data.get("vertical", None)
+                    if h is None and v is None:
+                        await send_json(ws, err("missing-servo-fields"))
+                    else:
+                        if h is not None:
+                            current_horizontal_angle = clamp(int(h), SERVO_MIN, SERVO_MAX)
+                            servo.setServoPwm("horizontal", current_horizontal_angle)
+                        if v is not None:
+                            current_vertical_angle = clamp(int(v), SERVO_MIN, SERVO_MAX)
+                            servo.setServoPwm("vertical", current_vertical_angle)
                         await send_json(ws, ok(
-                            "reset-servo",
+                            "set-servo-position",
                             horizontal=current_horizontal_angle,
                             vertical=current_vertical_angle,
                             **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
                         ))
 
-                    # camera nudge aliases
-                    elif cmd == "camera-servo-left":
-                        current_horizontal_angle = clamp(current_horizontal_angle - DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
-                        servo.setServoPwm("horizontal", current_horizontal_angle)
-                        await send_json(ws, ok(
-                            "camera-servo-left",
-                            angle=current_horizontal_angle,
-                            **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
-                        ))
+                elif cmd == "reset-servo":
+                    # Use current positions as the new "center" positions
+                    # Horizontal: 90°, Vertical: 90°
+                    current_horizontal_angle = 90
+                    current_vertical_angle = 90
+                    servo.setServoPwm("horizontal", current_horizontal_angle)
+                    servo.setServoPwm("vertical", current_vertical_angle)
+                    await send_json(ws, ok(
+                        "reset-servo",
+                        horizontal=current_horizontal_angle,
+                        vertical=current_vertical_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
 
-                    elif cmd == "camera-servo-right":
-                        current_horizontal_angle = clamp(current_horizontal_angle + DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
-                        servo.setServoPwm("horizontal", current_horizontal_angle)
-                        await send_json(ws, ok(
-                            "camera-servo-right",
-                            angle=current_horizontal_angle,
-                            **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
-                        ))
+                # camera nudge aliases
+                elif cmd == "camera-servo-left":
+                    current_horizontal_angle = clamp(current_horizontal_angle - DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
+                    servo.setServoPwm("horizontal", current_horizontal_angle)
+                    await send_json(ws, ok(
+                        "camera-servo-left",
+                        angle=current_horizontal_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
 
-                    elif cmd == "camera-servo-up":
-                        current_vertical_angle = clamp(current_vertical_angle + DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
-                        servo.setServoPwm("vertical", current_vertical_angle)
-                        await send_json(ws, ok(
-                            "camera-servo-up",
-                            angle=current_vertical_angle,
-                            **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
-                        ))
+                elif cmd == "camera-servo-right":
+                    current_horizontal_angle = clamp(current_horizontal_angle + DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
+                    servo.setServoPwm("horizontal", current_horizontal_angle)
+                    await send_json(ws, ok(
+                        "camera-servo-right",
+                        angle=current_horizontal_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
 
-                    elif cmd == "camera-servo-down":
-                        current_vertical_angle = clamp(current_vertical_angle - DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
-                        servo.setServoPwm("vertical", current_vertical_angle)
-                        await send_json(ws, ok(
-                            "camera-servo-down",
-                            angle=current_vertical_angle,
-                            **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
-                        ))
+                elif cmd == "camera-servo-up":
+                    current_vertical_angle = clamp(current_vertical_angle + DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
+                    servo.setServoPwm("vertical", current_vertical_angle)
+                    await send_json(ws, ok(
+                        "camera-servo-up",
+                        angle=current_vertical_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
 
-                    # -------- STATUS --------
-                    elif cmd == "status":
-                        await send_json(ws, {
-                            "type": "status",
-                            "speed": current_speed,
-                            "motors": get_cached_motor_telemetry(),
-                            "servo": {
-                                "horizontal": current_horizontal_angle,
-                                "vertical": current_vertical_angle,
-                                "min": SERVO_MIN,
-                                "max": SERVO_MAX,
-                            },
-                            "buzzer": buzzer_on_state,
-                            "autonomy": AUTONOMY.status(),
-                            "straightAssist": STRAIGHT_ASSIST.status(),
-                            "ts": _now_ms(),
-                            "sim": SIM_MODE,
-                        })
+                elif cmd == "camera-servo-down":
+                    current_vertical_angle = clamp(current_vertical_angle - DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
+                    servo.setServoPwm("vertical", current_vertical_angle)
+                    await send_json(ws, ok(
+                        "camera-servo-down",
+                        angle=current_vertical_angle,
+                        **_servo_state_payload(current_horizontal_angle, current_vertical_angle),
+                    ))
 
-                    else:
+                # -------- STATUS --------
+                elif cmd == "status":
+                    await send_json(ws, {
+                        "type": "status",
+                        "speed": current_speed,
+                        "motors": get_cached_motor_telemetry(),
+                        "servo": {
+                            "horizontal": current_horizontal_angle,
+                            "vertical": current_vertical_angle,
+                            "min": SERVO_MIN,
+                            "max": SERVO_MAX,
+                        },
+                        "buzzer": buzzer_on_state,
+                        "autonomy": AUTONOMY.status(),
+                        "straightAssist": STRAIGHT_ASSIST.status(),
+                        "ts": _now_ms(),
+                        "sim": SIM_MODE,
+                    })
+
+                else:
                         await send_json(ws, err(f"unknown-command:{cmd}"))
 
             except Exception as e:
