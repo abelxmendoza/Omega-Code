@@ -34,7 +34,7 @@ const keyToDir: Record<string, Dir | undefined> = {
 };
 
 export default function CameraControlPanel() {
-  const { sendCommand, addCommand } = useCommand();
+  const { sendCommand, addCommand, status } = useCommand();
 
   const [pressed, setPressed] = React.useState<Record<Dir, boolean>>({
     up: false, down: false, left: false, right: false,
@@ -43,15 +43,20 @@ export default function CameraControlPanel() {
   const repeatRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const activeDirRef = React.useRef<Dir | null>(null);
   const shiftRef = React.useRef(false);
+  const disabled = status !== 'connected';
 
   const sendJson = React.useCallback((cmd: string, payload?: Record<string, unknown>) => {
+    if (disabled) {
+      addCommand(`Cannot send ${cmd}: WebSocket not connected`);
+      return;
+    }
     try {
       sendCommand(cmd, payload);
       addCommand(`Sent: ${cmd}${payload ? ' ' + JSON.stringify(payload) : ''}`);
     } catch (e) {
       addCommand(`Send failed: ${String(e)}`);
     }
-  }, [sendCommand, addCommand]);
+  }, [sendCommand, addCommand, disabled]);
 
   const nudge = React.useCallback((dir: Dir) => {
     if (shiftRef.current) {
@@ -69,6 +74,7 @@ export default function CameraControlPanel() {
   }, []);
 
   const startRepeat = React.useCallback((dir: Dir) => {
+    if (disabled) return; // Don't start if disconnected
     if (activeDirRef.current === dir) return;          // already repeating this dir
     if (repeatRef.current) clearInterval(repeatRef.current);
 
@@ -81,7 +87,7 @@ export default function CameraControlPanel() {
     // immediate nudge + periodic nudging
     nudge(dir);
     repeatRef.current = setInterval(() => nudge(dir), 120);
-  }, [nudge, clearPrevPressed]);
+  }, [nudge, clearPrevPressed, disabled]);
 
   const stopRepeat = React.useCallback(() => {
     if (repeatRef.current) clearInterval(repeatRef.current);
@@ -100,6 +106,7 @@ export default function CameraControlPanel() {
   // --- Keyboard support ---
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (disabled) return; // Don't process keyboard input when disconnected
       const el = document.activeElement as HTMLElement | null;
       if (el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
 
@@ -137,7 +144,7 @@ export default function CameraControlPanel() {
       window.removeEventListener('keyup', onKeyUp);
       stopRepeatSilent();
     };
-  }, [startRepeat, stopRepeat, sendJson]);
+  }, [startRepeat, stopRepeat, sendJson, disabled]);
 
   // safety: stop on blur / visibility change
   React.useEffect(() => {
@@ -167,57 +174,71 @@ export default function CameraControlPanel() {
     `p-4 m-1 rounded-lg text-white font-semibold select-none
      w-14 h-14 flex items-center justify-center outline-none
      transition-colors duration-100
-     ${pressed[dir] ? 'bg-emerald-600 ring-2 ring-emerald-300' : 'bg-zinc-800 hover:bg-zinc-700'}`;
+     ${disabled 
+       ? 'bg-zinc-600 cursor-not-allowed opacity-50' 
+       : pressed[dir] 
+       ? 'bg-emerald-600 ring-2 ring-emerald-300' 
+       : 'bg-zinc-800 hover:bg-zinc-700'}`;
 
   return (
-    <div className="flex flex-col items-center">
-      <div className="text-lg font-bold mb-2">Camera</div>
+    <div className={`flex flex-col items-center ${disabled ? 'opacity-75' : ''}`}>
+      <div className="flex items-center gap-2 mb-2">
+        <div className="text-lg font-bold">Camera</div>
+        <span className={`inline-block rounded-full ${status === 'connected' ? 'bg-emerald-500' : status === 'connecting' ? 'bg-slate-500' : 'bg-rose-500'}`} style={{ width: 8, height: 8 }} title={`Movement server: ${status}`} />
+      </div>
 
       <button
+        disabled={disabled}
         className={btnClass('up')}
         aria-label="Camera Up (↑ / Shift=larger)"
         aria-pressed={pressed.up}
-        title="ArrowUp (Shift=larger)"
-        {...bindHold('up')}
+        title={`ArrowUp (Shift=larger)${disabled ? ' - Disconnected' : ''}`}
+        {...(disabled ? {} : bindHold('up'))}
       >↑</button>
 
       <div className="flex space-x-2">
         <button
+          disabled={disabled}
           className={btnClass('left')}
           aria-label="Camera Left (← / Shift=larger)"
           aria-pressed={pressed.left}
-          title="ArrowLeft (Shift=larger)"
-          {...bindHold('left')}
+          title={`ArrowLeft (Shift=larger)${disabled ? ' - Disconnected' : ''}`}
+          {...(disabled ? {} : bindHold('left'))}
         >←</button>
 
         <button
+          disabled={disabled}
           className={btnClass('right')}
           aria-label="Camera Right (→ / Shift=larger)"
           aria-pressed={pressed.right}
-          title="ArrowRight (Shift=larger)"
-          {...bindHold('right')}
+          title={`ArrowRight (Shift=larger)${disabled ? ' - Disconnected' : ''}`}
+          {...(disabled ? {} : bindHold('right'))}
         >→</button>
       </div>
 
       <button
+        disabled={disabled}
         className={btnClass('down')}
         aria-label="Camera Down (↓ / Shift=larger)"
         aria-pressed={pressed.down}
-        title="ArrowDown (Shift=larger)"
-        {...bindHold('down')}
+        title={`ArrowDown (Shift=larger)${disabled ? ' - Disconnected' : ''}`}
+        {...(disabled ? {} : bindHold('down'))}
       >↓</button>
 
       <div className="mt-3">
         <button
+          disabled={disabled}
           onClick={() => {
             // Center pan to 70° (your specified center position)
             sendJson(SERVO_H, { angle: 70 });
             // Center tilt to 20° (your specified center position)
             sendJson(SERVO_V, { angle: 20 });
           }}
-          className="px-3 py-2 rounded-md bg-sky-600 hover:bg-sky-500 text-white font-semibold"
-          title="Center camera to Pan: 70°, Tilt: 20° (C / Home)"
-          aria-label="Center camera to Pan: 70°, Tilt: 20° (C / Home)"
+          className={`px-3 py-2 rounded-md text-white font-semibold transition-colors ${
+            disabled ? 'bg-sky-800 cursor-not-allowed opacity-50' : 'bg-sky-600 hover:bg-sky-500'
+          }`}
+          title={`Center camera to Pan: 70°, Tilt: 20° (C / Home)${disabled ? ' - Disconnected' : ''}`}
+          aria-label={`Center camera to Pan: 70°, Tilt: 20° (C / Home)${disabled ? ' - Disconnected' : ''}`}
         >
           Center
         </button>
