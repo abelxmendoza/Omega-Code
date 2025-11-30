@@ -2,6 +2,11 @@
 websockets>=11.0.3
 asyncio-mqtt>=0.13.0
 
+# API Framework (for gateway_api.py)
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+httpx>=0.25.0
+
 # Hardware control libraries
 RPi.GPIO>=0.7.1
 rpi-ws281x>=5.0.0  # NeoPixel/WS2812 LED strip control
