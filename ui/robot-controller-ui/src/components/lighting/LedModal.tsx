@@ -241,10 +241,39 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
+  // Helper to auto-apply changes when LED is on
+  const autoApplyIfOn = () => {
+    if (ledOn && wsOpen() && serverStatus === 'connected') {
+      // Small delay to batch rapid changes
+      setTimeout(() => {
+        if (ledOn && wsOpen()) {
+          const commandData = {
+            color: color1,
+            mode: mode,
+            pattern: pattern,
+            interval: pattern !== 'static' ? intervalMs : 0,
+            brightness: brightness / 100,
+          };
+          try {
+            send(commandData);
+            console.log('[LedModal] 🔄 Auto-applied settings:', JSON.stringify(commandData));
+          } catch (error) {
+            console.error('[LedModal] ❌ Auto-apply failed:', error);
+          }
+        }
+      }, 300); // 300ms debounce
+    }
+  };
+
   // Handlers
-  const handleColor1Change = (color: ColorResult) => setColor1(color.hex);
-  const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) =>
+  const handleColor1Change = (color: ColorResult) => {
+    setColor1(color.hex);
+    autoApplyIfOn();
+  };
+  const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setMode(e.target.value as LightingMode);
+    autoApplyIfOn();
+  };
   const handlePatternChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const nextPattern = e.target.value as LightingPattern;
     setPattern(nextPattern);
@@ -252,14 +281,17 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     if (nextPattern === 'music' && intervalMs > 250) {
       setIntervalMs(120);
     }
+    autoApplyIfOn();
   };
   const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(e.target.value);
     setIntervalMs(Number.isFinite(value) ? Math.max(100, Math.floor(value)) : 100);
+    autoApplyIfOn();
   };
   const handleBrightnessChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(e.target.value);
     if (Number.isFinite(value)) setBrightness(Math.min(100, Math.max(0, Math.floor(value))));
+    autoApplyIfOn();
   };
 
   const send = (payload: Record<string, unknown>) => {
@@ -297,11 +329,8 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       return;
     }
 
-    // Update UI state immediately for responsive feedback
-    setLedOn(newState);
-
     if (!newState) {
-      // Send complete command with pattern='off' to turn off LEDs
+      // Turn OFF: Send pattern='off' command
       const offCommand = {
         color: '#000000',
         mode: 'single',
@@ -313,12 +342,14 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       try {
         send(offCommand);
         console.log('[LedModal] ✅ OFF command sent successfully');
+        // Update UI state after successful send
+        setLedOn(false);
       } catch (error) {
         console.error('[LedModal] ❌ Failed to send OFF command:', error);
-        setLedOn(true); // Revert state on error
+        // Don't update state on error - keep current state
       }
     } else {
-      // Send complete command with current settings to turn on LEDs
+      // Turn ON: Send complete command with current settings
       const onCommand = {
         color: color1,
         mode: mode,
@@ -330,20 +361,39 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       try {
         send(onCommand);
         console.log('[LedModal] ✅ ON command sent successfully');
+        // Update UI state after successful send
+        setLedOn(true);
       } catch (error) {
         console.error('[LedModal] ❌ Failed to send ON command:', error);
-        setLedOn(false); // Revert state on error
+        // Don't update state on error - keep current state
       }
     }
   };
 
   const handleApply = () => {
-    if (!ledOn) {
-      console.log('LED is off, skipping apply.');
-      return;
-    }
     if (!wsOpen()) {
       console.error('Lighting WS not open.');
+      return;
+    }
+    
+    // If LED is off, turn it on with current settings
+    if (!ledOn) {
+      setLedOn(true);
+      const onCommand = {
+        color: color1,
+        mode: mode,
+        pattern: pattern,
+        interval: pattern !== 'static' ? intervalMs : 0,
+        brightness: brightness / 100, // Convert 0-100 to 0-1
+      };
+      console.log('[LedModal] 🟢 Applying settings and turning ON:', JSON.stringify(onCommand));
+      try {
+        send(onCommand);
+        console.log('[LedModal] ✅ Settings applied successfully');
+      } catch (error) {
+        console.error('[LedModal] ❌ Failed to apply settings:', error);
+        setLedOn(false); // Revert on error
+      }
       return;
     }
     
@@ -362,8 +412,13 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       interval: pattern !== 'static' ? intervalMs : 0,
       brightness: brightness / 100, // Convert 0-100% to 0-1.0
     };
-    send(commandData);
-    console.log('LED settings applied:', commandData);
+    console.log('[LedModal] 📤 Applying LED settings:', JSON.stringify(commandData));
+    try {
+      send(commandData);
+      console.log('[LedModal] ✅ Settings applied successfully');
+    } catch (error) {
+      console.error('[LedModal] ❌ Failed to apply settings:', error);
+    }
   };
 
   // STATUS PILL COLORS - Matching Omega theme
@@ -461,8 +516,8 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         </div>
 
         <fieldset
-          disabled={!ledOn || serverStatus !== 'connected'}
-          className={ledOn && serverStatus === 'connected' ? '' : 'opacity-50'}
+          disabled={serverStatus !== 'connected'}
+          className={serverStatus === 'connected' ? '' : 'opacity-50'}
         >
           {/* Color Picker 1 */}
           <label className="block text-[#00FF88] font-semibold mb-2 text-lg" style={{ textShadow: '0 0 8px rgba(0, 255, 136, 0.4)' }}>Primary Color:</label>
@@ -611,18 +666,24 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         {/* Apply Button */}
         <button
           onClick={handleApply}
-          disabled={serverStatus !== 'connected' || !ledOn}
+          disabled={serverStatus !== 'connected'}
           className={`text-white p-3.5 rounded-lg mt-6 w-full focus:outline-none focus:ring-2 transition-all font-semibold ${
-            serverStatus !== 'connected' || !ledOn
+            serverStatus !== 'connected'
               ? 'bg-[#2A2A2A] cursor-not-allowed border border-[#4A4A4A]'
-              : 'bg-gradient-to-r from-[#C400FF] to-[#8B00FF] hover:from-[#D400FF] hover:to-[#9B00FF] focus:ring-[#C400FF]/50 border border-[#C400FF]/50 shadow-lg hover:shadow-[#C400FF]/50'
+              : ledOn
+              ? 'bg-gradient-to-r from-[#C400FF] to-[#8B00FF] hover:from-[#D400FF] hover:to-[#9B00FF] focus:ring-[#C400FF]/50 border border-[#C400FF]/50 shadow-lg hover:shadow-[#C400FF]/50'
+              : 'bg-gradient-to-r from-[#00FF88] to-[#00DD77] hover:from-[#00FF99] hover:to-[#00EE88] focus:ring-[#00FF88]/50 border border-[#00FF88]/50 shadow-lg hover:shadow-[#00FF88]/50 text-black'
           }`}
           style={{
-            textShadow: serverStatus === 'connected' && ledOn ? '0 0 8px rgba(196, 0, 255, 0.6)' : 'none',
-            boxShadow: serverStatus === 'connected' && ledOn ? '0 0 20px rgba(196, 0, 255, 0.4)' : 'none'
+            textShadow: serverStatus === 'connected' ? '0 0 8px rgba(196, 0, 255, 0.6)' : 'none',
+            boxShadow: serverStatus === 'connected' ? '0 0 20px rgba(196, 0, 255, 0.4)' : 'none'
           }}
         >
-          {serverStatus !== 'connected' ? 'Server Unavailable' : 'Apply Settings'}
+          {serverStatus !== 'connected' 
+            ? 'Server Unavailable' 
+            : ledOn 
+            ? 'Apply Settings' 
+            : 'Turn On & Apply Settings'}
         </button>
       </div>
     </div>,
