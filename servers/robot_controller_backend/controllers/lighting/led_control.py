@@ -268,7 +268,7 @@ class LedController:
 
         self.is_on = True
 
-    def set_led(self, color, mode="single", pattern="static", interval=500, brightness=1.0, color2=0x000000):
+    def set_led(self, color, mode="single", pattern="static", interval=500, brightness=1.0, color2=0x000000, orientation="alternate"):
         """
         Set LED strip color/pattern/mode/brightness with comprehensive validation.
 
@@ -279,6 +279,7 @@ class LedController:
             interval (int): Timing for dynamic patterns (ms).
             brightness (float): 0.0–1.0, global brightness.
             color2 (int): 24-bit RGB integer (0-16777215) for secondary color (used in dual mode).
+            orientation (str): Dual color layout - "alternate", "front_back", "left_right", "center_edge", "gradient", "segments", "thirds"
         """
         try:
             # Validate inputs
@@ -336,7 +337,7 @@ class LedController:
                 if mode == "dual":
                     from controllers.lighting.patterns import dual_color
                     from rpi_ws281x import Color as WsColor
-                    dual_color(self.strip, WsColor(r, g, b), WsColor(r2, g2, b2))
+                    dual_color(self.strip, WsColor(r, g, b), WsColor(r2, g2, b2), orientation=orientation)
                 else:
                     self.color_wipe(Color(r, g, b), wait_ms=10)
                 self.is_on = True
@@ -520,7 +521,7 @@ class LedController:
 LedControl = LedController
 
 if __name__ == "__main__":
-    # CLI usage: python3 led_control.py <hexcolor> <hexcolor2> <mode> <pattern> <interval> <brightness>
+    # CLI usage: python3 led_control.py <hexcolor> <hexcolor2> <orientation> <mode> <pattern> <interval> <brightness>
     #           python3 led_control.py off
     #           python3 led_control.py toggle
     if len(sys.argv) == 2 and sys.argv[1] == "off":
@@ -534,23 +535,24 @@ if __name__ == "__main__":
         led.toggle_light()
         sys.exit(0)
 
-    if len(sys.argv) not in (6, 7):
-        print("Usage: python3 led_control.py <hexcolor> <hexcolor2> <mode> <pattern> <interval> <brightness>")
+    if len(sys.argv) not in (7, 8):
+        print("Usage: python3 led_control.py <hexcolor> <hexcolor2> <orientation> <mode> <pattern> <interval> <brightness>")
         print("   or: python3 led_control.py off")
         print("   or: python3 led_control.py toggle")
         sys.exit(1)
 
     try:
         color = int(sys.argv[1], 16)
-        color2 = int(sys.argv[2], 16) if len(sys.argv) >= 7 else 0x000000
-        mode = sys.argv[3]
-        pattern = sys.argv[4]
-        interval = int(sys.argv[5])
-        brightness = float(sys.argv[6]) if len(sys.argv) == 7 else 1.0
+        color2 = int(sys.argv[2], 16) if len(sys.argv) >= 8 else 0x000000
+        orientation = sys.argv[3] if len(sys.argv) >= 8 else "alternate"
+        mode = sys.argv[4]
+        pattern = sys.argv[5]
+        interval = int(sys.argv[6])
+        brightness = float(sys.argv[7]) if len(sys.argv) == 8 else 0.35
 
-        print(f"🎨 [LED] Setting: color=#{color:06x}, color2=#{color2:06x}, mode={mode}, pattern={pattern}, interval={interval}ms, brightness={brightness}")
+        print(f"🎨 [LED] Setting: color=#{color:06x}, color2=#{color2:06x}, orientation={orientation}, mode={mode}, pattern={pattern}, interval={interval}ms, brightness={brightness}")
         led_control = LedController()
-        led_control.set_led(color, mode, pattern, interval, brightness, color2=color2)
+        led_control.set_led(color, mode, pattern, interval, brightness, color2=color2, orientation=orientation)
         print(f"✅ [SUCCESS] LED command completed")
     except ValueError as e:
         print(f"❌ [ERROR] Invalid input: {e}")

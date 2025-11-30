@@ -48,16 +48,88 @@ def color_wipe(strip, color):
         print(f"❌ [ERROR] color_wipe failed: {e}", file=sys.stderr)
         raise
 
-def dual_color(strip, color1, color2=Color(0,0,0)):
+def dual_color(strip, color1, color2=Color(0,0,0), orientation="alternate"):
     """
-    Alternate between two colors along the strip.
+    Apply two colors to the strip with different orientations.
     Args:
         strip: The initialized NeoPixel strip object.
-        color1: Color object for even LEDs.
-        color2: Color object for odd LEDs.
+        color1: Color object for primary color.
+        color2: Color object for secondary color.
+        orientation: Layout pattern - "alternate", "front_back", "left_right", "center_edge", "gradient", "segments", "thirds"
     """
-    for i in range(strip.numPixels()):
-        strip.setPixelColor(i, color1 if i % 2 == 0 else color2)
+    num_pixels = strip.numPixels()
+    
+    if orientation == "alternate":
+        # Every other LED alternates colors
+        for i in range(num_pixels):
+            strip.setPixelColor(i, color1 if i % 2 == 0 else color2)
+    
+    elif orientation == "front_back":
+        # Front half one color, back half another
+        midpoint = num_pixels // 2
+        for i in range(num_pixels):
+            strip.setPixelColor(i, color1 if i < midpoint else color2)
+    
+    elif orientation == "left_right":
+        # Left half one color, right half another (same as front_back for linear strip)
+        midpoint = num_pixels // 2
+        for i in range(num_pixels):
+            strip.setPixelColor(i, color1 if i < midpoint else color2)
+    
+    elif orientation == "center_edge":
+        # Center LEDs one color, edges another
+        center_start = num_pixels // 4
+        center_end = (3 * num_pixels) // 4
+        for i in range(num_pixels):
+            if center_start <= i < center_end:
+                strip.setPixelColor(i, color1)  # Center
+            else:
+                strip.setPixelColor(i, color2)  # Edges
+    
+    elif orientation == "gradient":
+        # Smooth gradient transition from color1 to color2
+        # Extract RGB from Color objects (they're integers internally)
+        def extract_rgb(c):
+            """Extract RGB tuple from Color object."""
+            # Set to a test pixel and read it back to get RGB values
+            strip.setPixelColor(0, c)
+            pixel_val = strip.getPixelColor(0)
+            r = (pixel_val >> 16) & 0xFF
+            g = (pixel_val >> 8) & 0xFF
+            b = pixel_val & 0xFF
+            return (r, g, b)
+        
+        r1, g1, b1 = extract_rgb(color1)
+        r2, g2, b2 = extract_rgb(color2)
+        
+        for i in range(num_pixels):
+            # Calculate blend factor (0.0 to 1.0)
+            blend = i / max(1, num_pixels - 1)
+            # Interpolate RGB values
+            r = int(r1 + (r2 - r1) * blend)
+            g = int(g1 + (g2 - g1) * blend)
+            b = int(b1 + (b2 - b1) * blend)
+            strip.setPixelColor(i, Color(r, g, b))
+    
+    elif orientation == "segments":
+        # Divide into 4 segments, alternate colors
+        segment_size = max(1, num_pixels // 4)
+        for i in range(num_pixels):
+            segment = i // segment_size
+            strip.setPixelColor(i, color1 if segment % 2 == 0 else color2)
+    
+    elif orientation == "thirds":
+        # Divide into thirds, alternate colors
+        third_size = max(1, num_pixels // 3)
+        for i in range(num_pixels):
+            third = i // third_size
+            strip.setPixelColor(i, color1 if third % 2 == 0 else color2)
+    
+    else:
+        # Default to alternate if unknown orientation
+        for i in range(num_pixels):
+            strip.setPixelColor(i, color1 if i % 2 == 0 else color2)
+    
     strip.show()
 
 def fade(strip, color1, color2=None, steps=50, delay=0.01):

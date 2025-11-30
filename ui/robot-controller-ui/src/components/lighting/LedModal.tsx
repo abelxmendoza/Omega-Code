@@ -66,12 +66,26 @@ interface LedModalProps {
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected';
 
+// Dual color orientations
+const DUAL_ORIENTATIONS = [
+  'alternate',     // Every other LED
+  'front_back',    // Front half / back half
+  'left_right',    // Left half / right half
+  'center_edge',   // Center LEDs / edge LEDs
+  'gradient',      // Smooth transition
+  'segments',      // 4 segments alternating
+  'thirds',        // 3 segments alternating
+] as const;
+
+type DualOrientation = (typeof DUAL_ORIENTATIONS)[number];
+
 const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   const [ledOn, setLedOn] = useState(false);
   const [color1, setColor1] = useState('#ffffff');
   const [color2, setColor2] = useState('#000000');
   const [mode, setMode] = useState<LightingMode>(LIGHTING_MODES[0]);
   const [pattern, setPattern] = useState<LightingPattern>('static');
+  const [dualOrientation, setDualOrientation] = useState<DualOrientation>('alternate');
   const [intervalMs, setIntervalMs] = useState(1000);
   const [brightness, setBrightness] = useState(35); // Default 35% brightness (0–100%)
 
@@ -290,9 +304,10 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
             interval: pattern !== 'static' ? intervalMs : 0,
             brightness: effectiveBrightness,
           };
-          // Add color2 only when mode is dual
+          // Add color2 and orientation only when mode is dual
           if (mode === 'dual') {
             commandData.color2 = color2;
+            commandData.orientation = dualOrientation;
           }
           try {
             send(commandData);
@@ -427,9 +442,10 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         interval: pattern !== 'static' ? intervalMs : 0,
         brightness: effectiveBrightness, // Convert 0-100 to 0-1, minimum 0.35
       };
-      // Add color2 only when mode is dual
+      // Add color2 and orientation only when mode is dual
       if (mode === 'dual') {
         onCommand.color2 = color2;
+        onCommand.orientation = dualOrientation;
       }
       console.log('[LedModal] 🟢 Sending LED ON command:', JSON.stringify(onCommand));
       try {
@@ -488,9 +504,10 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       interval: pattern !== 'static' ? intervalMs : 0,
       brightness: effectiveBrightness, // Convert 0-100% to 0-1.0, minimum 0.35
     };
-    // Add color2 only when mode is dual
+    // Add color2 and orientation only when mode is dual
     if (mode === 'dual') {
       commandData.color2 = color2;
+      commandData.orientation = dualOrientation;
     }
     console.log('[LedModal] 📤 Applying LED settings:', JSON.stringify(commandData));
     try {

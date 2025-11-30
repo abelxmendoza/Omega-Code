@@ -72,12 +72,13 @@ func getRunLedPath() string {
 // LightingCommand supports both string and int color fields for compatibility.
 // Brightness is a *float64 so we can tell if it was omitted (nil) vs provided (including 0).
 type LightingCommand struct {
-	Color      interface{} `json:"color"`                 // Hex string "#rrggbb" or 24-bit int
-	Color2     interface{} `json:"color2,omitempty"`      // Hex string "#rrggbb" or 24-bit int (for dual mode)
-	Mode       string      `json:"mode"`                  // "single", "dual", "rainbow", etc.
-	Pattern    string      `json:"pattern"`               // "static", "blink", "fade", "off", etc.
-	Interval   int         `json:"interval"`              // ms (animation speed)
-	Brightness *float64    `json:"brightness,omitempty"`  // [0,1]; nil => default 1.0
+	Color       interface{} `json:"color"`                  // Hex string "#rrggbb" or 24-bit int
+	Color2      interface{} `json:"color2,omitempty"`       // Hex string "#rrggbb" or 24-bit int (for dual mode)
+	Orientation string      `json:"orientation,omitempty"`  // Dual color layout: "alternate", "front_back", etc.
+	Mode        string      `json:"mode"`                   // "single", "dual", "rainbow", etc.
+	Pattern     string      `json:"pattern"`                // "static", "blink", "fade", "off", etc.
+	Interval    int         `json:"interval"`                // ms (animation speed)
+	Brightness  *float64    `json:"brightness,omitempty"`   // [0,1]; nil => default 0.35
 }
 
 // WebSocket upgrader with permissive CORS
@@ -270,10 +271,15 @@ func handleLighting(ws *websocket.Conn) {
 		}
 
 		// Build an arg list for the wrapper (no shell needed)
-		// Format: <hexColor> <hexColor2> <mode> <pattern> <interval> <brightness>
+		// Format: <hexColor> <hexColor2> <orientation> <mode> <pattern> <interval> <brightness>
+		orientation := command.Orientation
+		if orientation == "" {
+			orientation = "alternate" // Default orientation
+		}
 		args := []string{
 			hexColor,
 			hexColor2,
+			orientation,
 			command.Mode,
 			command.Pattern,
 			strconv.Itoa(command.Interval),
