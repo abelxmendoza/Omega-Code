@@ -193,11 +193,17 @@ export default function CameraControlPanel() {
      }`;
   };
 
+  const statusText = status === 'connected' ? 'Connected' : status === 'connecting' ? 'Connecting...' : 'Disconnected';
+  const statusColor = status === 'connected' ? 'text-emerald-500' : status === 'connecting' ? 'text-slate-500' : 'text-rose-500';
+
   return (
-    <div className={`flex flex-col items-center ${disabled ? 'opacity-75' : ''}`}>
-      <div className="flex items-center gap-2 mb-2">
+    <div className={`flex flex-col items-center ${disabled ? 'opacity-50' : ''}`}>
+      <div className="w-full flex items-center justify-between mb-2">
         <div className="text-lg font-bold">Camera</div>
-        <span className={`inline-block rounded-full ${status === 'connected' ? 'bg-emerald-500' : status === 'connecting' ? 'bg-slate-500' : 'bg-rose-500'}`} style={{ width: 8, height: 8 }} title={`Movement server: ${status}`} />
+        <div className="flex items-center gap-2">
+          <span className={`inline-block rounded-full ${status === 'connected' ? 'bg-emerald-500' : status === 'connecting' ? 'bg-slate-500' : 'bg-rose-500'}`} style={{ width: 8, height: 8 }} title={`Movement server: ${status}`} />
+          <span className={`text-xs font-medium ${statusColor}`}>{statusText}</span>
+        </div>
       </div>
 
       <button

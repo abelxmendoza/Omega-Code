@@ -121,6 +121,10 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
   // Reconnect control
   const shouldReconnect = useRef(true);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Connection verification: wait for server confirmation before marking as connected
+  const connectionVerified = useRef(false);
+  const verificationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
    * Logs a command with the current timestamp.
@@ -266,9 +270,25 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
       setWsUrl(wsInstance.url);
 
       wsInstance.onopen = () => {
-        setStatus('connected');
+        // Don't mark as connected yet - wait for verification
+        connectionVerified.current = false;
+        setStatus('connecting'); // Keep as connecting until verified
         setLatencyMs(null);
-        addCommand('WebSocket connected');
+        addCommand('WebSocket opened, verifying connection...');
+        
+        // Set a timeout: if we don't get any message within 3 seconds, mark as disconnected
+        if (verificationTimeout.current) {
+          clearTimeout(verificationTimeout.current);
+        }
+        verificationTimeout.current = setTimeout(() => {
+          if (!connectionVerified.current && ws.current === wsInstance) {
+            addCommand('Connection verification timeout - server may not be responding');
+            setStatus('disconnected');
+            try { wsInstance.close(); } catch {}
+          }
+        }, 3000);
+        
+        // Start heartbeat which will also help verify the connection
         startHeartbeat();
         requestStatus('auto');
       };
@@ -276,6 +296,17 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
       wsInstance.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          // Verify connection on first message received
+          if (!connectionVerified.current && ws.current === wsInstance) {
+            connectionVerified.current = true;
+            if (verificationTimeout.current) {
+              clearTimeout(verificationTimeout.current);
+              verificationTimeout.current = null;
+            }
+            setStatus('connected');
+            addCommand('WebSocket connection verified');
+          }
 
           // Heartbeat pong
           if (data?.type === 'pong') {
@@ -326,6 +357,11 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
       };
 
       wsInstance.onclose = () => {
+        connectionVerified.current = false;
+        if (verificationTimeout.current) {
+          clearTimeout(verificationTimeout.current);
+          verificationTimeout.current = null;
+        }
         setStatus('disconnected');
         addCommand('WebSocket disconnected');
         cleanupHeartbeat();
@@ -362,9 +398,14 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
     // Cleanup on unmount
     return () => {
       shouldReconnect.current = false;
+      connectionVerified.current = false;
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
         reconnectTimer.current = null;
+      }
+      if (verificationTimeout.current) {
+        clearTimeout(verificationTimeout.current);
+        verificationTimeout.current = null;
       }
       cleanupHeartbeat();
       if (ws.current) {
