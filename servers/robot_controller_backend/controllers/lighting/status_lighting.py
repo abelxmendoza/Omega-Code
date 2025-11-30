@@ -12,7 +12,16 @@ This module provides intelligent lighting that responds to robot state.
 """
 
 import sys
+import os
 from typing import Optional, Dict, Any
+
+# Add parent directory to Python path if not already set
+if 'PYTHONPATH' not in os.environ or 'robot_controller_backend' not in os.environ.get('PYTHONPATH', ''):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.abspath(os.path.join(script_dir, '../..'))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+
 from controllers.lighting.led_control import LedController
 from controllers.lighting.patterns import status_indicator
 from controllers.lighting.color_presets import get_theme, COLOR_PRESETS

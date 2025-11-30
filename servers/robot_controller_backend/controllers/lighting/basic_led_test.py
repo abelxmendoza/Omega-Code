@@ -18,9 +18,18 @@ Supported Colors:
 - RGB: three integer values from 0–255
 """
 
+import sys
+import os
+
+# Add parent directory to Python path if not already set
+if 'PYTHONPATH' not in os.environ or 'robot_controller_backend' not in os.environ.get('PYTHONPATH', ''):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.abspath(os.path.join(script_dir, '../..'))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+
 from controllers.lighting.led_control import LedController
 from rpi_ws281x import Color
-import sys
 
 if __name__ == "__main__":
     led = LedController()

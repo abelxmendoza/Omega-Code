@@ -16,9 +16,19 @@ File Location:
 """
 
 import sys
+import os
 import time
 import traceback
 from functools import lru_cache
+
+# Add parent directory to Python path if not already set
+# This allows the script to be run from any directory
+if 'PYTHONPATH' not in os.environ or 'robot_controller_backend' not in os.environ.get('PYTHONPATH', ''):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.abspath(os.path.join(script_dir, '../..'))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+
 from rpi_ws281x import Adafruit_NeoPixel, Color, WS2811_STRIP_GRB
 
 from controllers.lighting.patterns import (
