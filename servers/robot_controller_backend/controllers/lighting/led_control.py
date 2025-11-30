@@ -268,16 +268,17 @@ class LedController:
 
         self.is_on = True
 
-    def set_led(self, color, mode="single", pattern="static", interval=500, brightness=1.0):
+    def set_led(self, color, mode="single", pattern="static", interval=500, brightness=1.0, color2=0x000000):
         """
         Set LED strip color/pattern/mode/brightness with comprehensive validation.
 
         Args:
-            color (int): 24-bit RGB integer (0-16777215).
-            mode (str): Lighting mode.
+            color (int): 24-bit RGB integer (0-16777215) for primary color.
+            mode (str): Lighting mode ("single", "dual", "rainbow").
             pattern (str): Animation pattern.
             interval (int): Timing for dynamic patterns (ms).
             brightness (float): 0.0–1.0, global brightness.
+            color2 (int): 24-bit RGB integer (0-16777215) for secondary color (used in dual mode).
         """
         try:
             # Validate inputs
