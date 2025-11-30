@@ -88,12 +88,15 @@ def dual_color(strip, color1, color2=Color(0,0,0), orientation="alternate"):
     
     elif orientation == "gradient":
         # Smooth gradient transition from color1 to color2
-        # Extract RGB from Color objects (they're integers internally)
+        # Extract RGB from Color objects - they're stored as packed integers
+        # Use getPixelColor to extract RGB values
         def extract_rgb(c):
             """Extract RGB tuple from Color object."""
-            # Set to a test pixel and read it back to get RGB values
+            # Temporarily set pixel 0 to the color and read it back
+            original_val = strip.getPixelColor(0) if num_pixels > 0 else 0
             strip.setPixelColor(0, c)
             pixel_val = strip.getPixelColor(0)
+            # Restore original if needed (though we'll overwrite it anyway)
             r = (pixel_val >> 16) & 0xFF
             g = (pixel_val >> 8) & 0xFF
             b = pixel_val & 0xFF
