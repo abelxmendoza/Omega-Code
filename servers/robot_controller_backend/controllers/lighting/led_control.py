@@ -324,7 +324,9 @@ class LedController:
                 self.rainbow(interval if interval > 0 else 20, brightness, iterations)
                 self.is_on = True
             elif pattern == "lightshow":
-                # Lightshow pattern - multi-stage animation
+                # Lightshow pattern - multi-stage animation (available in single and rainbow modes)
+                if mode == "dual":
+                    raise ValueError("Lightshow pattern not available in dual mode. Use static, blink, fade, chase, or pulse patterns.")
                 self.lightshow(color, interval=interval, brightness=brightness)
                 self.is_on = True
             elif pattern == "static":
