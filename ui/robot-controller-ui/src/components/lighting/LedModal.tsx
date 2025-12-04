@@ -335,18 +335,25 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   
   // Get current color being edited
   const currentColor = editingColor === 'color1' ? color1 : color2;
-  // Get available patterns for current mode
-  const getAvailablePatterns = (): readonly LightingPattern[] => {
+  
+  // Resolver function — ensures we ALWAYS return LightingPattern[]
+  const resolvePatterns = (mode: LightingMode): LightingPattern[] => {
     switch (mode) {
       case 'single':
-        return SINGLE_MODE_PATTERNS;
+        return [...SINGLE_MODE_PATTERNS] as LightingPattern[];
       case 'dual':
-        return DUAL_MODE_PATTERNS;
+        return [...DUAL_MODE_PATTERNS] as LightingPattern[];
       case 'rainbow':
-        return RAINBOW_MODE_PATTERNS;
+        return [...RAINBOW_MODE_PATTERNS] as LightingPattern[];
       default:
-        return SINGLE_MODE_PATTERNS;
+        console.error("[LEDModal] Unknown mode encountered:", mode);
+        return [...SINGLE_MODE_PATTERNS] as LightingPattern[]; // fail-safe
     }
+  };
+  
+  // Get available patterns for current mode (uses current state)
+  const getAvailablePatterns = (): readonly LightingPattern[] => {
+    return resolvePatterns(mode);
   };
 
   const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -354,11 +361,17 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     setMode(newMode);
     
     // Reset pattern to first available pattern for new mode
-    const availablePatterns = newMode === 'single' ? SINGLE_MODE_PATTERNS 
-                           : newMode === 'dual' ? DUAL_MODE_PATTERNS 
-                           : RAINBOW_MODE_PATTERNS;
-    if (!availablePatterns.includes(pattern as any)) {
-      setPattern(availablePatterns[0] as LightingPattern);
+    // Use resolver to build a correctly typed array
+    const availablePatterns: LightingPattern[] = resolvePatterns(newMode);
+    
+    // Validate pattern safely
+    if (!availablePatterns.includes(pattern as LightingPattern)) {
+      console.warn("[LEDModal] Invalid pattern for current mode. Resetting.", {
+        invalidPattern: pattern,
+        mode: newMode,
+        valid: availablePatterns,
+      });
+      setPattern(availablePatterns[0]);
     }
     
     autoApplyIfOn();
