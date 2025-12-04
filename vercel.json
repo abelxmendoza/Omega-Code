@@ -1,14 +1,10 @@
 {
   "version": 2,
-  "projects": {},
   "builds": [
     {
       "src": "ui/robot-controller-ui/package.json",
       "use": "@vercel/next"
     }
   ],
-  "routes": [],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  "routes": []
 }
