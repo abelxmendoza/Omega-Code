@@ -36,30 +36,30 @@ if __name__ == "__main__":
         led = LedController()
 
         if len(sys.argv) == 2:
-        # Named color mode
-        c = sys.argv[1].lower()
-        if c == 'red':
-            led.color_wipe(Color(255, 0, 0))
-        elif c == 'green':
-            led.color_wipe(Color(0, 255, 0))
-        elif c == 'blue':
-            led.color_wipe(Color(0, 0, 255))
-        elif c == 'off':
-            led.color_wipe(Color(0, 0, 0))
-        else:
-            print("Invalid color. Use: red, green, blue, or off.")
-            sys.exit(1)
+            # Named color mode
+            c = sys.argv[1].lower()
+            if c == 'red':
+                led.color_wipe(Color(255, 0, 0))
+            elif c == 'green':
+                led.color_wipe(Color(0, 255, 0))
+            elif c == 'blue':
+                led.color_wipe(Color(0, 0, 255))
+            elif c == 'off':
+                led.color_wipe(Color(0, 0, 0))
+            else:
+                print("Invalid color. Use: red, green, blue, or off.")
+                sys.exit(1)
 
-    elif len(sys.argv) == 4:
-        # RGB mode
-        try:
-            r = int(sys.argv[1])
-            g = int(sys.argv[2])
-            b = int(sys.argv[3])
-            led.color_wipe(Color(r, g, b))
-        except ValueError:
-            print("Invalid RGB values. Please provide integers from 0 to 255.")
-            sys.exit(1)
+        elif len(sys.argv) == 4:
+            # RGB mode
+            try:
+                r = int(sys.argv[1])
+                g = int(sys.argv[2])
+                b = int(sys.argv[3])
+                led.color_wipe(Color(r, g, b))
+            except ValueError:
+                print("Invalid RGB values. Please provide integers from 0 to 255.")
+                sys.exit(1)
 
         else:
             # No arguments: cycle through red, green, and blue (functionality test)

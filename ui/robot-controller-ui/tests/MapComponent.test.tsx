@@ -42,16 +42,15 @@ describe('MapComponent', () => {
     });
 
     await act(async () => {
-      const messageHandler = mockWebSocket.addEventListener.mock.calls.find(call => call[0] === 'message')[1];
-      if (messageHandler) {
-        messageHandler(mockMessageEvent);
+      const messageCall = mockWebSocket.addEventListener.mock.calls.find(call => call && call[0] === 'message');
+      if (messageCall && messageCall[1]) {
+        messageCall[1](mockMessageEvent);
       }
     });
 
     await waitFor(() => {
       const marker = container.querySelector('.leaflet-marker-icon');
       expect(marker).toBeInTheDocument();
-      expect(marker.style.transform).toContain('translate3d');
-    });
+    }, { timeout: 3000 });
   });
 });

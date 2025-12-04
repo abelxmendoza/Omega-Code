@@ -6,7 +6,17 @@ from unittest.mock import patch, call
 # Add parent directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-from controllers.lighting import basic_led_test
+try:
+    from controllers.lighting import basic_led_test
+except ImportError:
+    # Try alternative import path
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "basic_led_test",
+        os.path.join(os.path.dirname(__file__), '../../controllers/lighting/basic_led_test.py')
+    )
+    basic_led_test = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(basic_led_test)
 
 
 class TestBasicLedTestScript(unittest.TestCase):
