@@ -45,7 +45,6 @@ export function useCapabilities(autoRefresh = true, refreshInterval = 30000) {
       
       const url = `${API_BASE}/api/capabilities/${forceRefresh ? '?refresh=true' : ''}`;
       // Use robotFetch wrapper to respect offline mode
-      const { robotFetch } = await import('@/utils/network');
       const response = await robotFetch(url);
       
       if ((response as any).offline) {
