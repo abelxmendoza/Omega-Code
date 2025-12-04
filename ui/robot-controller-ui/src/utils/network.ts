@@ -1,47 +1,58 @@
-/**
- * Safe Network Utilities
- * Wrappers that disable robot API calls when running on Vercel (cloud)
- */
+// --------------------------------------------------
+// Robot Offline Mode – Final Stable Blueprint
+// --------------------------------------------------
 
 import { ROBOT_ENABLED, ROBOT_BASE_URL } from "./env";
 
-// -----------------------------
-// Types
-// -----------------------------
+//
+// 1. Unified OfflineResponse Type
+//
 
 export interface OfflineResponse {
   ok: false;
   offline: true;
-  status: 0;
-  json: () => Promise<any>;
-  text: () => Promise<string>;
+  status: number;
+  statusText: string;
+  json(): Promise<any>;
+  text(): Promise<string>;
 }
 
-function createOfflineResponse(path: string): OfflineResponse {
-  console.warn(`[Robot OFFLINE] Blocked fetch: ${path}`);
+//
+// 2. Factory for fake Response-like offline responses
+//
+
+export function createOfflineResponse(path: string): OfflineResponse {
   return {
     ok: false,
     offline: true,
-    status: 0,
-    json: async () => ({ offline: true }),
-    text: async () => "offline",
+    status: 503, // Service Unavailable
+    statusText: "Service Unavailable",
+    json: async () => ({
+      offline: true,
+      message: `Robot backend unavailable: ${path}`,
+    }),
+    text: async () => `Robot backend unavailable: ${path}`,
   };
 }
 
-// -----------------------------
-// Safe fetch wrapper
-// -----------------------------
+//
+// 3. Wrapper for fetch() — returns OfflineResponse on Vercel
+//
 
-export async function robotFetch(path: string, options?: RequestInit) {
-  // BLOCK all robot calls on Vercel
-  if (!ROBOT_ENABLED) return createOfflineResponse(path);
+export async function robotFetch(
+  path: string,
+  options?: RequestInit
+): Promise<Response | OfflineResponse> {
+  if (!ROBOT_ENABLED) {
+    console.warn(`[Robot OFFLINE] Blocked fetch: ${path}`);
+    return createOfflineResponse(path);
+  }
 
   try {
     const url = `${ROBOT_BASE_URL}${path}`;
-    const res = await fetch(url, options);
-    return res;
+    return await fetch(url, options);
   } catch (err) {
-    console.error("[robotFetch] error:", err);
+    console.error(`[RobotFetch ERROR] ${path}`, err);
     return createOfflineResponse(path);
   }
 }
