@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { renderWithProviders } from '../utils/test-helpers';
+import { renderWithProviders } from './utils/test-helpers';
 import SensorDashboard from '@/components/sensors/SensorDashboard';
 
 // Mock WebSocket
