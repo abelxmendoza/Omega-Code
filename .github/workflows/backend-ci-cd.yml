@@ -4,12 +4,12 @@ on:
   push:
     branches: [ master, main, develop ]
     paths:
-      - 'servers/robot-controller-backend/**'
+      - 'servers/robot_controller_backend/**'
       - '.github/workflows/backend-ci-cd.yml'
   pull_request:
     branches: [ master, main ]
     paths:
-      - 'servers/robot-controller-backend/**'
+      - 'servers/robot_controller_backend/**'
   workflow_dispatch:
 
 env:
@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./servers/robot-controller-backend
+        working-directory: ./servers/robot_controller_backend
     
     strategy:
       matrix:
@@ -54,12 +54,14 @@ jobs:
         run: |
           python -m pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
         env:
-          PYTHONPATH: ${{ github.workspace }}/servers/robot-controller-backend
+          PYTHONPATH: ${{ github.workspace }}/servers/robot_controller_backend
       
       - name: Upload coverage reports
+        if: always()
         uses: codecov/codecov-action@v3
         with:
-          file: ./servers/robot-controller-backend/coverage.xml
+          file: ./servers/robot_controller_backend/coverage.xml
+          fail_ci_if_error: false
           flags: backend-python
           name: backend-python-coverage
           fail_ci_if_error: false
@@ -70,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./servers/robot-controller-backend
+        working-directory: ./servers/robot_controller_backend
     
     strategy:
       matrix:
@@ -97,7 +99,7 @@ jobs:
       - name: Upload coverage reports
         uses: codecov/codecov-action@v3
         with:
-          file: ./servers/robot-controller-backend/coverage.out
+          file: ./servers/robot_controller_backend/coverage.out
           flags: backend-go
           name: backend-go-coverage
           fail_ci_if_error: false
@@ -108,7 +110,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./servers/robot-controller-backend
+        working-directory: ./servers/robot_controller_backend
     
     steps:
       - name: Checkout code
@@ -157,7 +159,7 @@ jobs:
         if: always()
         with:
           name: bandit-security-report
-          path: servers/robot-controller-backend/bandit-report.json
+          path: servers/robot_controller_backend/bandit-report.json
           retention-days: 30
 
   # Security Scanning
@@ -166,7 +168,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./servers/robot-controller-backend
+        working-directory: ./servers/robot_controller_backend
     
     steps:
       - name: Checkout code
@@ -196,8 +198,8 @@ jobs:
         with:
           name: security-reports
           path: |
-            servers/robot-controller-backend/safety-report.json
-            servers/robot-controller-backend/semgrep-report.json
+            servers/robot_controller_backend/safety-report.json
+            servers/robot_controller_backend/semgrep-report.json
           retention-days: 30
 
   # Build Docker Images
@@ -224,7 +226,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ secrets.DOCKER_USERNAME }}/robot-controller-backend
+            ${{ secrets.DOCKER_USERNAME }}/robot_controller_backend
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -234,8 +236,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./servers/robot-controller-backend
-          file: ./servers/robot-controller-backend/Dockerfile
+          context: ./servers/robot_controller_backend
+          file: ./servers/robot_controller_backend/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -250,7 +252,7 @@ jobs:
     needs: build-docker
     defaults:
       run:
-        working-directory: ./servers/robot-controller-backend
+        working-directory: ./servers/robot_controller_backend
     
     steps:
       - name: Checkout code
@@ -278,7 +280,7 @@ jobs:
         run: |
           python -m pytest tests/integration/ -v
         env:
-          PYTHONPATH: ${{ github.workspace }}/servers/robot-controller-backend
+          PYTHONPATH: ${{ github.workspace }}/servers/robot_controller_backend
       
       - name: Stop background services
         run: |
@@ -292,7 +294,7 @@ jobs:
     needs: build-docker
     defaults:
       run:
-        working-directory: ./servers/robot-controller-backend
+        working-directory: ./servers/robot_controller_backend
     
     steps:
       - name: Checkout code
@@ -312,7 +314,7 @@ jobs:
         run: |
           python -m pytest tests/performance/ -v --benchmark-only
         env:
-          PYTHONPATH: ${{ github.workspace }}/servers/robot-controller-backend
+          PYTHONPATH: ${{ github.workspace }}/servers/robot_controller_backend
         continue-on-error: true
 
   # Deploy to Staging
