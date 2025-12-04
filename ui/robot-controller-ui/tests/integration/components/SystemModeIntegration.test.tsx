@@ -30,11 +30,12 @@ describe('SystemModeDashboard Integration', () => {
       expect(screen.getByText(/System Mode Control/i)).toBeInTheDocument();
     });
 
-    // Verify API was called
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/api/system/mode/list'),
-      expect.any(Object)
+    // Verify API was called (may be called with just URL or URL + options)
+    const fetchCalls = (global.fetch as jest.Mock).mock.calls;
+    const hasListCall = fetchCalls.some(call => 
+      call[0] && typeof call[0] === 'string' && call[0].includes('/api/system/mode/list')
     );
+    expect(hasListCall).toBe(true);
   });
 
   it('handles API errors gracefully', async () => {
