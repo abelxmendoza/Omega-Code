@@ -36,3 +36,4 @@ servers/robot-controller-backend/robot-controller
 # Shared libraries
 *.so
 *.dylib
+servers/robot_controller_backend/venv_new/
