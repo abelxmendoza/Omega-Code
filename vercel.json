@@ -1,10 +1,4 @@
 {
-  "rootDirectory": "ui/robot-controller-ui",
-  "buildCommand": "npm run build",
-  "installCommand": "npm install",
-  "outputDirectory": ".next",
-  "ignoreCommand": "echo 'Ignoring backend and ROS during Vercel deploy'",
-  "framework": "nextjs",
   "rewrites": [
     { "source": "/(.*)", "destination": "/$1" }
   ]
