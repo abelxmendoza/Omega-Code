@@ -14,6 +14,7 @@ import type { ColorResult } from 'react-color';
 import { SketchPicker } from 'react-color';
 import { connectLightingWs } from '../../utils/connectLightingWs';
 import { Switch } from '../ui/switch';
+import { ROBOT_ENABLED } from '../../utils/env';
 
 // Updated to match backend capabilities - optimized with cool patterns
 const LIGHTING_MODES = ['single', 'rainbow', 'dual'] as const;
@@ -32,6 +33,7 @@ const SINGLE_MODE_PATTERNS = [
   'lightshow',   // Multi-stage animation
   'music',       // Audio reactive
   'rave',        // Energetic dancing lights
+  'omega_signature', // Omega Technologies brand showcase - awakening sequence
 ] as const;
 
 const DUAL_MODE_PATTERNS = [
@@ -147,6 +149,15 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   }, []);
 
   useEffect(() => {
+    // Demo mode: skip WebSocket connection
+    if (!ROBOT_ENABLED) {
+      if (isOpen) {
+        console.log('[LedModal] 🎭 DEMO MODE: Skipping WebSocket connection');
+        setServerStatus('disconnected'); // Show as disconnected but allow UI interaction
+      }
+      return;
+    }
+
     if (!isOpen) {
       // Cleanup when modal closes
       clearHeartbeat();
@@ -294,6 +305,28 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
 
   // Helper to auto-apply changes when LED is on
   const autoApplyIfOn = () => {
+    // Demo mode: allow auto-apply
+    if (!ROBOT_ENABLED && ledOn) {
+      setTimeout(() => {
+        if (ledOn) {
+          const effectiveBrightness = Math.max(0.35, brightness / 100);
+          const commandData: Record<string, unknown> = {
+            color: color1,
+            mode: mode,
+            pattern: pattern,
+            interval: pattern !== 'static' ? intervalMs : 0,
+            brightness: effectiveBrightness,
+          };
+          if (mode === 'dual') {
+            commandData.color2 = color2;
+            commandData.orientation = dualOrientation;
+          }
+          console.log('[LedModal] 🎭 DEMO MODE: Auto-applied settings:', JSON.stringify(commandData));
+        }
+      }, 300);
+      return;
+    }
+
     if (ledOn && wsOpen() && serverStatus === 'connected') {
       // Small delay to batch rapid changes
       setTimeout(() => {
@@ -397,6 +430,13 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   };
 
   const send = (payload: Record<string, unknown>) => {
+    // Demo mode: simulate command execution
+    if (!ROBOT_ENABLED) {
+      console.log('[LedModal] 🎭 DEMO MODE: Simulating lighting command:', payload);
+      // Simulate successful command execution
+      return;
+    }
+
     if (!wsOpen()) {
       console.error('[LedModal] ❌ Cannot send: WebSocket not open');
       console.error('[LedModal] WebSocket state:', ws.current?.readyState);
@@ -421,6 +461,13 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     console.log(`[LedModal] 🔄 Toggle power: ${ledOn} -> ${newState}`);
     console.log(`[LedModal] WebSocket readyState: ${ws.current?.readyState} (OPEN=${WebSocket.OPEN}, CONNECTING=${WebSocket.CONNECTING})`);
     console.log(`[LedModal] Server status: ${serverStatus}`);
+    
+    // Demo mode: allow toggle without WebSocket
+    if (!ROBOT_ENABLED) {
+      console.log('[LedModal] 🎭 DEMO MODE: Simulating power toggle');
+      setLedOn(newState);
+      return;
+    }
     
     if (!wsOpen()) {
       console.error('[LedModal] ⚠️ Lighting WS not open! Cannot toggle.');
@@ -480,6 +527,13 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   };
 
   const handleApply = () => {
+    // Demo mode: allow apply without WebSocket
+    if (!ROBOT_ENABLED) {
+      console.log('[LedModal] 🎭 DEMO MODE: Simulating apply settings');
+      setLedOn(true);
+      return;
+    }
+
     if (!wsOpen()) {
       console.error('Lighting WS not open.');
       return;
@@ -594,20 +648,34 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
           <h2 id="led-config-title" className="text-xl font-bold text-[#00FF88]" style={{ fontFamily: "'Orbitron', sans-serif", textShadow: '0 0 10px rgba(0, 255, 136, 0.5)' }}>
             LED Configuration
           </h2>
-          <div
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg ${statusColor}`}
-            style={{
-              boxShadow: serverStatus === 'connected' 
-                ? '0 0 15px rgba(0, 255, 136, 0.5)' 
-                : serverStatus === 'connecting'
-                ? '0 0 15px rgba(255, 170, 0, 0.5)'
-                : '0 0 15px rgba(255, 0, 102, 0.5)'
-            }}
-            title="Lighting server connection status"
-            aria-live="polite"
-          >
-            <span className={`inline-block w-2 h-2 rounded-full ${serverStatus === 'connected' ? 'bg-black' : 'bg-white/90'}`} />
-            <span>{statusLabel}</span>
+          <div className="flex items-center gap-2">
+            {!ROBOT_ENABLED && (
+              <div
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg bg-[#C400FF] text-white"
+                style={{
+                  boxShadow: '0 0 15px rgba(196, 0, 255, 0.5)'
+                }}
+                title="Demo Mode - Commands are simulated"
+              >
+                <span className="inline-block w-2 h-2 rounded-full bg-white" />
+                <span>Demo Mode</span>
+              </div>
+            )}
+            <div
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg ${statusColor}`}
+              style={{
+                boxShadow: serverStatus === 'connected' 
+                  ? '0 0 15px rgba(0, 255, 136, 0.5)' 
+                  : serverStatus === 'connecting'
+                  ? '0 0 15px rgba(255, 170, 0, 0.5)'
+                  : '0 0 15px rgba(255, 0, 102, 0.5)'
+              }}
+              title="Lighting server connection status"
+              aria-live="polite"
+            >
+              <span className={`inline-block w-2 h-2 rounded-full ${serverStatus === 'connected' ? 'bg-black' : 'bg-white/90'}`} />
+              <span>{statusLabel}</span>
+            </div>
           </div>
         </div>
 
@@ -618,22 +686,25 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
               <span>LED Power:</span>
               <span className={ledOn ? 'text-[#00FF88]' : 'text-[#B0B0B0]'}>{ledOn ? 'On' : 'Off'}</span>
             </div>
-            {serverStatus !== 'connected' && (
+            {!ROBOT_ENABLED && (
+              <div className="text-[10px] text-[#C400FF] mt-1">Demo Mode - Commands are simulated</div>
+            )}
+            {ROBOT_ENABLED && serverStatus !== 'connected' && (
               <div className="text-[10px] text-[#FF0066] mt-1">Server unavailable - toggle disabled</div>
             )}
           </div>
           <Switch 
             checked={ledOn} 
             onCheckedChange={handleTogglePower}
-            disabled={serverStatus !== 'connected'}
+            disabled={ROBOT_ENABLED && serverStatus !== 'connected'}
             aria-label="Toggle LED power"
             className="scale-110"
           />
         </div>
 
         <fieldset
-          disabled={serverStatus !== 'connected'}
-          className={serverStatus === 'connected' ? '' : 'opacity-50'}
+          disabled={ROBOT_ENABLED && serverStatus !== 'connected'}
+          className={ROBOT_ENABLED && serverStatus !== 'connected' ? 'opacity-50' : ''}
         >
           {/* Single Color Picker - works for both single and dual modes */}
           <div>
@@ -817,6 +888,11 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
                 🔥 FIRE: Realistic flickering fire effect with orange/red/yellow flames. Great for ambient lighting!
               </p>
             )}
+            {pattern === 'omega_signature' && (
+              <p className="mt-2 text-sm text-[#C400FF] font-bold bg-[#1A1A1A]/70 p-2 rounded border border-[#C400FF]/50" style={{ textShadow: '0 0 8px rgba(196, 0, 255, 0.6)' }}>
+                ⚡ OMEGA SIGNATURE: Omega Technologies brand showcase — 4-stage awakening sequence (black → void purple → electric surge → blood-red heartbeat → steady breathing). Perfect for demos, reveals, and brand moments!
+              </p>
+            )}
           </div>
 
           {/* Interval Input */}
@@ -864,20 +940,22 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
         {/* Apply Button */}
         <button
           onClick={handleApply}
-          disabled={serverStatus !== 'connected'}
+          disabled={ROBOT_ENABLED && serverStatus !== 'connected'}
           className={`text-white p-3.5 rounded-lg mt-6 w-full focus:outline-none focus:ring-2 transition-all font-semibold ${
-            serverStatus !== 'connected'
+            ROBOT_ENABLED && serverStatus !== 'connected'
               ? 'bg-[#2A2A2A] cursor-not-allowed border border-[#4A4A4A]'
               : ledOn
               ? 'bg-gradient-to-r from-[#C400FF] to-[#8B00FF] hover:from-[#D400FF] hover:to-[#9B00FF] focus:ring-[#C400FF]/50 border border-[#C400FF]/50 shadow-lg hover:shadow-[#C400FF]/50'
               : 'bg-gradient-to-r from-[#00FF88] to-[#00DD77] hover:from-[#00FF99] hover:to-[#00EE88] focus:ring-[#00FF88]/50 border border-[#00FF88]/50 shadow-lg hover:shadow-[#00FF88]/50 text-black'
           }`}
           style={{
-            textShadow: serverStatus === 'connected' ? '0 0 8px rgba(196, 0, 255, 0.6)' : 'none',
-            boxShadow: serverStatus === 'connected' ? '0 0 20px rgba(196, 0, 255, 0.4)' : 'none'
+            textShadow: (!ROBOT_ENABLED || serverStatus === 'connected') ? '0 0 8px rgba(196, 0, 255, 0.6)' : 'none',
+            boxShadow: (!ROBOT_ENABLED || serverStatus === 'connected') ? '0 0 20px rgba(196, 0, 255, 0.4)' : 'none'
           }}
         >
-          {serverStatus !== 'connected' 
+          {!ROBOT_ENABLED
+            ? (ledOn ? 'Apply Settings (Demo)' : 'Turn On & Apply Settings (Demo)')
+            : serverStatus !== 'connected' 
             ? 'Server Unavailable' 
             : ledOn 
             ? 'Apply Settings' 
