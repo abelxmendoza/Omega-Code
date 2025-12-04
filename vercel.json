@@ -1,8 +1,13 @@
 {
-  "buildCommand": "cd ui/robot-controller-ui && npm run build",
-  "outputDirectory": "ui/robot-controller-ui/.next",
-  "framework": "nextjs",
-  "installCommand": "cd ui/robot-controller-ui && npm install",
+  "version": 2,
+  "projects": {},
+  "builds": [
+    {
+      "src": "ui/robot-controller-ui/package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [],
   "env": {
     "NODE_ENV": "production"
   }
