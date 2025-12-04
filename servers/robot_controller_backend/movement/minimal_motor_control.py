@@ -45,9 +45,10 @@ class Motor:
         Args:
             duty: PWM duty cycle (-4095 to 4095, negative = backward)
         """
-        # Apply trim before converting to unsigned
-        left_duty = self._apply_trim(duty, self.left_trim)
-        right_duty = self._apply_trim(duty, self.right_trim)
+        # Trim is now handled by hardware driver (motor_driver_pi.py)
+        # Pass duty directly to avoid double-trim and asymmetric behavior
+        left_duty = duty
+        right_duty = duty
         # Use low-level helper which handles signed duty
         self._set_lr(left_duty, right_duty)
 
@@ -134,11 +135,21 @@ class Motor:
         left_pwm = abs(left_duty) if left_duty != 0 else 0
         right_pwm = abs(right_duty) if right_duty != 0 else 0
         
+        # Direction flags for Pi motor driver
+        left_reverse = left_duty < 0
+        right_reverse = right_duty < 0
+        
+        # === VALIDATION LOGGING ===
+        print(
+            "[MOTOR-VALIDATION] "
+            f"LD={left_duty} RD={right_duty} | "
+            f"LPWM={left_pwm} RPWM={right_pwm} | "
+            f"LREV={left_reverse} RREV={right_reverse}"
+        )
+        
         # Check if driver supports reverse parameter (PiMotorDriver)
         if hasattr(self.driver, 'set_pwm') and 'left_reverse' in self.driver.set_pwm.__code__.co_varnames:
             # PiMotorDriver supports reverse parameter
-            left_reverse = left_duty < 0
-            right_reverse = right_duty < 0
             self.driver.set_pwm(left_pwm, right_pwm, left_reverse=left_reverse, right_reverse=right_reverse)
         else:
             # Other drivers (Mac, Linux, Sim) just use unsigned PWM
@@ -147,9 +158,11 @@ class Motor:
     # Internal helpers -------------------------------------------------------
 
     def _apply_trim(self, duty: int, trim: int) -> int:
-        if duty == 0 or trim == 0:
-            return duty
-        return duty + (trim if duty > 0 else -trim)
+        """
+        Trim is now handled by hardware driver (motor_driver_pi.py).
+        This method is kept for compatibility but no longer applies trim.
+        """
+        return duty  # trim no longer applied here
 
     def _clamp_duty(self, duty: int) -> int:
         return max(-MAX_PWM, min(MAX_PWM, int(duty)))

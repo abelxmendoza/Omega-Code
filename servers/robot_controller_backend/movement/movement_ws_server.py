@@ -1404,6 +1404,20 @@ async def main():
             f"Thermal={THERMAL_SAFETY is not None}, Watchdog={MOVEMENT_WATCHDOG is not None}, "
             f"Profiles={PROFILE_MANAGER is not None}")
     
+    # Center servos on startup (same as reset-servo command)
+    global current_horizontal_angle, current_vertical_angle
+    if servo is not None:
+        try:
+            current_horizontal_angle = 90
+            current_vertical_angle = 90
+            servo.setServoPwm("horizontal", current_horizontal_angle)
+            servo.setServoPwm("vertical", current_vertical_angle)
+            log(f"[MOVE][INIT] Servos centered: horizontal={current_horizontal_angle}°, vertical={current_vertical_angle}°")
+        except Exception as e:
+            warn(f"[MOVE][INIT] Failed to center servos on startup: {e}")
+    else:
+        log("[MOVE][INIT] Servo controller not available (SIM_MODE or hardware unavailable)")
+    
     # Start optimization systems (must be done after event loop is running)
     if OPTIMIZATION_AVAILABLE:
         # Start async task processor

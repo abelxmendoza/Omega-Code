@@ -26,8 +26,8 @@ FRAME_STALE_MS      = 2500  (used by is_alive())
 
 from __future__ import annotations
 
+import os  # Must be at top to prevent "cannot access local variable 'os'" errors
 import atexit
-import os
 import time
 import threading
 import logging
@@ -463,7 +463,7 @@ class Camera:
                 except ImportError:
                     # Fallback for different import paths
                     import sys
-                    import os
+                    # os already imported at top of file
                     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
                     from video.camera_manager import CameraManager
                 
