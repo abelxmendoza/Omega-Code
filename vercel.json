@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd ui/robot-controller-ui && npm run build",
+  "buildCommand": "bash vercel-build.sh",
   "outputDirectory": "ui/robot-controller-ui/.next",
   "framework": "nextjs",
   "env": {
