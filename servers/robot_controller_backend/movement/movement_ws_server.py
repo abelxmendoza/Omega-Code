@@ -645,12 +645,15 @@ def cancel_buzz_task():
 
 async def do_stop():
     # Stop motors + buzzer
+    global current_speed
     async with motor_lock:
         try:
             motor.stop()
         except Exception as e:
             elog("motor stop failed:", repr(e))
     await buzz_off_safe()
+    # Reset speed to 0 on stop for UI sync
+    current_speed = 0
 
 def _call_motor(fn, speed: int):
     try:
@@ -901,7 +904,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                 elif cmd == "stop":
                     log(f"[CMD] Executing stop")
                     await do_stop()
-                    await send_json(ws, ok("stop"))
+                    await send_json(ws, ok("stop", speed=current_speed))
 
                 # -------- STRAIGHT ASSIST --------
                 elif cmd in {"straight-assist", "straight-assist-config"}:

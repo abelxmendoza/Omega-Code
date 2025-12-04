@@ -9,9 +9,10 @@
 # - PID status (if available)
 */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MovementV2Data } from '@/context/CommandContext';
+import { MovementV2Data, useCommand } from '@/context/CommandContext';
+import { COMMAND } from '@/control_definitions';
 
 interface MovementV2ModalProps {
   isOpen: boolean;
@@ -20,6 +21,9 @@ interface MovementV2ModalProps {
 }
 
 const MovementV2Modal: React.FC<MovementV2ModalProps> = ({ isOpen, onClose, movementV2 }) => {
+  const { sendCommand } = useCommand();
+  const [isChangingProfile, setIsChangingProfile] = useState(false);
+
   // Close modal on Escape key press
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -30,6 +34,21 @@ const MovementV2Modal: React.FC<MovementV2ModalProps> = ({ isOpen, onClose, move
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, [isOpen, onClose]);
+
+  const handleProfileChange = async (profileName: string) => {
+    setIsChangingProfile(true);
+    try {
+      sendCommand(COMMAND.SET_PROFILE, { profile: profileName });
+      // Request status update after a short delay to get updated profile
+      setTimeout(() => {
+        sendCommand(COMMAND.STATUS);
+        setIsChangingProfile(false);
+      }, 300);
+    } catch (error) {
+      console.error('Failed to change profile:', error);
+      setIsChangingProfile(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -145,11 +164,27 @@ const MovementV2Modal: React.FC<MovementV2ModalProps> = ({ isOpen, onClose, move
           {/* Profile Section */}
           {movementV2.profile && (
             <div className="bg-[#1A1A1A] border border-[#C400FF]/30 rounded-lg p-4 backdrop-blur-sm" style={{ boxShadow: '0 0 20px rgba(196, 0, 255, 0.1)' }}>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-3">
                 <span className="text-[#B0B0B0] text-sm">Profile:</span>
                 <span className="text-[#C400FF] font-medium capitalize">
                   {movementV2.profile.name || 'Unknown'}
                 </span>
+              </div>
+              <div className="flex gap-2">
+                {['smooth', 'aggressive', 'precision'].map((profile) => (
+                  <button
+                    key={profile}
+                    onClick={() => handleProfileChange(profile)}
+                    disabled={isChangingProfile || movementV2.profile?.name === profile}
+                    className={`px-3 py-1.5 text-xs rounded-lg transition-all border ${
+                      movementV2.profile?.name === profile
+                        ? 'bg-[#C400FF]/20 border-[#C400FF] text-[#C400FF]'
+                        : 'bg-[#2A2A2A] border-[#C400FF]/20 text-[#B0B0B0] hover:border-[#C400FF]/40 hover:text-[#E0E0E0]'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {profile.charAt(0).toUpperCase() + profile.slice(1)}
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -223,8 +258,48 @@ const MovementV2Modal: React.FC<MovementV2ModalProps> = ({ isOpen, onClose, move
             </div>
           )}
 
-          {/* PID Status (if available in future) */}
-          {/* This section can be added when PID data is included in movementV2 */}
+          {/* PID Status Section */}
+          {movementV2.pid && (
+            <div className="bg-[#1A1A1A] border border-[#C400FF]/30 rounded-lg p-4 backdrop-blur-sm" style={{ boxShadow: '0 0 20px rgba(196, 0, 255, 0.1)' }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[#B0B0B0] text-sm">PID Control:</span>
+                <span className={`font-medium ${movementV2.pid.enabled ? 'text-[#00FF88]' : 'text-[#808080]'}`}>
+                  {movementV2.pid.enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+              {movementV2.pid.enabled && movementV2.pid.tuning && (
+                <div className="text-xs text-[#808080] space-y-1">
+                  {movementV2.pid.target_rpm !== undefined && (
+                    <div className="flex justify-between">
+                      <span>Target RPM:</span>
+                      <span className="text-[#E0E0E0]">{movementV2.pid.target_rpm.toFixed(1)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span>Kp:</span>
+                    <span className="text-[#E0E0E0]">{movementV2.pid.tuning.kp.toFixed(3)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Ki:</span>
+                    <span className="text-[#E0E0E0]">{movementV2.pid.tuning.ki.toFixed(3)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Kd:</span>
+                    <span className="text-[#E0E0E0]">{movementV2.pid.tuning.kd.toFixed(3)}</span>
+                  </div>
+                  {movementV2.pid.tuning.kf !== undefined && movementV2.pid.tuning.kf !== 0 && (
+                    <div className="flex justify-between">
+                      <span>Kf:</span>
+                      <span className="text-[#E0E0E0]">{movementV2.pid.tuning.kf.toFixed(3)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {!movementV2.pid.enabled && movementV2.pid.available === false && (
+                <div className="text-xs text-[#808080] mt-1">PID controller not available</div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Exit Button */}

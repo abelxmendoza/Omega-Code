@@ -70,6 +70,10 @@ export const COMMAND = {
   CMD_MODE: 'CMD_MODE',
   STATUS: 'status',                       // ask server for current speed/servo state
 
+  // --- Movement V2 ---------------------------------------------------------
+  SET_PROFILE: 'set-profile',             // { profile: 'smooth' | 'aggressive' | 'precision' }
+  GET_PROFILE: 'get-profile',             // get current profile info
+
   // --- Automation / Video servoing (RESERVED: add handlers in backend) ------
   // Useful names to standardize now; implement later server-side:
   // AUTO_TRACK_ON: 'camera-track-start',  // start vision-based tracking loop

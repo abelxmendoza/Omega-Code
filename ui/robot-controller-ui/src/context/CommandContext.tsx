@@ -56,6 +56,17 @@ export interface MovementV2Data {
     time_until_trigger: number;
     state: string;
   };
+  pid?: {
+    enabled: boolean;
+    target_rpm?: number;
+    tuning?: {
+      kp: number;
+      ki: number;
+      kd: number;
+      kf: number;
+    };
+    available?: boolean;
+  };
 }
 
 // Define the structure of a command entry with a timestamp
@@ -387,6 +398,13 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
             if (data.movementV2) {
               setMovementV2(data.movementV2);
             }
+            // Also include PID data if available (PID is separate from movementV2 in backend)
+            if (data.pid && data.movementV2) {
+              setMovementV2({
+                ...data.movementV2,
+                pid: data.pid
+              });
+            }
             return;
           }
 
@@ -402,7 +420,7 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
             }
             if (data?.status === 'ok') {
               applyServoTelemetry(data, 'ack');
-              // Update speed from ack responses (set-speed, increase-speed, decrease-speed)
+              // Update speed from ack responses (set-speed, increase-speed, decrease-speed, stop)
               if (typeof data?.speed === 'number') {
                 setSpeed(data.speed);
               }

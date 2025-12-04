@@ -14,6 +14,7 @@ import { handleWebSocketError, handleComponentError } from '@/utils/errorHandlin
 import { withOptimization, performanceMonitor } from '@/utils/optimization';
 import { unifiedNetworkManager, addNetworkChangeListener } from '@/utils/unifiedNetworkManager';
 import { useCommand } from '@/context/CommandContext';
+import { COMMAND } from '@/control_definitions';
 import MovementV2Modal from './MovementV2Modal';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -59,8 +60,8 @@ const StatusDot = memo(({ status, title }: { status: ServerStatus; title: string
 });
 
 const MotorTelemetryPanel: React.FC = memo(() => {
-  // Get Movement V2 data from context
-  const { movementV2 } = useCommand();
+  // Get Movement V2 data and sendCommand from context
+  const { movementV2, sendCommand } = useCommand();
   
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -258,6 +259,50 @@ const MotorTelemetryPanel: React.FC = memo(() => {
       <div className="w-full mb-3">
         <div className="grid grid-cols-2 gap-1.5">
           {motorCards}
+        </div>
+        
+        {/* Profile Switcher - Always show */}
+        <div className="mt-3 pt-3 border-t border-gray-700">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-400">Profile:</span>
+            <span className={`text-xs font-medium capitalize ${
+              motorTelemetryWs.connectionStatus === 'connected'
+                ? 'text-purple-300'
+                : 'text-gray-500'
+            }`}>
+              {motorTelemetryWs.connectionStatus === 'connected'
+                ? (movementV2?.profile?.name || 'Unknown')
+                : 'Server Offline'}
+            </span>
+          </div>
+          <div className="flex gap-1.5">
+            {['smooth', 'aggressive', 'precision'].map((profile) => (
+              <button
+                key={profile}
+                onClick={() => {
+                  if (motorTelemetryWs.connectionStatus === 'connected') {
+                    sendCommand(COMMAND.SET_PROFILE, { profile });
+                    setTimeout(() => sendCommand(COMMAND.STATUS), 300);
+                  }
+                }}
+                disabled={motorTelemetryWs.connectionStatus !== 'connected'}
+                className={`flex-1 px-2 py-1 text-xs rounded transition-all ${
+                  motorTelemetryWs.connectionStatus === 'connected'
+                    ? movementV2?.profile?.name === profile
+                      ? 'bg-purple-600/30 text-purple-300 border border-purple-600/50'
+                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-gray-300 border border-gray-600'
+                    : 'bg-gray-800 text-gray-600 border border-gray-700 cursor-not-allowed opacity-50'
+                }`}
+                title={
+                  motorTelemetryWs.connectionStatus === 'connected'
+                    ? `Switch to ${profile} profile`
+                    : 'Server not connected'
+                }
+              >
+                {profile.charAt(0).toUpperCase() + profile.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
         
         {/* Connection Status */}
