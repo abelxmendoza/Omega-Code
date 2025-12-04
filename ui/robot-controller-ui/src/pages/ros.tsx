@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import { ROSManagementPanel, TelemetryVisualization } from '@/components/ros';
 import { getROSStatus, controlROSContainer, listROSTopics } from '@/utils/rosApi';
 import { buildGatewayUrl } from '@/config/gateway';
@@ -280,20 +281,16 @@ export default function ROSDashboard() {
                 <h1 className="text-3xl font-bold mb-2">ROS 2 Infrastructure Dashboard</h1>
                 <p className="text-gray-400">Manage Docker containers, monitor topics, and view telemetry logs</p>
               </div>
-              <a 
+              <Link 
                 href="/" 
                 className="text-sm text-blue-400 hover:text-blue-300 underline flex items-center gap-1 px-3 py-2 bg-gray-800 rounded hover:bg-gray-700"
-                onClick={(e) => {
-                  e.preventDefault();
-                  window.location.href = '/';
-                }}
               >
                 ← Autonomy Settings
-              </a>
+              </Link>
             </div>
             <div className="mt-2 p-3 bg-blue-900/20 border border-blue-500/50 rounded text-sm">
               <strong className="text-blue-300">💡 Note:</strong> This dashboard manages ROS <strong>infrastructure</strong> (containers, topics, logs). 
-              To configure which ROS <strong>features</strong> are used during autonomy, visit the <a href="/" className="text-blue-400 hover:text-blue-300 underline font-semibold">Autonomy Settings</a>.
+              To configure which ROS <strong>features</strong> are used during autonomy, visit the <Link href="/" className="text-blue-400 hover:text-blue-300 underline font-semibold">Autonomy Settings</Link>.
             </div>
             <div className="mt-4 flex items-center gap-4 text-sm">
               <label className="flex items-center gap-2">

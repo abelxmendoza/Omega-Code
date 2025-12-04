@@ -14,6 +14,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, User, QrCode, Users, Package, Move, Palette, Network, Activity, Layers, Code, CheckCircle2, Lock, Clock, History, AlertTriangle, CheckCircle, XCircle, TrendingUp, Server, Database, FileText, UserCheck } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -1105,19 +1106,17 @@ export default function AutonomyModal({
                   <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
                     <Network className="h-4 w-4 text-amber-400" /> ROS Integration Settings
                   </div>
-                  <a 
+                  <Link 
                     href="/ros" 
                     className="text-xs text-amber-400 hover:text-amber-300 underline flex items-center gap-1"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      window.open('/ros', '_blank');
-                    }}
+                    target="_blank"
+                    rel="noopener noreferrer"
                   >
                     Manage ROS Infrastructure →
-                  </a>
+                  </Link>
                 </div>
                 <p className="text-xs text-neutral-400">
-                  Configure which ROS features to use during autonomy. For Docker container management, topics, and logs, visit the <a href="/ros" className="text-amber-400 hover:text-amber-300 underline">ROS Dashboard</a>.
+                  Configure which ROS features to use during autonomy. For Docker container management, topics, and logs, visit the <Link href="/ros" className="text-amber-400 hover:text-amber-300 underline">ROS Dashboard</Link>.
                 </p>
 
                 <ToggleRow
