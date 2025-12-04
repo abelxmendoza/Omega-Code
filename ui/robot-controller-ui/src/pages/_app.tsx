@@ -17,6 +17,7 @@ import store from '../redux/store'; // Redux store configuration
 import '../styles/globals.scss'; // Import global styles
 import { ErrorBoundary } from 'react-error-boundary'; // Error boundary for runtime error handling
 import InstallPrompt from '../components/InstallPrompt';
+import RobotOfflineBanner from '../components/RobotOfflineBanner';
 
 /**
  * Fallback UI for the ErrorBoundary.
@@ -61,6 +62,7 @@ const MyApp = ({ Component, pageProps }: AppProps) => {
           <CommandProvider> {/* Provide WebSocket and command logging functionality */}
             <MacroProvider> {/* Persisted macro editor + runtime */}
               <ErrorBoundary FallbackComponent={ErrorFallback}> {/* Gracefully handle runtime errors */}
+                <RobotOfflineBanner /> {/* Show banner when robot backend is offline */}
                 <Component {...pageProps} /> {/* Render the current page */}
                 <InstallPrompt /> {/* PWA install prompt */}
                 {/* SpeedInsights removed - install @vercel/speed-insights package to enable */}
