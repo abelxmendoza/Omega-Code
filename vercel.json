@@ -1,9 +1,9 @@
 {
-  "buildCommand": "bash vercel-build.sh",
+  "buildCommand": "cd ui/robot-controller-ui && npm run build",
   "outputDirectory": "ui/robot-controller-ui/.next",
   "framework": "nextjs",
+  "installCommand": "cd ui/robot-controller-ui && npm install",
   "env": {
-    "NODE_ENV": "production",
-    "VERCEL_DEBUG": "1"
+    "NODE_ENV": "production"
   }
 }

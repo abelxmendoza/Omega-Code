@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    reactStrictMode: true,
     images: {
       remotePatterns: [
         {
@@ -7,6 +8,11 @@ const nextConfig = {
           hostname: '**',
         },
       ],
+    },
+    logging: {
+      fetches: {
+        fullUrl: true,
+      },
     },
     // Enhanced error handling and logging for Vercel builds
     eslint: {
