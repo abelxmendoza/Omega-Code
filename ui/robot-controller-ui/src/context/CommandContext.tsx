@@ -388,6 +388,12 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
           }
 
           if (data?.type === 'status') {
+            // Validate status payload
+            if (!data || typeof data !== 'object') {
+              console.error('❌ [WS][STATUS] Invalid status payload:', data);
+              return;
+            }
+            
             addCommand('Received: status snapshot');
             applyServoTelemetry(data, 'status');
             // Update speed from status
@@ -397,6 +403,8 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
             // Update Movement V2 data from status
             if (data.movementV2) {
               setMovementV2(data.movementV2);
+            } else {
+              console.warn('⚠️ [WS][STATUS] MovementV2 not provided by backend.');
             }
             // Also include PID data if available (PID is separate from movementV2 in backend)
             if (data.pid && data.movementV2) {
@@ -441,7 +449,8 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
       };
 
-      wsInstance.onclose = () => {
+      wsInstance.onclose = (e: CloseEvent) => {
+        console.warn(`⚠️ [WS][CLOSE] Connection closed: ${e.code} ${e.reason || ''}`);
         connectionVerified.current = false;
         if (verificationTimeout.current) {
           clearTimeout(verificationTimeout.current);
@@ -460,6 +469,7 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
       };
 
       wsInstance.onerror = (event: Event) => {
+        console.error('🔥 [WS][ERROR] WebSocket error:', event);
         console.error('[WebSocket] Error:', event);
         const errMsg =
           event instanceof ErrorEvent ? event.message : 'Unknown WebSocket error';

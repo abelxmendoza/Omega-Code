@@ -33,6 +33,7 @@ import asyncio
 import inspect
 import traceback
 import logging
+import subprocess
 from typing import Optional, Set, Tuple
 
 # Add parent directory to path for autonomy module and proper package imports
@@ -54,6 +55,21 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Global exception handler for asyncio event loop
+def handle_global_exception(loop, context):
+    """Handle unhandled exceptions in the event loop"""
+    err = context.get("exception")
+    msg = context.get("message", "Unknown error")
+    print("🔥 [GLOBAL ERROR] Unhandled exception in event loop:")
+    print(f"   message: {msg}")
+    if err:
+        print(f"   exception: {repr(err)}")
+        print(f"   type: {type(err).__name__}")
+        if hasattr(err, '__traceback__') and err.__traceback__:
+            tb = err.__traceback__
+            print(f"   location: {tb.tb_frame.f_code.co_filename}:{tb.tb_lineno}")
+    logger.error(f"Global exception: {msg}", exc_info=err)
 
 # Error handling utilities
 class MovementError(Exception):
@@ -711,6 +727,13 @@ async def do_move(fn_name: str, speed: int):
                 MOVEMENT_RAMP.set_target(float(profiled_speed))
                 dt = 1.0 / MOVEMENT_V2_CONFIG.ramp_update_rate_hz if MOVEMENT_V2_CONFIG else 0.02
                 ramped_speed = int(MOVEMENT_RAMP.update(dt))
+                # Check for ramp stall (no progress)
+                if MOVEMENT_RAMP._is_ramping and abs(MOVEMENT_RAMP.current_pwm - MOVEMENT_RAMP.target_pwm) > 10:
+                    elapsed = time.monotonic() - MOVEMENT_RAMP._ramp_start_time
+                    if elapsed > 5.0:  # Stalled for more than 5 seconds
+                        print(f"⚠️ [RAMPING] Ramp stalled — command blocked or hardware busy")
+                        print(f"   Current: {MOVEMENT_RAMP.current_pwm:.0f}, Target: {MOVEMENT_RAMP.target_pwm:.0f}")
+                        print(f"   Elapsed: {elapsed:.1f}s")
             except Exception as e:
                 logger.warning(f"Ramping failed: {e}, using profiled speed")
                 ramped_speed = profiled_speed
@@ -723,6 +746,7 @@ async def do_move(fn_name: str, speed: int):
                 safety_state = THERMAL_SAFETY.check(telemetry)
                 
                 if safety_state == SafetyState.KILL:
+                    print("🔥 [THERMAL][KILL] Motor kill triggered - stopping motors")
                     log("[MOVE][THERMAL] Motor kill triggered - stopping motors")
                     motor.stop()
                     return
@@ -731,6 +755,7 @@ async def do_move(fn_name: str, speed: int):
                 safe_speed = int(THERMAL_SAFETY.apply_throttle(ramped_speed))
                 
                 if safety_state == SafetyState.THROTTLE:
+                    print(f"⚠️ [THERMAL][THROTTLE] Throttling applied: {ramped_speed} -> {safe_speed}")
                     log(f"[MOVE][THERMAL] Throttling applied: {ramped_speed} -> {safe_speed}")
             except Exception as e:
                 logger.warning(f"Thermal safety check failed: {e}, using ramped speed")
@@ -1357,12 +1382,18 @@ async def watchdog_background_task():
             # Watchdog triggered - stop motors
             async with motor_lock:
                 try:
+                    print("⏱️ [WATCHDOG] Watchdog triggered - stopping motors")
                     motor.stop()
                     log("[MOVE][WATCHDOG] Watchdog triggered - motors stopped")
                 except Exception as e:
+                    print(f"🔥 [WATCHDOG][ERROR] Failed to stop motors: {repr(e)}")
                     logger.error(f"Watchdog stop failed: {e}")
 
 async def main():
+    # Set global exception handler for this event loop
+    loop = asyncio.get_event_loop()
+    loop.set_exception_handler(handle_global_exception)
+    
     log(f"listening on ws://0.0.0.0:{PORT}{'' if PATH=='/' else PATH}")
     log(f"ORIGIN_ALLOW={','.join(sorted(_ALLOWED_ORIGINS)) or '(none)'} "
         f"ALLOW_NO_ORIGIN={ALLOW_NO_ORIGIN} SIM_MODE={SIM_MODE}")
@@ -1405,6 +1436,25 @@ async def main():
 
 if __name__ == "__main__":
     try:
+        # Set global exception handler before running
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.set_exception_handler(handle_global_exception)
         asyncio.run(main())
     except KeyboardInterrupt:
+        print("\n⚠️ [SHUTDOWN] Keyboard interrupt received - shutting down gracefully")
         pass
+    except Exception as e:
+        print("🔥 [FATAL] movement_ws_server crashed")
+        print(f"   Type: {type(e).__name__}")
+        print(f"   Error: {str(e)}")
+        if hasattr(e, '__traceback__') and e.__traceback__:
+            tb = e.__traceback__
+            print(f"   Location: {tb.tb_frame.f_code.co_filename}:{tb.tb_lineno}")
+            print(f"   Function: {tb.tb_frame.f_code.co_name}")
+        print("\n   Troubleshooting:")
+        print("   - If PCA9685 or smbus2 error: verify I2C address, permissions, and driver load")
+        print("   - Check hardware connections (SDA/SCL)")
+        print("   - Verify environment variables are set correctly")
+        print("   - Check logs above for specific hardware initialization errors")
+        raise

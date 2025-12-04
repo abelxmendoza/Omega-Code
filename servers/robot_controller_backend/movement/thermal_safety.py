@@ -167,13 +167,18 @@ class ThermalSafety:
         return SafetyState.OK
     
     def _log_state_transition(self, new_state: SafetyState, temp: float, current: float) -> None:
-        """Log state transition"""
+        """Log state transition with enhanced diagnostics"""
         if new_state == SafetyState.KILL:
+            print(f"🔥 [THERMAL][KILL] Motor OVERHEATED. Killing motors immediately.")
+            print(f"   Temp: {temp:.1f}°C (limit: {self.limits.max_temp:.1f}°C)")
+            print(f"   Current: {current:.2f}A (limit: {self.limits.max_current:.2f}A)")
+            print(f"   Recovery when temp < {self.limits.cooldown_temp:.1f}°C")
             logger.error(
                 f"THERMAL SAFETY: KILL - Temp: {temp:.1f}°C, Current: {current:.2f}A "
                 f"(limits: {self.limits.max_temp}°C, {self.limits.max_current}A)"
             )
         elif new_state == SafetyState.THROTTLE:
+            print(f"⚠️ [THERMAL][THROTTLE] Motor temp={temp:.1f}°C exceeded threshold={self.limits.warning_temp:.1f}°C")
             logger.warning(
                 f"THERMAL SAFETY: THROTTLE - Temp: {temp:.1f}°C, Current: {current:.2f}A"
             )

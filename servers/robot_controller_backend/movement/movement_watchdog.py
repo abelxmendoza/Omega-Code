@@ -102,6 +102,9 @@ class MovementWatchdog:
                 self.state = WatchdogState.TRIGGERED
                 self.trigger_count += 1
                 self.last_trigger_time = now
+                print(f"⏱️ [WATCHDOG] No commands received for {elapsed:.2f}s — STOPPING ALL MOTORS")
+                print(f"   Timeout: {self.timeout:.2f}s")
+                print(f"   Trigger count: {self.trigger_count}")
                 logger.warning(
                     f"Watchdog triggered: no command for {elapsed:.2f}s "
                     f"(timeout={self.timeout:.2f}s)"

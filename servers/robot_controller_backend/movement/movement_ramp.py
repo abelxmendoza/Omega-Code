@@ -96,6 +96,7 @@ class MovementRamp:
         self._ramp_start_pwm = self.current_pwm
         self._ramp_start_time = _monotonic()  # Use monotonic time
         self._is_ramping = True
+        print(f"⤴️ [RAMPING] Starting ramp: current={self.current_pwm:.0f}, target={self.target_pwm:.0f}")
     
     def update(self, dt: Optional[float] = None) -> float:
         """

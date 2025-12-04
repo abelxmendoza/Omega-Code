@@ -57,6 +57,18 @@ def get_motor_driver(trim_left: int = 0, trim_right: int = 0) -> BaseMotorDriver
                         return PiMotorDriver(trim_left, trim_right)
                     except Exception as e:
                         logger.warning(f"[HW_FACTORY] PiMotorDriver failed: {e}, falling back")
+                        print(f"🔥 [HW_FACTORY][ERROR] Failed to initialize PiMotorDriver")
+                        print(f"   Hardware type: Raspberry Pi")
+                        print(f"   Exception: {repr(e)}")
+                        print(f"   Type: {type(e).__name__}")
+                        # Try to detect I2C devices
+                        try:
+                            result = subprocess.run(['i2cdetect', '-y', '1'], 
+                                                   capture_output=True, text=True, timeout=2)
+                            print(f"   I2C devices detected:\n{result.stdout}")
+                        except Exception:
+                            print("   Could not run i2cdetect (may need sudo or i2c-tools)")
+                        raise
     except Exception as e:
         logger.debug(f"[HW_FACTORY] Pi detection failed: {e}")
     

@@ -82,7 +82,22 @@ class MotorTelemetryController:
             # Use the SAME singleton PCA instance as Motor (shared across all components)
             self.pca = get_pca(PCA9685, 0x40, debug=True)
             logger.info("Motor controller initialized successfully")
+        except ImportError as e:
+            print("❌ [MOTOR_TELEMETRY] Missing dependency smbus2 or Adafruit-PCA9685")
+            print(f"   Install with: pip install smbus2 adafruit-circuitpython-pca9685")
+            print(f"   Exception: {repr(e)}")
+            logger.error(f"Import error: {e}")
+            raise MotorTelemetryError(f"Missing dependency: {e}")
+        except OSError as e:
+            print("❌ [MOTOR_TELEMETRY] I2C communication failed")
+            print(f"   Check wiring, power, SDA/SCL, and PCA9685 address")
+            print(f"   Exception: {repr(e)}")
+            logger.error(f"I2C error: {e}")
+            raise MotorTelemetryError(f"I2C communication failed: {e}")
         except Exception as e:
+            print(f"🔥 [MOTOR_TELEMETRY][ERROR] Failed to initialize motor controller")
+            print(f"   Exception: {repr(e)}")
+            print(f"   Type: {type(e).__name__}")
             logger.error(f"Failed to initialize motor controller: {e}")
             raise MotorTelemetryError(f"Motor initialization failed: {e}")
         

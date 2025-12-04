@@ -54,6 +54,11 @@ const MovementV2Modal: React.FC<MovementV2ModalProps> = ({ isOpen, onClose, move
 
   // Handle missing Movement V2 data
   if (!movementV2 || !movementV2.enabled) {
+    if (!movementV2) {
+      console.error('❌ [UI][V2] Movement V2 data is null/undefined');
+    } else if (!movementV2.enabled) {
+      console.warn('⚠️ [UI][V2] Movement V2 is disabled');
+    }
     const notAvailableContent = (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
@@ -190,7 +195,7 @@ const MovementV2Modal: React.FC<MovementV2ModalProps> = ({ isOpen, onClose, move
           )}
 
           {/* Thermal Safety Section */}
-          {movementV2.thermal && (
+          {movementV2.thermal ? (
             <div className="bg-[#1A1A1A] border border-[#C400FF]/30 rounded-lg p-4 backdrop-blur-sm" style={{ boxShadow: '0 0 20px rgba(196, 0, 255, 0.1)' }}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[#B0B0B0] text-sm">Thermal Safety:</span>
@@ -215,6 +220,11 @@ const MovementV2Modal: React.FC<MovementV2ModalProps> = ({ isOpen, onClose, move
                 )}
               </div>
             </div>
+          ) : (
+            (() => {
+              console.error('❌ [UI][V2] Missing thermal block in movementV2:', movementV2);
+              return null;
+            })()
           )}
 
           {/* Ramping Section */}
