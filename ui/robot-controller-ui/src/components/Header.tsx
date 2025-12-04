@@ -636,14 +636,32 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
           <div className="flex items-center text-sm">
             <span className="opacity-80">Pi:</span>
             {allGood ? (
-              <CheckCircle aria-label="Connected to Pi" className="text-green-500 ml-2" title="Connected to Pi - All services online" />
+              // Wrapping the icon because Lucide icons do NOT accept `title`
+              <span
+                className="inline-flex"
+                title="Connected to Pi - All services online"
+              >
+                <CheckCircle
+                  aria-label="Connected to Pi"
+                  className="text-green-500 ml-2"
+                />
+              </span>
             ) : upCount > 0 ? (
               <div className="ml-2 flex items-center gap-1" title={`Partially connected - ${upCount}/${states.length} services online`}>
                 <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
                 <span className="text-yellow-400 text-xs">{upCount}/{states.length}</span>
               </div>
             ) : (
-              <XCircle aria-label="Not connected to Pi" className="text-red-500 ml-2" title="Not connected to Pi - Check network settings" />
+              // Wrapping the icon because Lucide icons do NOT accept `title`
+              <span
+                className="inline-flex"
+                title="Not connected to Pi - Check network settings"
+              >
+                <XCircle
+                  aria-label="Not connected to Pi"
+                  className="text-red-500 ml-2"
+                />
+              </span>
             )}
           </div>
           <div className="flex items-center text-sm">
