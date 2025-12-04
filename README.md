@@ -285,6 +285,8 @@ go mod tidy
 
 ### Configuration
 
+#### Backend Environment Variables
+
 Copy `.env.example` to `.env` and configure:
 
 ```bash
@@ -299,6 +301,34 @@ nano .env  # Edit with your settings
 - `CAMERA_WIDTH=640`
 - `CAMERA_HEIGHT=480`
 - `CAMERA_FPS=30`
+
+**Optional settings:**
+- `CAMERA_TEST_MODE=1` - Run hardware diagnostics on startup
+- `HOST=0.0.0.0` - Server bind address
+- `PORT=8000` - API server port
+- `LOG_LEVEL=INFO` - Logging verbosity
+
+#### Frontend Environment Variables
+
+Create `ui/robot-controller-ui/.env.local`:
+
+```bash
+# Network profile (lan | tailscale | local)
+NEXT_PUBLIC_NETWORK_PROFILE=lan
+
+# Robot host IPs (replace with your Pi's IP)
+NEXT_PUBLIC_ROBOT_HOST_LAN=192.168.6.164
+NEXT_PUBLIC_ROBOT_HOST_TAILSCALE=100.93.225.61
+
+# Video stream URLs
+NEXT_PUBLIC_VIDEO_STREAM_URL_LAN=http://192.168.6.164:5000/video_feed
+
+# WebSocket URLs
+NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_LAN=ws://192.168.6.164:7070/ws/movement
+NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING_LAN=ws://192.168.6.164:8082/lighting
+```
+
+**Note:** The frontend automatically detects Vercel deployment and runs in "Robot Offline Mode" for portfolio demos.
 
 ### Running Locally (Development)
 
@@ -332,13 +362,30 @@ Access at: `http://localhost:3000`
 
 ---
 
-## 📚 Documentation
+## 📚 Additional Documentation
 
-- **[Video Server Features](servers/robot_controller_backend/video/VIDEO_SERVER_FEATURES.md)** - Complete video system documentation
-- **[Camera Diagnostic Module](servers/robot_controller_backend/video/CAMERA_DIAGNOSTIC_MODULE.md)** - Hardware diagnostics guide
-- **[Movement V2](servers/robot_controller_backend/movement/)** - Movement engine documentation
-- **[Lighting System](servers/robot_controller_backend/controllers/lighting/UI_INTEGRATION.md)** - Lighting patterns and API
-- **[Hybrid System](servers/robot_controller_backend/video/HYBRID_SYSTEM_README.md)** - Pi + Jetson architecture
+### Server-Specific Documentation
+
+- **[Video Server](servers/robot_controller_backend/video/VIDEO_SERVER_FEATURES.md)** - Complete video system features and API
+- **[Camera Diagnostics](servers/robot_controller_backend/video/CAMERA_DIAGNOSTIC_MODULE.md)** - Hardware troubleshooting guide
+- **[Movement V2](servers/robot_controller_backend/movement/MOVEMENT_V2_SUMMARY.md)** - Movement engine architecture and features
+- **[Hybrid System](servers/robot_controller_backend/video/HYBRID_SYSTEM_README.md)** - Pi + Jetson integration architecture
+
+### Testing
+
+The project includes comprehensive test suites:
+- **Backend**: 569+ test cases covering API routes, video processing, hybrid system, and fault injection
+- **Frontend**: 828+ test cases covering components, hooks, integration, and E2E workflows
+- **Coverage**: Critical paths at 100%, overall >80%
+- Run tests: `make test` (all) or see [TEST_SUITE.md](TEST_SUITE.md) for details
+
+### Demo Mode
+
+The frontend UI includes a **Demo Mode** for portfolio deployments:
+- Automatically enabled on Vercel (cloud deployments)
+- All UI controls work without hardware connection
+- Lighting modal fully functional with simulated commands
+- Perfect for showcasing capabilities without physical robot
 
 ---
 
