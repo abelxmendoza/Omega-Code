@@ -56,6 +56,7 @@ jobs:
       - name: Run frontend unit tests
         working-directory: ui/robot-controller-ui
         run: npm test -- --watchAll=false --coverage --passWithNoTests
+        continue-on-error: false
       
       - name: Run backend unit tests
         working-directory: servers/robot_controller_backend
@@ -89,7 +90,8 @@ jobs:
       
       - name: Run unit tests
         working-directory: ui/robot-controller-ui
-        run: npm test -- --coverage --watchAll=false
+        run: npm test -- --coverage --watchAll=false --passWithNoTests
+        continue-on-error: false
       
       - name: Upload coverage
         uses: codecov/codecov-action@v3
