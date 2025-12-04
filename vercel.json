@@ -1,33 +1,10 @@
 {
-  // ====================================================================
-  // Set the Next.js project root so Vercel stops deploying from /
-  // ====================================================================
   "rootDirectory": "ui/robot-controller-ui",
-
-  // ====================================================================
-  // Build settings (Vercel will override UI with these defaults)
-  // ====================================================================
   "buildCommand": "npm run build",
   "installCommand": "npm install",
-
-  // ====================================================================
-  // This tells Vercel where Next.js outputs the production build
-  // ====================================================================
   "outputDirectory": ".next",
-
-  // ====================================================================
-  // Optional: Exclude backend, ROS, and other non-UI folders from build
-  // ====================================================================
   "ignoreCommand": "echo 'Ignoring backend and ROS during Vercel deploy'",
-
-  // ====================================================================
-  // Ensure static export works for Next.js 14
-  // ====================================================================
   "framework": "nextjs",
-
-  // ====================================================================
-  // Optional: clean rewrite to root (only needed if you use API routes)
-  // ====================================================================
   "rewrites": [
     { "source": "/(.*)", "destination": "/$1" }
   ]
