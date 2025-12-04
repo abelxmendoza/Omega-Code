@@ -11,8 +11,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { buildGatewayUrl } from '@/utils/gateway';
+import { robotWS } from '@/utils/ws';
+import { useRobotOnline } from '@/hooks/useRobotOnline';
 
 export function RobotController() {
+  const robotOnline = useRobotOnline();
   const [connected, setConnected] = useState(false);
   const [linearSpeed, setLinearSpeed] = useState(0);
   const [angularSpeed, setAngularSpeed] = useState(0);
@@ -20,6 +23,11 @@ export function RobotController() {
   const commandIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    if (!robotOnline) {
+      setConnected(false);
+      return;
+    }
+
     let mounted = true;
 
     const connect = async () => {
@@ -28,7 +36,11 @@ export function RobotController() {
         const protocol = wsUrl.startsWith('https') ? 'wss' : 'ws';
         const url = wsUrl.replace(/^https?/, protocol);
 
-        const ws = new WebSocket(url);
+        const ws = robotWS(url);
+        if (!ws) {
+          setConnected(false);
+          return;
+        }
         wsRef.current = ws;
 
         ws.onopen = () => {
@@ -70,7 +82,7 @@ export function RobotController() {
         wsRef.current.close();
       }
     };
-  }, []);
+  }, [robotOnline]);
 
   const sendCommand = (linear: number, angular: number) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {

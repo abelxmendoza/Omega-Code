@@ -11,6 +11,8 @@ import Link from 'next/link';
 import { ROSManagementPanel, TelemetryVisualization } from '@/components/ros';
 import { getROSStatus, controlROSContainer, listROSTopics } from '@/utils/rosApi';
 import { buildGatewayUrl } from '@/config/gateway';
+import { robotFetch } from '@/utils/network';
+import { robotWS } from '@/utils/ws';
 
 // Debug mode - logs to console and DevTools
 const DEBUG = process.env.NEXT_PUBLIC_ROS_DEBUG === '1' || typeof window !== 'undefined' && window.localStorage.getItem('ros_debug') === 'true';
@@ -93,8 +95,15 @@ export default function ROSDashboard() {
       debugLog.network('GET', url);
       
       const startTime = performance.now();
-      const response = await fetch(url);
+      const response = await robotFetch(url);
       const duration = performance.now() - startTime;
+      
+      if ((response as any).offline) {
+        addDebugLog('status', 'Robot backend offline');
+        setError('Robot backend offline');
+        setLoading(false);
+        return;
+      }
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -174,7 +183,13 @@ export default function ROSDashboard() {
         addDebugLog('websocket', `Connecting to ${url}...`);
         debugLog.ws('connect', url);
         
-        wsRef.current = new WebSocket(url);
+        // Use robotWS wrapper to respect offline mode
+        wsRef.current = robotWS(url);
+        if (!wsRef.current) {
+          addDebugLog('websocket', 'Robot backend offline — WebSocket disabled');
+          setWsConnected(false);
+          return;
+        }
 
         wsRef.current.onopen = () => {
           addDebugLog('websocket', 'WebSocket connected');

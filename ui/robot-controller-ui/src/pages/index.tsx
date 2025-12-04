@@ -28,6 +28,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import CarControlPanel from '../components/control/CarControlPanel';
 import CameraControlPanel from '../components/control/CameraControlPanel';
 import ServoTelemetryPanel from '../components/control/ServoTelemetryPanel';
+import { robotWS } from '../utils/ws';
 import PerformanceDashboard from '../components/PerformanceDashboard';
 import EnhancedServoTelemetryPanel from '../components/control/EnhancedServoTelemetryPanel';
 import AutonomyPanel from '../components/control/AutonomyModal';
@@ -166,7 +167,12 @@ export default function Home() {
 
     try {
       if (DEBUG) console.log('[WS] connecting →', url);
-      ws.current = new WebSocket(url);
+      // Use robotWS wrapper to respect offline mode
+      ws.current = robotWS(url);
+      if (!ws.current) {
+        addCommand('Robot backend offline — WebSocket disabled');
+        return;
+      }
 
       ws.current.onopen = () => {
         addCommand('WebSocket connection established');

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { robotFetch } from '@/utils/network';
 
 export interface CapabilityProfile {
   device: string;
@@ -43,7 +44,15 @@ export function useCapabilities(autoRefresh = true, refreshInterval = 30000) {
       setError(null);
       
       const url = `${API_BASE}/api/capabilities/${forceRefresh ? '?refresh=true' : ''}`;
-      const response = await fetch(url);
+      // Use robotFetch wrapper to respect offline mode
+      const { robotFetch } = await import('@/utils/network');
+      const response = await robotFetch(url);
+      
+      if ((response as any).offline) {
+        setError('Robot backend offline');
+        setLoading(false);
+        return;
+      }
       const data: CapabilitiesResponse = await response.json();
       
       if (data.ok && data.capabilities) {
