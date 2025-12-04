@@ -2,14 +2,7 @@ import React from 'react';
 import { render, fireEvent, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { renderWithProviders } from './utils/test-helpers';
-
-// Check if component exists
-let LightingPattern: React.ComponentType<any>;
-try {
-  LightingPattern = require('../src/components/LightingPattern').default;
-} catch {
-  LightingPattern = () => <div>LightingPattern not found</div>;
-}
+import LightingPattern from '../src/components/lighting/LightingPattern';
 
 describe('LightingPattern', () => {
   it('renders LightingPattern component and selects a pattern', () => {
@@ -21,8 +14,8 @@ describe('LightingPattern', () => {
     // Component should render
     expect(container).toBeInTheDocument();
     
-    // Try to find and click pattern button if it exists
-    const staticButton = screen.queryByText(/Static/i) || screen.queryByText(/static/i);
+    // Find and click the Static button (capitalized as "Static")
+    const staticButton = screen.queryByText('Static');
     if (staticButton) {
       fireEvent.click(staticButton);
       expect(onSelectPattern).toHaveBeenCalledWith('static');
