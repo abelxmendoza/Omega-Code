@@ -402,11 +402,8 @@ if OPTIMIZATION_AVAILABLE:
     websocket_optimizer = WebSocketOptimizer(batch_size=5, batch_timeout=0.02)
     connection_pool = ConnectionPool(max_connections=50)
     
-    # Start async task processor
-    asyncio.create_task(task_processor.start())
-    
-    # Start performance monitoring
-    asyncio.create_task(performance_monitor.start_monitoring(interval=10.0))
+    # Note: Task processor and performance monitor will be started in main()
+    # after the event loop is running (Python 3.11+ requirement)
     
     logger.info("Optimization systems initialized")
 
@@ -1027,6 +1024,16 @@ async def main():
     log(f"ORIGIN_ALLOW={','.join(sorted(_ALLOWED_ORIGINS)) or '(none)'} "
         f"ALLOW_NO_ORIGIN={ALLOW_NO_ORIGIN} SIM_MODE={SIM_MODE}")
     log(f"Connection limits: MAX_CLIENTS={MAX_CLIENTS}, CONNECTION_TIMEOUT={CONNECTION_TIMEOUT}s")
+    
+    # Start optimization systems (must be done after event loop is running)
+    if OPTIMIZATION_AVAILABLE:
+        # Start async task processor
+        asyncio.create_task(task_processor.start())
+        
+        # Start performance monitoring
+        asyncio.create_task(performance_monitor.start_monitoring(interval=10.0))
+        
+        logger.info("Optimization systems started")
     
     # Start cleanup task
     asyncio.create_task(cleanup_stale_connections())
