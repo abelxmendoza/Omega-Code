@@ -1,5 +1,16 @@
 import React from 'react';
-import { Info, CheckCircle2, XCircle, AlertTriangle, Zap, Cpu, Gpu, Camera } from 'lucide-react';
+// FIX: Lucide-react does not export `Gpu`. Replace with a valid icon.
+import {
+  Info,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Zap,
+  Cpu,
+  // Gpu,   <-- removed
+  Camera,
+  Cpu as GpuIcon // temporary alias if you need a "GPU-like" icon
+} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -200,7 +211,7 @@ export function CapabilityInfoModal() {
               </div>
               <div className="bg-neutral-800 p-3 rounded">
                 <div className="flex items-center gap-2 text-sm text-neutral-400 mb-1">
-                  <Gpu className="h-4 w-4" />
+                  <GpuIcon className="h-4 w-4" />
                   GPU
                 </div>
                 <div className="text-lg font-semibold">
