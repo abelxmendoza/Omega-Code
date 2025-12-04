@@ -122,7 +122,7 @@ const SpeedControl: React.FC = () => {
 
   const onSliderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const next = Number(e.target.value);
-    setSpeedPct(next); // instant UI feedback
+    setLocalSpeedPct(next); // instant UI feedback
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       if (!disabled) sendSetSpeedPct(next);
