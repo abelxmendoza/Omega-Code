@@ -1,0 +1,18 @@
+2025-11-29 19:27:44,036 - servers.robot_controller_backend.movement.motor_telemetry - ERROR - PCA9685 hardware driver not available. Install smbus2: pip install smbus2
+2025-11-29 19:27:44,037 - motor_telemetry - ERROR - PCA9685 hardware driver not available. Install smbus2: pip install smbus2
+2025-11-29 19:27:44,037 - __main__ - WARNING - MotorTelemetryController not available - telemetry disabled: ImportError('attempted relative import with no known parent package')
+2025-11-29 19:27:44,037 - __main__ - WARNING - Optimization utilities not available
+2025-11-29 19:27:44,521 - servers.robot_controller_backend.controllers.servo_control - ERROR - PCA9685 hardware driver not available. Install smbus2: pip install smbus2
+2025-11-29 19:27:44,522 - controllers.servo_control - ERROR - PCA9685 hardware driver not available. Install smbus2: pip install smbus2
+2025-11-29 19:27:44,526 - websockets.server - INFO - server listening on 0.0.0.0:8081
+2025-11-29 19:27:47,138 - websockets.server - INFO - connection open
+2025-11-29 19:29:12,387 - websockets.server - INFO - server closing
+2025-11-29 19:29:12,387 - websockets.server - INFO - server closed
+2025-11-29 19:31:46,172 - servers.robot_controller_backend.movement.motor_telemetry - INFO - Using real PCA9685 for motor telemetry
+2025-11-29 19:31:46,185 - __main__ - INFO - MotorTelemetryController imported successfully (absolute)
+2025-11-29 19:31:46,185 - __main__ - WARNING - Optimization utilities not available
+2025-11-29 19:31:46,246 - servers.robot_controller_backend.controllers.servo_control - INFO - Using real PCA9685 for servo control (absolute import)
+2025-11-29 19:31:46,251 - websockets.server - INFO - server listening on 0.0.0.0:8081
+2025-11-29 19:31:54,881 - websockets.server - INFO - connection open
+2025-11-29 19:32:43,746 - websockets.server - INFO - server closing
+2025-11-29 19:32:43,747 - websockets.server - INFO - server closed

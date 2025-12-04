@@ -44,11 +44,19 @@ const CMD_BUZZ_ON     = (COMMAND as any)?.CMD_BUZZER      || 'buzz';
 const CMD_BUZZ_OFF    = (COMMAND as any)?.CMD_BUZZER_STOP || 'buzz-stop';
 
 const SpeedControl: React.FC = () => {
-  const { sendCommand, status, latencyMs } = useCommand();
+  const { sendCommand, status, latencyMs, speed, speedPct: contextSpeedPct } = useCommand();
 
-  // UI speed percent (0–100). Sent to server as PWM (0–4095).
-  const [speedPct, setSpeedPct] = useState(0);
+  // Use speed from context, fallback to local state for initial render
+  const [localSpeedPct, setLocalSpeedPct] = useState(0);
+  const speedPct = contextSpeedPct || localSpeedPct;
   const [isLedModalOpen, setIsLedModalOpen] = useState(false);
+  
+  // Sync local state when context speed changes
+  useEffect(() => {
+    if (contextSpeedPct !== undefined && contextSpeedPct !== localSpeedPct) {
+      setLocalSpeedPct(contextSpeedPct);
+    }
+  }, [contextSpeedPct, localSpeedPct]);
 
   const disabled = status !== 'connected';
   const moveTitle = `Movement server: ${status[0].toUpperCase()}${status.slice(1)}${
@@ -65,9 +73,10 @@ const SpeedControl: React.FC = () => {
   const sendSetSpeedPct = useCallback((pct: number) => {
     const clampedPct = clamp(Math.round(pct), 0, 100);
     const pwm = Math.round((clampedPct / 100) * PWM_MAX);
-    setSpeedPct(clampedPct);
+    setLocalSpeedPct(clampedPct); // Optimistic UI update
     try {
       sendCommand(CMD_SET_SPEED, { value: pwm }); // server expects "value"
+      // Speed will sync from backend ack response via context
     } catch {
       // CommandContext logs errors; keep UI responsive
     }
@@ -82,13 +91,27 @@ const SpeedControl: React.FC = () => {
 
   const increaseSpeed = useCallback(() => {
     if (disabled) return;
-    sendSetSpeedPct(speedPct + 10);
-  }, [disabled, speedPct, sendSetSpeedPct]);
+    // Use backend increase-speed command for consistency
+    try {
+      sendCommand('increase-speed');
+      // Speed will sync from backend ack response via context
+    } catch {
+      // Fallback to local calculation if command fails
+      sendSetSpeedPct(speedPct + 10);
+    }
+  }, [disabled, speedPct, sendSetSpeedPct, sendCommand]);
 
   const decreaseSpeed = useCallback(() => {
     if (disabled) return;
-    sendSetSpeedPct(speedPct - 10);
-  }, [disabled, speedPct, sendSetSpeedPct]);
+    // Use backend decrease-speed command for consistency
+    try {
+      sendCommand('decrease-speed');
+      // Speed will sync from backend ack response via context
+    } catch {
+      // Fallback to local calculation if command fails
+      sendSetSpeedPct(speedPct - 10);
+    }
+  }, [disabled, speedPct, sendSetSpeedPct, sendCommand]);
 
   const emergencyStop = useCallback(() => {
     if (disabled) return;

@@ -30,6 +30,34 @@ interface ServoTelemetry {
   source: ServoTelemetrySource | null;
 }
 
+// Movement V2 data structure
+export interface MovementV2Data {
+  enabled: boolean;
+  profile?: {
+    name: string;
+    config?: any;
+  };
+  thermal?: {
+    enabled: boolean;
+    state: 'ok' | 'warning' | 'throttle' | 'kill';
+    max_temp_seen: number;
+    limits: {
+      max_temp: number;
+      warning_temp: number;
+    };
+  };
+  ramping?: {
+    current_pwm: number;
+    target_pwm: number;
+    is_ramping: boolean;
+  };
+  watchdog?: {
+    enabled: boolean;
+    time_until_trigger: number;
+    state: string;
+  };
+}
+
 // Define the structure of a command entry with a timestamp
 interface CommandEntry {
   command: string;
@@ -50,6 +78,13 @@ interface CommandContextType {
 
   servoTelemetry: ServoTelemetry;
   requestStatus: (reason?: string) => void;
+  
+  // Speed tracking
+  speed: number; // Current speed in PWM (0-4095)
+  speedPct: number; // Current speed as percentage (0-100)
+  
+  // Movement V2 data
+  movementV2: MovementV2Data | null;
 }
 
 // Create the CommandContext with an undefined default value
@@ -110,6 +145,14 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
     updatedAt: null,
     source: null,
   });
+  
+  // Speed tracking (PWM 0-4095, percentage 0-100)
+  // Default to 1200 PWM (matches backend default) = ~29%
+  const [speed, setSpeed] = useState<number>(1200); // Default speed matches backend
+  const speedPct = Math.round((speed / 4095) * 100);
+  
+  // Movement V2 data
+  const [movementV2, setMovementV2] = useState<MovementV2Data | null>(null);
 
   const ws = useRef<WebSocket | null>(null);
 
@@ -310,6 +353,8 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
             }
             setStatus('connected');
             addCommand('WebSocket connection verified');
+            // Request status to sync speed and other state
+            requestStatus('connection verified');
           }
 
           // Welcome message from server
@@ -334,6 +379,14 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
           if (data?.type === 'status') {
             addCommand('Received: status snapshot');
             applyServoTelemetry(data, 'status');
+            // Update speed from status
+            if (typeof data?.speed === 'number') {
+              setSpeed(data.speed);
+            }
+            // Update Movement V2 data from status
+            if (data.movementV2) {
+              setMovementV2(data.movementV2);
+            }
             return;
           }
 
@@ -349,6 +402,10 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
             }
             if (data?.status === 'ok') {
               applyServoTelemetry(data, 'ack');
+              // Update speed from ack responses (set-speed, increase-speed, decrease-speed)
+              if (typeof data?.speed === 'number') {
+                setSpeed(data.speed);
+              }
             }
             return;
           }
@@ -447,6 +504,9 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         wsUrl,
         servoTelemetry,
         requestStatus,
+        speed,
+        speedPct,
+        movementV2,
       }}
     >
       {children}

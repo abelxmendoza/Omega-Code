@@ -13,6 +13,8 @@ import { useRobustWebSocket } from '@/utils/RobustWebSocket';
 import { handleWebSocketError, handleComponentError } from '@/utils/errorHandling';
 import { withOptimization, performanceMonitor } from '@/utils/optimization';
 import { unifiedNetworkManager, addNetworkChangeListener } from '@/utils/unifiedNetworkManager';
+import { useCommand } from '@/context/CommandContext';
+import MovementV2Modal from './MovementV2Modal';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -57,6 +59,12 @@ const StatusDot = memo(({ status, title }: { status: ServerStatus; title: string
 });
 
 const MotorTelemetryPanel: React.FC = memo(() => {
+  // Get Movement V2 data from context
+  const { movementV2 } = useCommand();
+  
+  // Modal state
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  
   // Motor telemetry data
   const [motorData, setMotorData] = useState<MotorData>({
     frontLeft: { speed: 0, power: 0, pwm: 0 },
@@ -229,10 +237,21 @@ const MotorTelemetryPanel: React.FC = memo(() => {
       {/* Header with status dot */}
       <div className="w-full flex items-center justify-between mb-3">
         <h2 className="text-base font-bold">Motor Telemetry</h2>
-        <StatusDot 
-          status={motorTelemetryWs.connectionStatus} 
-          title={`Motor telemetry: ${motorTelemetryWs.connectionStatus}`} 
-        />
+        <div className="flex items-center gap-2">
+          {/* Movement V2 Button - Always show */}
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="text-xs px-2 py-0.5 rounded bg-purple-600/30 text-purple-300 hover:bg-purple-600/50 transition-colors"
+            title="Open Movement V2 Status"
+            aria-label="Open Movement V2 Status"
+          >
+            Status
+          </button>
+          <StatusDot 
+            status={motorTelemetryWs.connectionStatus} 
+            title={`Motor telemetry: ${motorTelemetryWs.connectionStatus}`} 
+          />
+        </div>
       </div>
 
       {/* Motor Status Grid */}
@@ -247,6 +266,45 @@ const MotorTelemetryPanel: React.FC = memo(() => {
           <span className="text-gray-300">{motorTelemetryWs.connectionStatus}</span>
         </div>
       </div>
+      
+      {/* Movement V2 Modal */}
+      <MovementV2Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        movementV2={
+          movementV2 || 
+          (motorTelemetryWs.connectionStatus !== 'connected' ? {
+            enabled: true,
+            profile: {
+              name: 'smooth',
+              config: {
+                max_speed: 0.8,
+                accel_rate: 150.0,
+                decel_rate: 200.0
+              }
+            },
+            thermal: {
+              enabled: true,
+              state: 'ok' as const,
+              max_temp_seen: 45.2,
+              limits: {
+                max_temp: 75.0,
+                warning_temp: 60.0
+              }
+            },
+            ramping: {
+              current_pwm: 1200,
+              target_pwm: 2000,
+              is_ramping: true
+            },
+            watchdog: {
+              enabled: true,
+              time_until_trigger: 1.8,
+              state: 'active'
+            }
+          } : null)
+        }
+      />
     </div>
   );
 });

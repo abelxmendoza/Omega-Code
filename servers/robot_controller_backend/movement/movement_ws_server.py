@@ -144,6 +144,44 @@ except ImportError:
     logger.warning("Optimization utilities not available")
     OPTIMIZATION_AVAILABLE = False
 
+# Import PID controllers for Movement V2
+try:
+    from .movement_pid import SpeedPID, PIDTuning
+    PID_AVAILABLE = True
+except ImportError:
+    try:
+        from servers.robot_controller_backend.movement.movement_pid import SpeedPID, PIDTuning
+        PID_AVAILABLE = True
+    except ImportError:
+        logger.warning("PID controllers not available - PID features disabled")
+        PID_AVAILABLE = False
+        SpeedPID = None
+        PIDTuning = None
+
+# Import Movement V2 modules
+try:
+    from .thermal_safety import ThermalSafety, ThermalLimits, SafetyState
+    from .movement_ramp import MovementRamp, RampType
+    from .movement_profiles import ProfileManager, ProfileType
+    from .movement_watchdog import MovementWatchdog, WatchdogState
+    from .movement_config import load_config, MovementV2Config
+    MOVEMENT_V2_AVAILABLE = True
+except ImportError:
+    try:
+        from servers.robot_controller_backend.movement.thermal_safety import ThermalSafety, ThermalLimits, SafetyState
+        from servers.robot_controller_backend.movement.movement_ramp import MovementRamp, RampType
+        from servers.robot_controller_backend.movement.movement_profiles import ProfileManager, ProfileType
+        from servers.robot_controller_backend.movement.movement_watchdog import MovementWatchdog, WatchdogState
+        from servers.robot_controller_backend.movement.movement_config import load_config, MovementV2Config
+        MOVEMENT_V2_AVAILABLE = True
+    except ImportError as e:
+        logger.warning(f"Movement V2 modules not available: {e}")
+        MOVEMENT_V2_AVAILABLE = False
+        ThermalSafety = None
+        MovementRamp = None
+        ProfileManager = None
+        MovementWatchdog = None
+
 # Optional .env loader (backend root)
 try:
     from dotenv import load_dotenv
@@ -363,6 +401,121 @@ else:
     def get_cached_motor_telemetry():
         return {}  # Return empty dict if telemetry not available
 
+# Initialize Movement V2 system
+MOVEMENT_V2_ENABLED = _env("MOVEMENT_V2_ENABLED", "1") == "1" and MOVEMENT_V2_AVAILABLE
+
+# Load Movement V2 configuration
+MOVEMENT_V2_CONFIG = None
+if MOVEMENT_V2_ENABLED:
+    try:
+        MOVEMENT_V2_CONFIG = load_config()
+        log("[MOVE][V2] Movement V2 configuration loaded")
+    except Exception as e:
+        logger.warning(f"Failed to load Movement V2 config: {e}")
+        MOVEMENT_V2_CONFIG = None
+
+# Initialize PID controller for speed regulation
+SPEED_PID = None
+PID_ENABLED = _env("MOVEMENT_PID_ENABLED", "1") == "1"
+if PID_AVAILABLE and PID_ENABLED and MOTOR_TELEMETRY:
+    try:
+        # Get PID tuning from config or environment
+        if MOVEMENT_V2_CONFIG:
+            pid_kp = MOVEMENT_V2_CONFIG.pid_kp
+            pid_ki = MOVEMENT_V2_CONFIG.pid_ki
+            pid_kd = MOVEMENT_V2_CONFIG.pid_kd
+            pid_kf = MOVEMENT_V2_CONFIG.pid_kf
+        else:
+            pid_kp = float(_env("MOVEMENT_PID_KP", "0.3"))
+            pid_ki = float(_env("MOVEMENT_PID_KI", "0.05"))
+            pid_kd = float(_env("MOVEMENT_PID_KD", "0.01"))
+            pid_kf = float(_env("MOVEMENT_PID_KF", "0.0"))
+        
+        SPEED_PID = SpeedPID(
+            tuning=PIDTuning(kp=pid_kp, ki=pid_ki, kd=pid_kd, kf=pid_kf),
+            max_rpm=300.0,  # Maximum expected RPM
+            max_pwm_correction=500.0  # Maximum PWM correction (±500)
+        )
+        SPEED_PID.enable()
+        log(f"[MOVE][PID] Speed PID initialized: kp={pid_kp}, ki={pid_ki}, kd={pid_kd}")
+    except Exception as e:
+        logger.warning(f"Failed to initialize PID controller: {e}")
+        SPEED_PID = None
+else:
+    if not PID_AVAILABLE:
+        log("[MOVE][PID] PID not available - speed regulation disabled")
+    elif not PID_ENABLED:
+        log("[MOVE][PID] PID disabled via MOVEMENT_PID_ENABLED=0")
+    elif not MOTOR_TELEMETRY:
+        log("[MOVE][PID] PID disabled - motor telemetry not available")
+
+# Initialize Movement V2 components
+THERMAL_SAFETY = None
+MOVEMENT_RAMP = None
+PROFILE_MANAGER = None
+MOVEMENT_WATCHDOG = None
+
+if MOVEMENT_V2_ENABLED and MOVEMENT_V2_CONFIG:
+    try:
+        # Initialize thermal safety
+        if MOVEMENT_V2_CONFIG.thermal_enabled:
+            thermal_limits = ThermalLimits(
+                max_temp=MOVEMENT_V2_CONFIG.thermal_max_temp,
+                warning_temp=MOVEMENT_V2_CONFIG.thermal_warning_temp,
+                max_current=MOVEMENT_V2_CONFIG.thermal_max_current,
+                warning_current=MOVEMENT_V2_CONFIG.thermal_warning_current,
+                cooldown_temp=MOVEMENT_V2_CONFIG.thermal_cooldown_temp,
+                throttle_factor=MOVEMENT_V2_CONFIG.thermal_throttle_factor
+            )
+            THERMAL_SAFETY = ThermalSafety(limits=thermal_limits, enabled=True)
+            log(f"[MOVE][V2] Thermal safety initialized: max_temp={thermal_limits.max_temp}°C")
+        
+        # Initialize movement ramping
+        ramp_type_map = {
+            "linear": RampType.LINEAR,
+            "exponential": RampType.EXPONENTIAL,
+            "s_curve": RampType.S_CURVE
+        }
+        ramp_type = ramp_type_map.get(MOVEMENT_V2_CONFIG.ramp_type, RampType.LINEAR)
+        MOVEMENT_RAMP = MovementRamp(
+            accel_rate=MOVEMENT_V2_CONFIG.accel_rate,
+            decel_rate=MOVEMENT_V2_CONFIG.decel_rate,
+            ramp_type=ramp_type
+        )
+        log(f"[MOVE][V2] Movement ramping initialized: {MOVEMENT_V2_CONFIG.ramp_type}")
+        
+        # Initialize profile manager
+        profile_map = {
+            "smooth": ProfileType.SMOOTH,
+            "aggressive": ProfileType.AGGRESSIVE,
+            "precision": ProfileType.PRECISION
+        }
+        default_profile = profile_map.get(MOVEMENT_V2_CONFIG.default_profile, ProfileType.SMOOTH)
+        PROFILE_MANAGER = ProfileManager(default_profile=default_profile)
+        log(f"[MOVE][V2] Profile manager initialized: default={MOVEMENT_V2_CONFIG.default_profile}")
+        
+        # Initialize watchdog
+        if MOVEMENT_V2_CONFIG.watchdog_enabled:
+            # Watchdog callback is synchronous - background task handles async stop
+            MOVEMENT_WATCHDOG = MovementWatchdog(
+                timeout_sec=MOVEMENT_V2_CONFIG.watchdog_timeout_sec,
+                stop_callback=None,  # Background task handles stopping
+                enabled=True
+            )
+            log(f"[MOVE][V2] Watchdog initialized: timeout={MOVEMENT_V2_CONFIG.watchdog_timeout_sec}s")
+        
+        log("[MOVE][V2] Movement V2 system initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize Movement V2 components: {e}")
+        import traceback
+        traceback.print_exc()
+        MOVEMENT_V2_ENABLED = False
+else:
+    if not MOVEMENT_V2_AVAILABLE:
+        log("[MOVE][V2] Movement V2 modules not available")
+    elif not MOVEMENT_V2_ENABLED:
+        log("[MOVE][V2] Movement V2 disabled via MOVEMENT_V2_ENABLED=0")
+
 # ---------- server state ----------
 
 SPEED_MIN, SPEED_MAX = 0, 4095
@@ -515,18 +668,109 @@ def _call_motor(fn, speed: int):
 async def do_move(fn_name: str, speed: int):
     async with motor_lock:
         log(f"[MOVE] do_move({fn_name}, {speed})")
+        
+        # Reset watchdog on any movement command
+        if MOVEMENT_WATCHDOG:
+            MOVEMENT_WATCHDOG.kick()
+        
         fn = getattr(motor, fn_name, None)
+        actual_method = fn_name
         if not callable(fn):
-            # Use gentle turns instead of sharp pivots
+            # Map left/right to pivot turns (A/D keys use pivot turns)
             if fn_name == "left":
-                fn = getattr(motor, "left", None)
+                fn = getattr(motor, "pivot_left", None)
+                actual_method = "pivot_left"
             elif fn_name == "right":
-                fn = getattr(motor, "right", None)
+                fn = getattr(motor, "pivot_right", None)
+                actual_method = "pivot_right"
         if not callable(fn):
             elog(f"[MOVE] motor missing method: {fn_name}")
             raise RuntimeError(f"motor missing method: {fn_name}")
-        log(f"[MOVE] Calling motor.{fn_name}({speed})")
-        _call_motor(fn, speed)
+        
+        # Movement V2 Pipeline:
+        # 1. Profile transformation (if enabled)
+        profiled_speed = speed
+        if PROFILE_MANAGER:
+            try:
+                current_profile = PROFILE_MANAGER.get_current_profile()
+                profiled_speed = int(current_profile.transform_speed(speed))
+                # Update ramp rates from profile
+                if MOVEMENT_RAMP:
+                    MOVEMENT_RAMP.accel_rate = current_profile.get_accel_rate()
+                    MOVEMENT_RAMP.decel_rate = current_profile.get_decel_rate()
+            except Exception as e:
+                logger.warning(f"Profile transformation failed: {e}")
+        
+        # 2. Movement ramping (if enabled)
+        ramped_speed = profiled_speed
+        if MOVEMENT_RAMP:
+            try:
+                MOVEMENT_RAMP.set_target(float(profiled_speed))
+                dt = 1.0 / MOVEMENT_V2_CONFIG.ramp_update_rate_hz if MOVEMENT_V2_CONFIG else 0.02
+                ramped_speed = int(MOVEMENT_RAMP.update(dt))
+            except Exception as e:
+                logger.warning(f"Ramping failed: {e}, using profiled speed")
+                ramped_speed = profiled_speed
+        
+        # 3. Thermal safety check (if enabled)
+        safe_speed = ramped_speed
+        if THERMAL_SAFETY and MOTOR_TELEMETRY:
+            try:
+                telemetry = get_cached_motor_telemetry()
+                safety_state = THERMAL_SAFETY.check(telemetry)
+                
+                if safety_state == SafetyState.KILL:
+                    log("[MOVE][THERMAL] Motor kill triggered - stopping motors")
+                    motor.stop()
+                    return
+                
+                # Apply thermal throttling
+                safe_speed = int(THERMAL_SAFETY.apply_throttle(ramped_speed))
+                
+                if safety_state == SafetyState.THROTTLE:
+                    log(f"[MOVE][THERMAL] Throttling applied: {ramped_speed} -> {safe_speed}")
+            except Exception as e:
+                logger.warning(f"Thermal safety check failed: {e}, using ramped speed")
+                safe_speed = ramped_speed
+        
+        # 4. PID correction (if enabled and telemetry available)
+        final_speed = safe_speed
+        if SPEED_PID and SPEED_PID.enabled and MOTOR_TELEMETRY:
+            try:
+                # Get current telemetry
+                telemetry = get_cached_motor_telemetry()
+                
+                # Calculate average RPM from telemetry
+                motor_keys = ['frontLeft', 'frontRight', 'rearLeft', 'rearRight']
+                rpm_values = [
+                    telemetry.get(m, {}).get('speed', 0.0) 
+                    for m in motor_keys 
+                    if m in telemetry
+                ]
+                current_rpm = sum(rpm_values) / len(rpm_values) if rpm_values else 0.0
+                
+                # Estimate target RPM from PWM (rough conversion: PWM 0-4095 -> RPM 0-300)
+                target_rpm = (abs(safe_speed) / 4095.0) * 300.0
+                SPEED_PID.set_target_rpm(target_rpm)
+                
+                # Compute PID correction (dt = 0.1s for 10Hz update rate)
+                dt = 0.1
+                correction = SPEED_PID.compute(current_rpm=current_rpm, dt=dt)
+                
+                # Apply correction to speed (maintain direction)
+                if safe_speed >= 0:
+                    final_speed = max(0, min(4095, int(safe_speed + correction)))
+                else:
+                    final_speed = max(-4095, min(0, int(safe_speed - correction)))
+                
+                if abs(correction) > 1.0:  # Only log significant corrections
+                    log(f"[MOVE][PID] Correction: {correction:.1f} PWM (target: {target_rpm:.1f} RPM, current: {current_rpm:.1f} RPM)")
+            except Exception as e:
+                logger.warning(f"PID correction failed: {e}, using safe speed")
+                final_speed = safe_speed
+        
+        log(f"[MOVE] Calling motor.{actual_method}({final_speed}) [V2 pipeline: {speed} -> {profiled_speed} -> {ramped_speed} -> {safe_speed} -> {final_speed}]")
+        _call_motor(fn, final_speed)
 
 def norm_cmd_name(raw: str) -> str:
     s = (raw or "").strip().lower()
@@ -732,6 +976,30 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                         val = current_speed
                     current_speed = clamp(val, SPEED_MIN, SPEED_MAX)
                     await send_json(ws, ok("set-speed", speed=current_speed))
+
+                # -------- MOVEMENT V2 PROFILE --------
+                elif cmd == "set-profile":
+                    if PROFILE_MANAGER:
+                        profile_name = data.get("profile", "").lower()
+                        profile_map = {
+                            "smooth": ProfileType.SMOOTH,
+                            "aggressive": ProfileType.AGGRESSIVE,
+                            "precision": ProfileType.PRECISION
+                        }
+                        if profile_name in profile_map:
+                            PROFILE_MANAGER.set_profile(profile_map[profile_name])
+                            await send_json(ws, ok("set-profile", profile=profile_name, profileInfo=PROFILE_MANAGER.get_current_profile().get_config()))
+                        else:
+                            await send_json(ws, err("invalid-profile", valid=["smooth", "aggressive", "precision"]))
+                    else:
+                        await send_json(ws, err("profiles-not-available"))
+
+                elif cmd == "get-profile":
+                    if PROFILE_MANAGER:
+                        current_profile = PROFILE_MANAGER.get_current_profile()
+                        await send_json(ws, ok("get-profile", profile=current_profile.name, profileInfo=current_profile.get_config()))
+                    else:
+                        await send_json(ws, err("profiles-not-available"))
 
                 # -------- BUZZER --------
                 elif cmd == "buzz":
@@ -954,7 +1222,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
 
                 # -------- STATUS --------
                 elif cmd == "status":
-                    await send_json(ws, {
+                    status_payload = {
                         "type": "status",
                         "speed": current_speed,
                         "motors": get_cached_motor_telemetry(),
@@ -969,7 +1237,63 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                         "straightAssist": STRAIGHT_ASSIST.status(),
                         "ts": _now_ms(),
                         "sim": SIM_MODE,
-                    })
+                    }
+                    
+                    # Add PID status if available
+                    if SPEED_PID:
+                        status_payload["pid"] = {
+                            "enabled": SPEED_PID.enabled,
+                            "target_rpm": SPEED_PID.target_rpm,
+                            "tuning": {
+                                "kp": SPEED_PID.tuning.kp,
+                                "ki": SPEED_PID.tuning.ki,
+                                "kd": SPEED_PID.tuning.kd,
+                                "kf": SPEED_PID.tuning.kf,
+                            }
+                        }
+                    else:
+                        status_payload["pid"] = {
+                            "enabled": False,
+                            "available": PID_AVAILABLE
+                        }
+                    
+                    # Add Movement V2 status
+                    if MOVEMENT_V2_ENABLED:
+                        v2_status = {
+                            "enabled": True,
+                        }
+                        
+                        if PROFILE_MANAGER:
+                            current_profile = PROFILE_MANAGER.get_current_profile()
+                            v2_status["profile"] = {
+                                "name": current_profile.name,
+                                "config": current_profile.get_config()
+                            }
+                        
+                        if MOVEMENT_RAMP:
+                            v2_status["ramping"] = {
+                                "current_pwm": MOVEMENT_RAMP.current_pwm,
+                                "target_pwm": MOVEMENT_RAMP.target_pwm,
+                                "is_ramping": MOVEMENT_RAMP._is_ramping,
+                                "accel_rate": MOVEMENT_RAMP.accel_rate,
+                                "decel_rate": MOVEMENT_RAMP.decel_rate,
+                                "ramp_type": MOVEMENT_RAMP.ramp_type.value if hasattr(MOVEMENT_RAMP.ramp_type, 'value') else str(MOVEMENT_RAMP.ramp_type)
+                            }
+                        
+                        if THERMAL_SAFETY:
+                            v2_status["thermal"] = THERMAL_SAFETY.get_status()
+                        
+                        if MOVEMENT_WATCHDOG:
+                            v2_status["watchdog"] = MOVEMENT_WATCHDOG.get_status()
+                        
+                        status_payload["movementV2"] = v2_status
+                    else:
+                        status_payload["movementV2"] = {
+                            "enabled": False,
+                            "available": MOVEMENT_V2_AVAILABLE
+                        }
+                    
+                    await send_json(ws, status_payload)
 
                 else:
                         await send_json(ws, err(f"unknown-command:{cmd}"))
@@ -1019,11 +1343,32 @@ async def cleanup_stale_connections():
         if stale_clients:
             log(f"Cleaned up {len(stale_clients)} stale connection(s)")
 
+async def watchdog_background_task():
+    """Background task to check watchdog timer"""
+    if not MOVEMENT_WATCHDOG or not MOVEMENT_WATCHDOG.enabled:
+        return
+    
+    while True:
+        await asyncio.sleep(0.1)  # Check every 100ms
+        if MOVEMENT_WATCHDOG.should_stop():
+            # Watchdog triggered - stop motors
+            async with motor_lock:
+                try:
+                    motor.stop()
+                    log("[MOVE][WATCHDOG] Watchdog triggered - motors stopped")
+                except Exception as e:
+                    logger.error(f"Watchdog stop failed: {e}")
+
 async def main():
     log(f"listening on ws://0.0.0.0:{PORT}{'' if PATH=='/' else PATH}")
     log(f"ORIGIN_ALLOW={','.join(sorted(_ALLOWED_ORIGINS)) or '(none)'} "
         f"ALLOW_NO_ORIGIN={ALLOW_NO_ORIGIN} SIM_MODE={SIM_MODE}")
     log(f"Connection limits: MAX_CLIENTS={MAX_CLIENTS}, CONNECTION_TIMEOUT={CONNECTION_TIMEOUT}s")
+    
+    if MOVEMENT_V2_ENABLED:
+        log(f"[MOVE][V2] Movement V2 enabled: Ramping={MOVEMENT_RAMP is not None}, "
+            f"Thermal={THERMAL_SAFETY is not None}, Watchdog={MOVEMENT_WATCHDOG is not None}, "
+            f"Profiles={PROFILE_MANAGER is not None}")
     
     # Start optimization systems (must be done after event loop is running)
     if OPTIMIZATION_AVAILABLE:
@@ -1034,6 +1379,11 @@ async def main():
         asyncio.create_task(performance_monitor.start_monitoring(interval=10.0))
         
         logger.info("Optimization systems started")
+    
+    # Start Movement V2 watchdog background task
+    if MOVEMENT_WATCHDOG and MOVEMENT_WATCHDOG.enabled:
+        asyncio.create_task(watchdog_background_task())
+        log("[MOVE][V2] Watchdog background task started")
     
     # Start cleanup task
     asyncio.create_task(cleanup_stale_connections())
