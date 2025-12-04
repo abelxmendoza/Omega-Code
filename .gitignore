@@ -12,6 +12,9 @@ servers/robot-controller-backend/certs/*.key
 
 # Logs
 servers/robot-controller-backend/server.log
+servers/robot_controller_backend/movement/*.log
+servers/robot_controller_backend/video/*.log
+*.log
 
 # macOS system files
 .DS_Store
