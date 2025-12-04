@@ -25,6 +25,7 @@ from controllers.lighting.patterns import (
     matrix_rain,
     fire_effect,
     status_indicator,
+    omega_signature,
 )
 from rpi_ws281x import Color
 
@@ -167,10 +168,17 @@ def apply_lighting_mode(payload: dict, led_controller):
                 interval_ms=int(update_ms),
                 duration_s=duration,
             )
+        elif pattern == "omega_signature":
+            # Omega Technologies signature pattern - multi-stage brand showcase
+            omega_signature(
+                strip,
+                wait_ms=interval if interval > 0 else 20,
+                brightness=brightness,
+            )
         elif pattern in _PATTERN_HANDLERS:
             _PATTERN_HANDLERS[pattern](strip, color1_scaled, color2_scaled, interval, brightness, mode)
         else:
-            raise ValueError(f"Unknown pattern: {pattern} (supported: static, fade, blink, chase, rainbow, lightshow, music, rave, breathing, aurora, matrix, fire)")
+            raise ValueError(f"Unknown pattern: {pattern} (supported: static, fade, blink, chase, rainbow, lightshow, music, rave, breathing, aurora, matrix, fire, omega_signature)")
             
     except ValueError as e:
         print(f"❌ [ERROR] Invalid lighting command: {e}", file=sys.stderr)

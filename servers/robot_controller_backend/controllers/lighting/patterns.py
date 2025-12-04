@@ -284,6 +284,22 @@ def _clamp(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(maximum, value))
 
 
+@lru_cache(maxsize=32)
+def _hex_to_rgb_cached(hex_color: str) -> Tuple[int, int, int]:
+    """Convert hex color string to RGB tuple with caching.
+    
+    Args:
+        hex_color: Hex color string (e.g., "#ff0000" or "ff0000")
+    
+    Returns:
+        RGB tuple (r, g, b)
+    """
+    hex_color = hex_color.lstrip('#')
+    if len(hex_color) != 6:
+        raise ValueError(f"Hex color must be 6 digits, got: {hex_color}")
+    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+
 def _mix_colors(color_a: Tuple[int, int, int], color_b: Tuple[int, int, int], ratio: float) -> Tuple[int, int, int]:
     """Blend two RGB tuples using *ratio* (0.0 → A, 1.0 → B)."""
 
@@ -883,6 +899,122 @@ def status_indicator(
     else:
         # Static color for other statuses
         color_wipe(strip, Color(*color))
+
+
+def omega_signature(strip, wait_ms=20, brightness=0.5):
+    """
+    Omega Technologies Signature Pattern:
+    
+    A multi-stage pattern showcasing the Omega brand aesthetic:
+    - Stage 1: Black → Void Purple awakening pulse (slow fade)
+    - Stage 2: Omega Surge (purple shimmer wave)
+    - Stage 3: Bloodline Flash (blood red heartbeat)
+    - Stage 4: Steady Presence Mode (breathing purple/black loop)
+    
+    Designed to look like a machine waking up - perfect for videos, reveals, demos, intros.
+    
+    Args:
+        strip: Initialized NeoPixel strip object.
+        wait_ms: Update interval in milliseconds (default: 20ms).
+        brightness: Global brightness multiplier 0.0-1.0 (default: 0.5).
+    """
+    brightness = _clamp(float(brightness), 0.0, 1.0)
+    wait_sec = max(0.001, wait_ms / 1000.0)
+    total_pixels = strip.numPixels()
+    
+    if total_pixels <= 0:
+        return
+    
+    # Omega Technologies brand colors
+    BLACK = _hex_to_rgb_cached("#000000")
+    VOID_PURPLE = _hex_to_rgb_cached("#1a001f")
+    OMEGA_PURPLE = _hex_to_rgb_cached("#3a0066")
+    ELECTRIC_PURPLE = _hex_to_rgb_cached("#6a00ff")
+    BLOOD_RED = _hex_to_rgb_cached("#ff003c")
+    
+    # Helper to fill all pixels with a color and brightness scale
+    def fill(color_rgb, scale=1.0):
+        """Fill all pixels with a color at specified brightness scale."""
+        r, g, b = color_rgb
+        # Apply brightness and scale
+        r = int(r * brightness * scale)
+        g = int(g * brightness * scale)
+        b = int(b * brightness * scale)
+        color = Color(r, g, b)
+        for i in range(total_pixels):
+            strip.setPixelColor(i, color)
+        strip.show()
+    
+    try:
+        # --- Stage 1: Awakening Pulse (black → void purple) ---
+        # Very low brightness, slow fade (~3s), looks like robot powering on
+        steps = 60
+        for step in range(steps):
+            # Interpolate black → void purple
+            t = step / steps
+            r = int(BLACK[0] * (1 - t) + VOID_PURPLE[0] * t)
+            g = int(BLACK[1] * (1 - t) + VOID_PURPLE[1] * t)
+            b = int(BLACK[2] * (1 - t) + VOID_PURPLE[2] * t)
+            fill((r, g, b))
+            time.sleep(0.05)  # ~3 seconds total
+        
+        # --- Stage 2: Omega Surge (void purple → electric purple shimmer wave) ---
+        # Shimmer wave runs down the LED strip, smooth, controlled, cyberpunk look
+        for offset in range(total_pixels * 2):
+            for i in range(total_pixels):
+                # Create shimmer effect: every 12th pixel group gets electric purple
+                if (i + offset) % 12 < 3:
+                    r, g, b = ELECTRIC_PURPLE
+                    r = int(r * brightness)
+                    g = int(g * brightness)
+                    b = int(b * brightness)
+                    strip.setPixelColor(i, Color(r, g, b))
+                else:
+                    r, g, b = OMEGA_PURPLE
+                    r = int(r * brightness)
+                    g = int(g * brightness)
+                    b = int(b * brightness)
+                    strip.setPixelColor(i, Color(r, g, b))
+            strip.show()
+            time.sleep(wait_sec)
+        
+        # --- Stage 3: Bloodline Flash (blood red heartbeat) ---
+        # 2 fast low-brightness flashes, 1 slow long flash, returns to purple
+        heartbeats = [0.2, 0.2, 0.6]  # short, short, long
+        for hb in heartbeats:
+            fill(BLOOD_RED, scale=1.0)
+            time.sleep(hb)
+            fill(OMEGA_PURPLE, scale=0.2)
+            time.sleep(0.2)
+        
+        # --- Stage 4: Steady Presence Mode (breathing purple/black loop) ---
+        # Idle mode: slow, hypnotic breathing in Omega Purple
+        # This loops until the user stops it
+        while True:
+            # Breathe out (fade up)
+            for step in range(50):
+                scale = step / 50.0
+                # Smooth ease-in-out curve
+                eased = scale * scale * (3.0 - 2.0 * scale)
+                fill(OMEGA_PURPLE, scale=eased)
+                time.sleep(0.02)
+            
+            # Breathe in (fade down)
+            for step in range(50, -1, -1):
+                scale = step / 50.0
+                eased = scale * scale * (3.0 - 2.0 * scale)
+                fill(OMEGA_PURPLE, scale=eased)
+                time.sleep(0.02)
+    
+    except KeyboardInterrupt:
+        # Gracefully exit on interrupt
+        fill(BLACK, scale=0.0)
+        raise
+    except Exception as e:
+        print(f"❌ [ERROR] omega_signature failed: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        raise
 
 
 # Lighting patterns for NeoPixels

@@ -499,6 +499,35 @@ def _create_camera(device: Optional[str] = None) -> bool:
     """
     global camera, motion_detector, tracker, _last_init_attempt
     _last_init_attempt = time.time()
+    
+    # Run hardware verification if CameraManager is available
+    try:
+        from .camera_manager import CameraManager
+        manager = CameraManager(width=CAMERA_WIDTH, height=CAMERA_HEIGHT, fps=CAMERA_FPS)
+        hw_status = manager.verify_hardware()
+        
+        logging.info(f"Camera hardware check: detected={hw_status['camera_detected']}, "
+                     f"supported={hw_status['camera_supported']}, "
+                     f"devices={len(hw_status['devices_found'])}")
+        
+        if hw_status['devices_found']:
+            logging.info(f"Found video devices: {', '.join(hw_status['devices_found'])}")
+        
+        if hw_status['recommendations']:
+            for rec in hw_status['recommendations']:
+                logging.warning(f"⚠ {rec}")
+        
+        # If camera not detected but device exists, provide helpful error
+        if not hw_status['camera_detected'] and hw_status['devices_found']:
+            logging.warning("⚠ Camera device exists but hardware not detected")
+            logging.warning("  → Device exists but no frames — likely ribbon loose or interface disabled")
+            logging.warning("  → Run diagnostic: python3 video/hw_check.py")
+            logging.warning("  → Try reseating CSI ribbon connector (silver contacts face HDMI side)")
+    except ImportError:
+        logging.debug("CameraManager not available, skipping hardware verification")
+    except Exception as e:
+        logging.debug(f"Hardware verification failed: {e}")
+    
     try:
         # Use specified device or default
         camera_device = device or os.getenv("CAMERA_DEVICE", "/dev/video0")

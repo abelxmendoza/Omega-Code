@@ -44,6 +44,7 @@ from controllers.lighting.patterns import (
     matrix_rain,
     fire_effect,
     status_indicator,
+    omega_signature,
 )
 
 # Cache common Color objects to reduce allocations
@@ -473,6 +474,18 @@ class LedController:
                     brightness=brightness,
                     interval_ms=int(update_ms),
                     duration_s=duration,
+                )
+                self.is_on = True
+            elif pattern == "omega_signature":
+                # Omega Technologies signature pattern - multi-stage brand showcase
+                # Designed to look like a machine waking up
+                if mode != "single":
+                    raise ValueError("omega_signature pattern only available in single mode.")
+                update_ms = max(20, interval) if interval > 0 else 20
+                omega_signature(
+                    self.strip,
+                    wait_ms=int(update_ms),
+                    brightness=brightness,
                 )
                 self.is_on = True
             else:

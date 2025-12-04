@@ -875,6 +875,66 @@ class CameraManager:
         
         log.info(f"{Colors.CYAN}{'='*60}{Colors.RESET}")
     
+    def verify_hardware(self) -> Dict[str, Any]:
+        """
+        Verify camera hardware before initialization.
+        Runs diagnostic checks and returns status.
+        
+        Returns:
+            Dict with verification results
+        """
+        result = {
+            'camera_detected': False,
+            'camera_supported': False,
+            'devices_found': [],
+            'libcamera_available': False,
+            'recommendations': []
+        }
+        
+        # Check vcgencmd camera status
+        try:
+            import subprocess
+            vcgencmd_result = subprocess.check_output(
+                ["vcgencmd", "get_camera"],
+                stderr=subprocess.STDOUT,
+                timeout=5
+            ).decode('utf-8', errors='replace')
+            
+            if "supported=1" in vcgencmd_result:
+                result['camera_supported'] = True
+            if "detected=1" in vcgencmd_result:
+                result['camera_detected'] = True
+            elif "detected=0" in vcgencmd_result:
+                result['recommendations'].append(
+                    "Camera hardware NOT detected - check ribbon cable connection"
+                )
+        except Exception as e:
+            log.debug(f"vcgencmd check failed: {e}")
+        
+        # Check for video devices
+        try:
+            import glob
+            video_devices = glob.glob("/dev/video*")
+            result['devices_found'] = video_devices
+            if not video_devices:
+                result['recommendations'].append(
+                    "No /dev/video* devices found - camera may not be connected"
+                )
+        except Exception as e:
+            log.debug(f"Device scan failed: {e}")
+        
+        # Check libcamera tools
+        try:
+            import subprocess
+            subprocess.check_output(["which", "libcamera-still"], timeout=2)
+            result['libcamera_available'] = True
+        except Exception:
+            result['recommendations'].append(
+                "libcamera-still not found - install with: sudo apt install libcamera-apps"
+            )
+        
+        return result
+    
     def initialize_backend(self):
         """
         Initialize the selected camera backend with error handling.
@@ -884,6 +944,18 @@ class CameraManager:
         """
         max_retries = 3
         last_error = None
+        
+        # Run hardware verification if enabled
+        test_mode = os.getenv("CAMERA_TEST_MODE", "0").lower() in ("1", "true", "yes")
+        if test_mode:
+            log.info(f"{Colors.CYAN}Running camera hardware verification...{Colors.RESET}")
+            hw_status = self.verify_hardware()
+            log.info(f"Camera detected: {hw_status['camera_detected']}, "
+                    f"Supported: {hw_status['camera_supported']}, "
+                    f"Devices: {len(hw_status['devices_found'])}")
+            if hw_status['recommendations']:
+                for rec in hw_status['recommendations']:
+                    log.warning(f"{Colors.YELLOW}⚠ {rec}{Colors.RESET}")
         
         for attempt in range(max_retries):
             try:
@@ -895,11 +967,40 @@ class CameraManager:
                     return self._init_mock()
             except Exception as e:
                 last_error = e
+                error_msg = str(e)
+                
+                # Enhanced error messages for common issues
+                if "/dev/video0" in error_msg or "device" in error_msg.lower():
+                    if os.path.exists("/dev/video0"):
+                        log.error(f"{Colors.RED}Device /dev/video0 exists but returns no frames.{Colors.RESET}")
+                        log.error(f"{Colors.YELLOW}→ Likely ribbon cable loose or interface disabled{Colors.RESET}")
+                        log.error(f"{Colors.YELLOW}→ Run: python3 video/hw_check.py{Colors.RESET}")
+                        log.error(f"{Colors.YELLOW}→ Try reseating CSI ribbon connector (silver contacts face HDMI side){Colors.RESET}")
+                
                 if attempt < max_retries - 1:
                     log.warning(f"Backend initialization attempt {attempt + 1} failed: {e}. Retrying...")
                     time.sleep(0.5 * (attempt + 1))  # Exponential backoff
                 else:
                     log.error(f"{Colors.RED}All backend initialization attempts failed: {e}{Colors.RESET}")
+                    
+                    # If picamera2 failed, try libcamera diagnostic
+                    if self.backend_type == BackendType.PICAMERA2:
+                        log.warning(f"{Colors.YELLOW}Testing libcamera directly...{Colors.RESET}")
+                        try:
+                            import subprocess
+                            test_result = subprocess.run(
+                                ["libcamera-still", "-o", "/tmp/omega_diag.jpg", "--timeout", "2000"],
+                                capture_output=True,
+                                timeout=5
+                            )
+                            if test_result.returncode == 0 and os.path.exists("/tmp/omega_diag.jpg"):
+                                log.info(f"{Colors.GREEN}✓ libcamera test capture successful{Colors.RESET}")
+                                log.warning(f"{Colors.YELLOW}Hardware works but picamera2 binding failed - check Python packages{Colors.RESET}")
+                            else:
+                                log.error(f"{Colors.RED}✗ libcamera test also failed{Colors.RESET}")
+                                log.error(f"{Colors.YELLOW}→ Run diagnostic: python3 video/hw_check.py{Colors.RESET}")
+                        except Exception as diag_e:
+                            log.debug(f"libcamera diagnostic failed: {diag_e}")
         
         raise RuntimeError(f"Failed to initialize camera backend after {max_retries} attempts: {last_error}")
     
