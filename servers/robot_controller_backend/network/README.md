@@ -86,7 +86,7 @@ sudo omega-network ap
 **After setup:**
 - Connect to `Omega1-AP` Wi-Fi network
 - Password: `omegawifi123`
-- SSH: `ssh pi@192.168.4.1`
+- SSH: `ssh omega1@192.168.4.1`
 
 ### Client Mode (Home Mode)
 
@@ -264,7 +264,7 @@ Network wizard logs are written to:
 
 3. **SSH test:**
    ```bash
-   ssh pi@192.168.4.1
+   ssh omega1@192.168.4.1
    ```
 
 4. **Validate:**

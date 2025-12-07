@@ -424,7 +424,7 @@ def enable_ap_mode():
     log(f"Password: {AP_PASSWORD}", "SUCCESS")
     log(f"Pi IP: {AP_IP}", "SUCCESS")
     log("=" * 60)
-    log("Connect to Omega1-AP and SSH: pi@192.168.4.1")
+    log("Connect to Omega1-AP and SSH: omega1@192.168.4.1")
     
     return True
 

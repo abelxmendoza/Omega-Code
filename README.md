@@ -297,7 +297,7 @@ sudo omega-network ap
 
 This enables **Access Point mode** so you can:
 - Connect to `Omega1-AP` Wi-Fi network (password: `omegawifi123`)
-- SSH into `pi@192.168.4.1` without a router or monitor
+- SSH into `omega1@192.168.4.1` without a router or monitor
 - Perfect for field operations and headless setup
 
 **Quick commands:**
