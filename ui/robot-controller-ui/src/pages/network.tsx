@@ -7,8 +7,14 @@
 
 import React from 'react';
 import Head from 'next/head';
+import dynamic from 'next/dynamic';
 import NetworkProfileSelector from '@/components/NetworkProfileSelector';
 import MobileConnectionTest from '@/components/MobileConnectionTest';
+
+const OmegaNetworkWizard = dynamic(
+  () => import('@/components/network/OmegaNetworkWizard'),
+  { ssr: false }
+);
 
 export default function NetworkPage() {
   return (
@@ -33,6 +39,11 @@ export default function NetworkPage() {
                 Last updated: {new Date().toLocaleTimeString()}
               </div>
             </div>
+          </div>
+
+          {/* Omega Network Wizard */}
+          <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 p-6">
+            <OmegaNetworkWizard />
           </div>
 
           {/* Network Profile Selector */}
