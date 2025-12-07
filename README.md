@@ -285,6 +285,31 @@ go mod tidy
 
 ### Configuration
 
+#### Network Setup (First Boot)
+
+**Omega-1 Network Wizard** - Headless Wi-Fi setup for field operations:
+
+```bash
+cd servers/robot_controller_backend/network
+sudo bash install.sh
+sudo omega-network ap
+```
+
+This enables **Access Point mode** so you can:
+- Connect to `Omega1-AP` Wi-Fi network (password: `omegawifi123`)
+- SSH into `pi@192.168.4.1` without a router or monitor
+- Perfect for field operations and headless setup
+
+**Quick commands:**
+```bash
+sudo omega-network ap       # Enable AP mode (field mode)
+sudo omega-network client   # Enable client mode (home Wi-Fi)
+sudo omega-network status   # Show network status
+sudo omega-network          # Interactive menu
+```
+
+See `servers/robot_controller_backend/network/README.md` for full documentation.
+
 #### Backend Environment Variables
 
 Copy `.env.example` to `.env` and configure:
