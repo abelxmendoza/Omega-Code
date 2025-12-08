@@ -68,6 +68,19 @@ if [ -f "$SCRIPT_DIR/nm-ap-profile.nmconnection" ]; then
     sed "s/REPLACE_ME_AP_UUID/$UUID_AP/" \
         "$SCRIPT_DIR/nm-ap-profile.nmconnection" > "$NM_CONN_DIR/Omega1-AP.nmconnection"
     echo "✅ Created Omega1-AP connection profile"
+    
+    # Ensure AP profile has correct NetworkManager settings (critical for DHCP)
+    echo "🔧 Configuring AP profile with correct NetworkManager settings..."
+    nmcli connection modify Omega1-AP \
+        ipv4.method shared \
+        ipv4.addresses "192.168.4.1/24" \
+        ipv4.gateway 192.168.4.1 \
+        ipv4.dns "8.8.8.8 1.1.1.1" \
+        ipv6.method ignore \
+        wifi.band bg \
+        wifi.hidden no \
+        wifi.mac-address-randomization never 2>/dev/null || true
+    echo "✅ AP profile configured with IPv4 shared mode (required for DHCP)"
 else
     echo "⚠️  Warning: nm-ap-profile.nmconnection template not found"
 fi

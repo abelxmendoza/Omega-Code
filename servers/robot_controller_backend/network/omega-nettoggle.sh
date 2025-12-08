@@ -84,6 +84,21 @@ enable_ap_mode() {
     nmcli connection down Omega1-Client 2>/dev/null || true
     sleep 1
 
+    # Ensure AP profile has correct settings (fix if needed)
+    log "Ensuring AP profile has correct NetworkManager settings..."
+    nmcli connection modify Omega1-AP \
+        ipv4.method shared \
+        ipv4.addresses "192.168.4.1/24" \
+        ipv4.gateway 192.168.4.1 \
+        ipv4.dns "8.8.8.8 1.1.1.1" \
+        ipv6.method ignore \
+        wifi.band bg \
+        wifi.hidden no \
+        wifi.mac-address-randomization never 2>/dev/null || true
+    
+    # Reload connection to apply changes
+    nmcli connection reload
+    
     # Enable AP mode
     log "Activating AP mode connection..."
     if nmcli connection up Omega1-AP 2>/dev/null; then
@@ -91,6 +106,7 @@ enable_ap_mode() {
         log "SSID: Omega1-AP"
         log "Password: omega1234"
         log "IP Range: 192.168.4.x (shared mode)"
+        log "Gateway: 192.168.4.1"
         
         # Wait a moment for AP to start
         sleep 3

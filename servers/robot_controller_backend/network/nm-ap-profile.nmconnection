@@ -7,6 +7,9 @@ autoconnect=false
 [wifi]
 mode=ap
 ssid=Omega1-AP
+band=bg
+hidden=false
+mac-address-randomization=never
 
 [wifi-security]
 key-mgmt=wpa-psk
@@ -14,6 +17,9 @@ psk=omega1234
 
 [ipv4]
 method=shared
+addresses=192.168.4.1/24
+gateway=192.168.4.1
+dns=8.8.8.8;1.1.1.1;
 
 [ipv6]
 method=ignore
