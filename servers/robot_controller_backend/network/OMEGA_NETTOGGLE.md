@@ -63,7 +63,39 @@ sudo ./omega-nettoggle.sh status
 | Enable AP | `sudo omega-ap-fix` |
 | Status | `sudo omega-nettoggle status` |
 
-## Modes
+## Commands
+
+### `omega-ap-fix` - One-Command AP Setup
+
+**The guaranteed AP fix** - Rebuilds AP profile from scratch with perfect NetworkManager configuration.
+
+**What it does:**
+- Deletes any broken/stuck AP config
+- Creates clean NetworkManager AP profile
+- Configures WiFi AP settings (band bg, channel 6, WPA2)
+- Sets IPv4 shared mode (enables DHCP/NAT)
+- Activates AP immediately
+- Guaranteed to work
+
+**When to use:**
+- AP mode not working
+- Clients can see AP but can't connect (timeout)
+- Need to rebuild AP profile from scratch
+- Quick AP setup without running full install
+
+**Example:**
+```bash
+sudo omega-ap-fix
+```
+
+**Output:**
+```
+[OMEGA-AP] Fixing AP mode configuration...
+[OMEGA-AP] Omega-1 Access Point is now ACTIVE
+SSID: Omega1-AP
+Password: omegawifi123
+AP IP: 192.168.4.1
+```
 
 ### `restore` - Restore WiFi Client Mode
 
