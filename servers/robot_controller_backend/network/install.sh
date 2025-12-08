@@ -104,6 +104,17 @@ else
     echo "⚠️  Warning: omega-nettoggle.sh not found at $NETTOGGLE_SCRIPT"
 fi
 
+# Install omega-ap-fix script
+AP_FIX_SCRIPT="$SCRIPT_DIR/omega-ap-fix.sh"
+if [ -f "$AP_FIX_SCRIPT" ]; then
+    chmod +x "$AP_FIX_SCRIPT"
+    ln -sf "$AP_FIX_SCRIPT" "$INSTALL_DIR/omega-ap-fix"
+    chmod +x "$INSTALL_DIR/omega-ap-fix"
+    echo "✅ Installed omega-ap-fix.sh"
+else
+    echo "⚠️  Warning: omega-ap-fix.sh not found at $AP_FIX_SCRIPT"
+fi
+
 # Install watchdog script
 WATCHDOG_SCRIPT="$SCRIPT_DIR/omega-network-watchdog.sh"
 if [ -f "$WATCHDOG_SCRIPT" ]; then

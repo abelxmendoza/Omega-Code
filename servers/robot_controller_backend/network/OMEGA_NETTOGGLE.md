@@ -40,8 +40,11 @@ This will:
 # Restore normal WiFi mode (recover from breakage)
 sudo omega-nettoggle restore
 
-# Enable AP mode
+# Enable AP mode (uses existing profile)
 sudo omega-nettoggle ap
+
+# One-command AP fix (rebuilds AP profile from scratch)
+sudo omega-ap-fix
 
 # Show network diagnostics
 sudo omega-nettoggle status
@@ -49,8 +52,16 @@ sudo omega-nettoggle status
 # Or use direct path
 sudo ./omega-nettoggle.sh restore
 sudo ./omega-nettoggle.sh ap
+sudo ./omega-ap-fix.sh
 sudo ./omega-nettoggle.sh status
 ```
+
+**Quick Reference:**
+| Mode | Command |
+|------|---------|
+| Restore WiFi | `sudo omega-nettoggle restore` |
+| Enable AP | `sudo omega-ap-fix` |
+| Status | `sudo omega-nettoggle status` |
 
 ## Modes
 
