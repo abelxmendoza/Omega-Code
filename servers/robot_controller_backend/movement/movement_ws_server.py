@@ -586,6 +586,10 @@ CONNECTION_TIMEOUT = 300  # 5 minutes idle timeout
 # ---------- helpers ----------
 
 def origin_ok(ws: WebSocketServerProtocol) -> bool:
+    """
+    Validate WebSocket origin with enhanced security.
+    Uses websocket_security module if available.
+    """
     if not _ALLOWED_ORIGINS:
         return True
     origin = ws.request_headers.get("Origin")
