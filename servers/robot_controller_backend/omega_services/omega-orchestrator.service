@@ -1,0 +1,29 @@
+[Unit]
+Description=OmegaOS Service Orchestrator
+Documentation=https://github.com/your-repo/Omega-Code
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=omega1
+Group=omega1
+WorkingDirectory=/home/omega1/Omega-Code/servers/robot_controller_backend
+ExecStart=/usr/bin/python3 -m omega_services.service_manager
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=omega-orchestrator
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+

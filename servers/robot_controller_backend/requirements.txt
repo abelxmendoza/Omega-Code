@@ -1,6 +1,7 @@
 # Core dependencies
 websockets>=11.0.3
 asyncio-mqtt>=0.13.0
+PyYAML>=6.0  # Configuration file parsing
 
 # API Framework (for gateway_api.py)
 fastapi>=0.104.0

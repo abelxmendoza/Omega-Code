@@ -298,3 +298,63 @@ async def forget_wifi_network(ssid: str = Query(..., description="SSID to forget
         log.error(f"Wi-Fi forget failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/tailscale")
+async def get_tailscale_status_endpoint() -> Dict[str, Any]:
+    """
+    Get Tailscale VPN status.
+    
+    Returns:
+        {
+            "ok": bool,
+            "enabled": bool,
+            "ip": str | None,
+            "status": "connected" | "disconnected",
+            "hostname": str | None,
+        }
+    """
+    try:
+        # Try to use imported function first
+        if get_tailscale_status:
+            status = get_tailscale_status()
+            return {
+                "ok": True,
+                **status
+            }
+        
+        # Fallback: import directly
+        from network.vpn.tailscale_status import get_tailscale_status as get_status
+        status = get_status()
+        return {
+            "ok": True,
+            **status
+        }
+    except ImportError:
+        # Fallback if module not available
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "tailscale_status",
+                os.path.join(NETWORK_MODULE_PATH, "vpn", "tailscale_status.py")
+            )
+            tailscale_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(tailscale_module)
+            status = tailscale_module.get_tailscale_status()
+            return {
+                "ok": True,
+                **status
+            }
+        except Exception as e:
+            log.error(f"Failed to get Tailscale status: {e}")
+            return {
+                "ok": False,
+                "enabled": False,
+                "ip": None,
+                "status": "disconnected",
+                "hostname": None,
+                "error": str(e)
+            }
+    except Exception as e:
+        log.error(f"Tailscale status check failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

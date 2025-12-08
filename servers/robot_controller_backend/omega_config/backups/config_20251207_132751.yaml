@@ -1,0 +1,73 @@
+robot:
+  name: Omega-2
+  profile: jetson
+  version: 1.0.0
+  serial_number: ''
+network:
+  default_mode: ap
+  ap:
+    ssid: Omega1-AP
+    password: omegawifi123
+    ip: 192.168.4.1
+    dhcp_start: 192.168.4.2
+    dhcp_end: 192.168.4.20
+  client:
+    auto_connect: true
+    preferred_ssid: ''
+    static_ip: null
+  tailscale:
+    enabled: false
+    tailnet: ''
+services:
+  autostart:
+  - movement_ws_server
+  - video_server
+  - main_api
+  - gateway_api
+  - ultrasonic_ws_server
+  - line_tracking_ws_server
+  restart_policies:
+    movement_ws_server: always
+    video_server: on-failure
+    main_api: always
+    gateway_api: always
+    ultrasonic_ws_server: on-failure
+    line_tracking_ws_server: on-failure
+    lighting_server: never
+    ros_core: on-failure
+camera:
+  backend: picamera2
+  device: /dev/video0
+  width: 640
+  height: 480
+  fps: 30
+  test_mode: false
+movement:
+  default_profile: smooth
+  max_speed: 4095
+  min_speed: 0
+  servo_center_on_startup: true
+lighting:
+  default_pattern: omega_signature
+  default_brightness: 0.5
+  led_count: 16
+  gpio_pin: 18
+logging:
+  level: INFO
+  directory: /var/log/omega
+  rotation:
+    enabled: true
+    max_size_mb: 100
+    backup_count: 5
+security:
+  api_auth_enabled: false
+  api_key: ''
+  allowed_origins:
+  - http://localhost:3000
+  - http://omega1.local:3000
+  - https://your-vercel-app.vercel.app
+telemetry:
+  enabled: true
+  update_interval_ms: 1000
+  export_prometheus: false
+  prometheus_port: 9090

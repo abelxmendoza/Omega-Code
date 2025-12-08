@@ -1,0 +1,21 @@
+camera: {}
+lighting: {}
+logging: {}
+movement: {}
+network:
+  ap:
+    ip: 192.168.4.1
+    password: test123
+    ssid: Omega1-AP
+  default_mode: ap
+robot:
+  name: Omega-1
+  profile: pi4b
+  version: 1.0.0
+security: {}
+services:
+  autostart:
+  - movement_ws_server
+  restart_policies:
+    movement_ws_server: always
+telemetry: {}

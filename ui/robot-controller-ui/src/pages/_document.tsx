@@ -18,32 +18,37 @@ export default function Document() {
       <body>
         <Main />
         <NextScript />
+        {/* Service Worker Registration - Safe inline script for PWA functionality */}
+        {/* This is safe as it only registers service workers, no user input involved */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-                var isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-                if (isProduction) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js')
-                    .then(function(registration) {
-                      console.log('ServiceWorker registration successful');
-                    }, function(err) {
-                      console.log('ServiceWorker registration failed: ', err);
+              (function() {
+                if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+                  var isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+                  if (isProduction) {
+                    window.addEventListener('load', function() {
+                      navigator.serviceWorker.register('/sw.js')
+                        .then(function(registration) {
+                          console.log('ServiceWorker registration successful');
+                        }, function(err) {
+                          console.log('ServiceWorker registration failed: ', err);
+                        });
                     });
-                });
-                } else {
-                  // Unregister service worker in development
-                  navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                    for(var i = 0; i < registrations.length; i++) {
-                      registrations[i].unregister();
-                    }
-                  });
+                  } else {
+                    // Unregister service worker in development
+                    navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                      for(var i = 0; i < registrations.length; i++) {
+                        registrations[i].unregister();
+                      }
+                    });
+                  }
                 }
-              }
+              })();
             `,
           }}
           nonce={process.env.NEXT_PUBLIC_CSP_NONCE || ''}
+          suppressHydrationWarning
         />
       </body>
     </Html>

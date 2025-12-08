@@ -628,6 +628,26 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
               ROS
             </Link>
           </div>
+          
+          {/* Services Management Link */}
+          <div className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 border border-green-400/40 text-green-100 hover:bg-green-500/30 transition-colors">
+            <Link 
+              href="/services"
+              title="Service Management"
+            >
+              Services
+            </Link>
+          </div>
+          
+          {/* Settings Link */}
+          <div className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 border border-yellow-400/40 text-yellow-100 hover:bg-yellow-500/30 transition-colors">
+            <Link 
+              href="/settings"
+              title="Robot Settings"
+            >
+              <Settings className="w-3 h-3" />
+            </Link>
+          </div>
         </div>
 
         {/* Overall status + battery */}

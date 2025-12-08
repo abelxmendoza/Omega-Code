@@ -1,0 +1,70 @@
+# Robot Profile Configuration
+# Defines robot-specific metadata and capabilities
+
+profiles:
+  pi4b:
+    name: "Raspberry Pi 4B"
+    description: "Standard Omega-1 configuration"
+    hardware:
+      cpu_cores: 4
+      ram_gb: 8
+      gpu: "VideoCore VI"
+      camera: "CSI or USB"
+    capabilities:
+      ml_capable: false
+      slam_capable: false
+      max_resolution: "1920x1080"
+      max_fps: 30
+      gpu_acceleration: false
+    recommended_settings:
+      camera_backend: "picamera2"
+      camera_width: 640
+      camera_height: 480
+      camera_fps: 30
+      movement_profile: "smooth"
+      
+  jetson:
+    name: "Jetson Orin Nano"
+    description: "High-performance Omega-2 configuration"
+    hardware:
+      cpu_cores: 6
+      ram_gb: 8
+      gpu: "NVIDIA Ampere"
+      camera: "Stereo or USB"
+    capabilities:
+      ml_capable: true
+      slam_capable: true
+      max_resolution: "3840x2160"
+      max_fps: 60
+      gpu_acceleration: true
+    recommended_settings:
+      camera_backend: "v4l2"
+      camera_width: 1280
+      camera_height: 720
+      camera_fps: 60
+      movement_profile: "aggressive"
+      
+  dev:
+    name: "Development Mode"
+    description: "Local development without hardware"
+    hardware:
+      cpu_cores: 1
+      ram_gb: 1
+      gpu: "None"
+      camera: "Mock"
+    capabilities:
+      ml_capable: false
+      slam_capable: false
+      max_resolution: "640x480"
+      max_fps: 10
+      gpu_acceleration: false
+    recommended_settings:
+      camera_backend: "mock"
+      camera_width: 640
+      camera_height: 480
+      camera_fps: 10
+      movement_profile: "smooth"
+
+# Current active profile (set by config_manager)
+active_profile: "pi4b"
+

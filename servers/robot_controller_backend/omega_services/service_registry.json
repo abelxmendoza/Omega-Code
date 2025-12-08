@@ -1,0 +1,111 @@
+{
+  "version": "1.0",
+  "description": "OmegaOS Service Registry - Declarative service definitions",
+  "services": [
+    {
+      "name": "movement_ws_server",
+      "display_name": "Movement WebSocket Server",
+      "type": "python",
+      "cmd": "python3",
+      "args": ["movement/movement_ws_server.py"],
+      "working_dir": ".",
+      "autostart": true,
+      "restart_policy": "always",
+      "health_check": "movement_check",
+      "port": 8081,
+      "description": "Motor control and movement WebSocket server"
+    },
+    {
+      "name": "video_server",
+      "display_name": "Video Server",
+      "type": "python",
+      "cmd": "python3",
+      "args": ["video/video_server.py"],
+      "working_dir": ".",
+      "autostart": true,
+      "restart_policy": "on-failure",
+      "health_check": "video_check",
+      "port": 5000,
+      "description": "Camera streaming and video processing"
+    },
+    {
+      "name": "main_api",
+      "display_name": "Main API Server",
+      "type": "python",
+      "cmd": "python3",
+      "args": ["main_api.py"],
+      "working_dir": ".",
+      "autostart": true,
+      "restart_policy": "always",
+      "health_check": "api_check",
+      "port": 8000,
+      "description": "FastAPI REST API server"
+    },
+    {
+      "name": "ultrasonic_ws_server",
+      "display_name": "Ultrasonic Sensor Server",
+      "type": "go",
+      "cmd": "go",
+      "args": ["run", "sensors/main_ultrasonic.go"],
+      "working_dir": "sensors",
+      "autostart": true,
+      "restart_policy": "on-failure",
+      "health_check": "ultrasonic_check",
+      "port": 8080,
+      "description": "Ultrasonic sensor WebSocket server"
+    },
+    {
+      "name": "line_tracking_ws_server",
+      "display_name": "Line Tracker Server",
+      "type": "python",
+      "cmd": "python3",
+      "args": ["sensors/line_tracking_ws_server.py"],
+      "working_dir": ".",
+      "autostart": true,
+      "restart_policy": "on-failure",
+      "health_check": "line_tracker_check",
+      "port": 8090,
+      "description": "Line tracking sensor WebSocket server"
+    },
+    {
+      "name": "lighting_server",
+      "display_name": "Lighting Server",
+      "type": "go",
+      "cmd": "go",
+      "args": ["run", "controllers/lighting/main_lighting.go"],
+      "working_dir": ".",
+      "autostart": false,
+      "restart_policy": "never",
+      "health_check": null,
+      "port": 8082,
+      "description": "LED lighting control server"
+    },
+    {
+      "name": "ros_core",
+      "display_name": "ROS 2 Core",
+      "type": "docker",
+      "cmd": "docker",
+      "args": ["compose", "-f", "docker/ros2_robot/docker-compose.yml", "up", "-d"],
+      "working_dir": ".",
+      "autostart": false,
+      "restart_policy": "on-failure",
+      "health_check": "ros_core_check",
+      "port": null,
+      "description": "ROS 2 Docker containers (optional)"
+    },
+    {
+      "name": "gateway_api",
+      "display_name": "Gateway API",
+      "type": "python",
+      "cmd": "python3",
+      "args": ["servers/gateway_api.py"],
+      "working_dir": ".",
+      "autostart": true,
+      "restart_policy": "always",
+      "health_check": "gateway_check",
+      "port": 7070,
+      "description": "Gateway proxy and unified API"
+    }
+  ]
+}
+

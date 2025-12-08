@@ -56,15 +56,29 @@ export default function OmegaNetworkWizard() {
     setLoading(true);
     setError(null);
     try {
-      const response = await robotFetch('/api/network/status');
+      // Use unified endpoint: GET /api/network
+      const response = await robotFetch('/api/network');
       if (response.offline) {
         setError('Robot backend unavailable');
         setLoading(false);
         return;
       }
       const data = await response.json();
-      if (data.ok) {
-        setStatus(data);
+      if (data.ok !== false) {
+        // Unified endpoint returns summary directly
+        setStatus({
+          mode: data.mode || 'unknown',
+          wlan0_ip: data.ip,
+          ap_ssid: data.ap_config?.ssid,
+          ap_ip: data.ap_config?.ip,
+          services: Object.fromEntries(
+            Object.entries(data.services_running || {}).map(([k, v]: [string, any]) => [
+              k,
+              typeof v === 'object' ? v.status : v
+            ])
+          ),
+          last_updated: data.last_updated,
+        });
       } else {
         setError(data.error || 'Failed to fetch network status');
       }
@@ -77,13 +91,27 @@ export default function OmegaNetworkWizard() {
 
   const fetchInfo = useCallback(async () => {
     try {
-      const response = await robotFetch('/api/network/info');
+      // Unified endpoint provides all info
+      const response = await robotFetch('/api/network');
       if (response.offline) {
         return;
       }
       const data = await response.json();
-      if (data.ok) {
-        setInfo(data);
+      if (data.ok !== false) {
+        setInfo({
+          ok: true,
+          mode: data.mode,
+          services: data.services_running || {},
+          interfaces: {
+            wlan0: {
+              ip: data.ip,
+              ssid: data.ssid,
+              status: data.interface === 'wlan0' ? 'up' : 'down',
+            },
+          },
+          ap_config: data.ap_config,
+          last_updated: data.last_updated,
+        });
       }
     } catch (err) {
       console.error('Failed to fetch network info:', err);
@@ -158,7 +186,11 @@ export default function OmegaNetworkWizard() {
       if (data.ok && data.valid) {
         setSuccess('Network configuration is valid');
       } else {
-        setError(data.error || 'Network configuration validation failed');
+        const failedChecks = Object.entries(data.results || {})
+          .filter(([_, passed]) => !passed)
+          .map(([check, _]) => check)
+          .join(', ');
+        setError(data.error || `Validation failed: ${failedChecks || 'Unknown error'}`);
       }
     } catch (err) {
       setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);

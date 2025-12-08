@@ -61,3 +61,32 @@ if (!('BroadcastChannel' in globalThis)) {
     configurable: true,
   });
 }
+
+// MSW v2 requires WritableStream polyfill
+if (typeof globalThis.WritableStream === 'undefined') {
+  // @ts-ignore
+  globalThis.WritableStream = class WritableStream {
+    constructor() {}
+    getWriter() {
+      return {
+        write: () => Promise.resolve(),
+        close: () => Promise.resolve(),
+        abort: () => Promise.resolve(),
+      };
+    }
+  };
+}
+
+// MSW v2 requires ReadableStream polyfill  
+if (typeof globalThis.ReadableStream === 'undefined') {
+  // @ts-ignore
+  globalThis.ReadableStream = class ReadableStream {
+    constructor() {}
+    getReader() {
+      return {
+        read: () => Promise.resolve({ done: true, value: undefined }),
+        cancel: () => Promise.resolve(),
+      };
+    }
+  };
+}

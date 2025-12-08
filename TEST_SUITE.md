@@ -6,8 +6,9 @@ Comprehensive test coverage for the Omega-1 robotics platform, including fronten
 
 ## Test Statistics
 
-- **Backend**: 569+ test cases
-- **Frontend**: 828+ test cases
+- **Backend**: 600+ test cases (569+ existing + 31+ OMEGAOS)
+- **Frontend**: 850+ test cases (828+ existing + 22+ Settings UI)
+- **OMEGAOS Tests**: 63+ test cases (Service Orchestrator, Config Layer, Settings UI)
 - **Coverage**: Critical paths at 100%, overall >80%
 
 ## Test Structure
@@ -62,6 +63,15 @@ Comprehensive test coverage for the Omega-1 robotics platform, including fronten
 #### Security Tests
 - API security (SQL injection, XSS)
 - Input validation
+
+#### OMEGAOS Tests (NEW)
+- Service Orchestrator unit tests
+- Configuration Layer unit tests
+- Service-Config integration tests
+- System tests for complete OMEGAOS
+- Regression tests for backward compatibility
+- Settings UI unit and integration tests
+- Settings UI E2E tests (Cypress)
 
 ## Running Tests
 

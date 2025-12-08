@@ -1,0 +1,94 @@
+# Hardware Device Mapping
+# Maps logical devices to physical GPIO pins, I2C addresses, etc.
+
+gpio:
+  # Motor Control
+  motor_left_pwm: 12
+  motor_left_dir1: 13
+  motor_left_dir2: 14
+  motor_right_pwm: 15
+  motor_right_dir1: 16
+  motor_right_dir2: 17
+  
+  # Servo Control (PCA9685)
+  servo_pan: 0
+  servo_tilt: 1
+  
+  # Sensors
+  ultrasonic_trigger: 18
+  ultrasonic_echo: 19
+  line_tracker_left: 20
+  line_tracker_center: 21
+  line_tracker_right: 22
+  
+  # LEDs
+  led_strip: 18  # WS2812/WS2811
+  led_status: 25
+  
+  # Buzzer
+  buzzer: 24
+
+i2c:
+  # I2C Bus Configuration
+  bus: 1
+  devices:
+    pca9685:
+      address: 0x40
+      description: "16-channel PWM servo driver"
+    mpu6050:
+      address: 0x68
+      description: "6-axis accelerometer/gyroscope"
+      enabled: false
+    bno055:
+      address: 0x28
+      description: "9-axis absolute orientation sensor"
+      enabled: false
+
+spi:
+  enabled: false
+  bus: 0
+  devices: []
+
+uart:
+  enabled: false
+  devices: []
+
+camera:
+  # Camera Configuration
+  csi:
+    enabled: true
+    device: "/dev/video0"
+    description: "Raspberry Pi Camera Module (CSI)"
+  usb:
+    enabled: false
+    device: "/dev/video1"
+    description: "USB Webcam"
+
+power:
+  # Power Management
+  voltage_monitor:
+    enabled: false
+    pin: null
+  battery_monitor:
+    enabled: false
+    i2c_address: null
+
+network:
+  # Network Hardware
+  wifi:
+    interface: "wlan0"
+    bluetooth:
+      interface: "hci0"
+      enabled: false
+
+# Hardware validation rules
+validation:
+  required_devices:
+    - "camera"
+    - "motors"
+  optional_devices:
+    - "led_strip"
+    - "ultrasonic"
+    - "line_tracker"
+    - "servo"
+
