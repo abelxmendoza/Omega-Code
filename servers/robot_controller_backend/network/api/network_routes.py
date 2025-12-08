@@ -110,8 +110,10 @@ async def set_network_mode(request: NetworkModeRequest) -> Dict[str, Any]:
     """
     Set network mode (AP or Client).
     
+    Uses omega-nettoggle.sh for clean mode switching.
+    
     Requires:
-    - mode: "ap" or "client"
+    - mode: "ap" or "client" (client = restore)
     
     Note: This requires sudo privileges.
     """
@@ -126,15 +128,18 @@ async def set_network_mode(request: NetworkModeRequest) -> Dict[str, Any]:
     log.info(f"Switching network mode to: {mode}")
     
     try:
-        # Run with sudo
+        # Use omega-nettoggle.sh for clean switching
         script_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "wizard",
-            "network_wizard.py"
+            "network",
+            "omega-nettoggle.sh"
         )
         
+        # Map "client" to "restore" for omega-nettoggle
+        nettoggle_mode = "restore" if mode == "client" else "ap"
+        
         result = subprocess.run(
-            ["sudo", "python3", script_path, mode],
+            ["sudo", script_path, nettoggle_mode],
             capture_output=True,
             text=True,
             timeout=60
@@ -145,6 +150,7 @@ async def set_network_mode(request: NetworkModeRequest) -> Dict[str, Any]:
                 "ok": True,
                 "mode": mode,
                 "message": f"Network mode set to {mode}",
+                "output": result.stdout
             }
         else:
             error_msg = result.stderr or result.stdout
