@@ -1,13 +1,14 @@
 #!/bin/bash
-# Omega Network Watchdog
-# Monitors WiFi connectivity and auto-restores if connection is lost
+# Omega Network Watchdog v2
+# Monitors internet connectivity and auto-restores WiFi or falls back to AP mode
 #
-# This watchdog runs continuously and checks WiFi every 30 seconds.
-# If WiFi is down, it automatically runs restore_wifi_mode().
+# This watchdog runs continuously and checks internet connectivity.
+# If internet is down, it attempts to restore WiFi client mode.
+# If restore fails, it enables AP mode as fallback.
 
 set -e
 
-LOG="/var/log/omega-nettoggle.log"
+LOG_FILE="/var/log/omega-nettoggle.log"
 NETTOGGLE_SCRIPT="/usr/local/bin/omega-nettoggle"
 
 # Fallback to script location if symlink doesn't exist
@@ -16,71 +17,62 @@ if [ ! -f "$NETTOGGLE_SCRIPT" ]; then
 fi
 
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WATCHDOG] $1" | tee -a "$LOG"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WATCHDOG] $1" | tee -a "$LOG_FILE"
 }
 
-check_wifi() {
-    # Check if wlan0 interface exists
-    if ! ip link show wlan0 >/dev/null 2>&1; then
-        log "wlan0 interface not found"
+check_internet() {
+    # Check internet connectivity by pinging Google DNS
+    if ping -c1 -W1 8.8.8.8 >/dev/null 2>&1; then
+        return 0
+    else
         return 1
     fi
-    
-    # Check if interface is UP
-    if ! ip link show wlan0 | grep -q "state UP"; then
-        log "wlan0 interface is DOWN"
-        return 1
-    fi
-    
-    # Check if interface has an IP address
-    if ! ip addr show wlan0 | grep -q "inet "; then
-        log "wlan0 has no IP address"
-        return 1
-    fi
-    
-    # Check if we can reach default gateway
-    GW=$(ip route | grep default | awk '{print $3}' | head -1)
-    if [ -z "$GW" ]; then
-        log "No default gateway found"
-        return 1
-    fi
-    
-    if ! ping -c1 -W1 "$GW" >/dev/null 2>&1; then
-        log "Cannot ping default gateway: $GW"
-        return 1
-    fi
-    
-    return 0
 }
 
-log "Omega Network Watchdog started"
-log "Monitoring WiFi connectivity every 30 seconds"
+log "Omega Network Watchdog v2 started"
+log "Monitoring internet connectivity every 30 seconds"
+
+CHECK_COUNT=0
 
 while true; do
-    if ! check_wifi; then
-        log "WiFi connectivity check FAILED - attempting restore..."
+    if ! check_internet; then
+        log "Internet connectivity check FAILED - attempting restore..."
         
         # Run restore
         if [ -f "$NETTOGGLE_SCRIPT" ]; then
             "$NETTOGGLE_SCRIPT" restore
             RESTORE_CODE=$?
             
-            if [ "$RESTORE_CODE" -eq 0 ]; then
-                log "WiFi restore successful"
+            # Wait for connection to establish
+            sleep 10
+            
+            # Check if restore worked
+            if check_internet; then
+                log "WiFi restore successful - internet connectivity restored"
             else
-                log "WiFi restore failed with exit code: $RESTORE_CODE"
+                log "Restore failed - internet still down"
+                log "Switching to AP mode as fallback..."
+                
+                # Fall back to AP mode
+                "$NETTOGGLE_SCRIPT" ap
+                AP_CODE=$?
+                
+                if [ "$AP_CODE" -eq 0 ]; then
+                    log "AP mode enabled as fallback - robot accessible at Omega1-AP"
+                else
+                    log "AP mode enable failed (exit code: $AP_CODE)"
+                fi
             fi
         else
             log "ERROR: omega-nettoggle script not found at $NETTOGGLE_SCRIPT"
         fi
     else
-        # WiFi is healthy - log occasionally (every 10 checks = 5 minutes)
+        # Internet is healthy - log occasionally (every 10 checks = 5 minutes)
         CHECK_COUNT=$((CHECK_COUNT + 1))
         if [ $((CHECK_COUNT % 10)) -eq 0 ]; then
-            log "WiFi connectivity OK (check #$CHECK_COUNT)"
+            log "Internet connectivity OK (check #$CHECK_COUNT)"
         fi
     fi
     
     sleep 30
 done
-

@@ -1,22 +1,49 @@
-# Omega-1 Network Setup Wizard
+# Omega-1 Network Management System
 
-A comprehensive network management tool for Raspberry Pi that allows seamless switching between Access Point (AP) mode and Wi-Fi Client mode, enabling headless SSH access without a router or monitor.
+## 🎯 Overview
 
-## 🎯 Features
+Unified network management system for Omega-1 robot. Provides clean, production-ready networking with three core modes:
 
-- **Access Point Mode**: Create your own Wi-Fi network (SSID: `Omega1-AP`)
-- **Client Mode**: Connect to existing Wi-Fi networks
-- **Headless Operation**: Full SSH access without router or monitor
-- **Automatic Configuration**: Generates all required config files
-- **Validation**: Comprehensive network status checks
-- **Interactive Menu**: User-friendly CLI interface
+1. **AP Mode** (Field Mode) - Creates Wi-Fi hotspot
+2. **Client Mode** (Home/Lab Mode) - Connects to existing Wi-Fi
+3. **Tailscale VPN** (Remote Control) - Secure remote access
 
-## 📋 Requirements
+## 📁 Structure
 
-- Raspberry Pi with Wi-Fi adapter (wlan0)
-- Root/sudo access
-- Python 3.7+
-- Required packages (auto-installed): `hostapd`, `dnsmasq`, `dhcpcd5`
+```
+network/
+├── wizard/              # AP/Client Mode System (core)
+│   ├── network_wizard.py
+│   ├── config/          # Jinja2 templates
+│   │   ├── hostapd.conf.j2
+│   │   ├── dnsmasq.conf.j2
+│   │   └── dhcpcd.conf.j2
+│   └── __init__.py
+│
+├── wifi/                # Wi-Fi client management
+│   ├── connect.py       # nmcli connect logic
+│   ├── scan.py          # Network scanning
+│   └── __init__.py
+│
+├── vpn/                 # Tailscale VPN
+│   ├── tailscale_status.py
+│   └── __init__.py
+│
+├── diagnostics/         # Network diagnostics
+│   ├── net_summary.py   # Unified network summary
+│   └── __init__.py
+│
+├── api/                 # REST API
+│   ├── network_routes.py
+│   └── __init__.py
+│
+├── cli/                 # Command line interface
+│   ├── omega_network.py
+│   └── __init__.py
+│
+├── install.sh           # Installation script
+└── README.md
+```
 
 ## 🚀 Quick Start
 
@@ -27,7 +54,7 @@ cd servers/robot_controller_backend/network
 sudo bash install.sh
 ```
 
-### Basic Usage
+### CLI Usage
 
 ```bash
 # Enable AP mode (field mode)
@@ -39,283 +66,164 @@ sudo omega-network client
 # Show network status
 sudo omega-network status
 
-# Run validation checks
+# Validate configuration
 sudo omega-network validate
 
-# Interactive menu
-sudo omega-network
+# View logs
+sudo omega-network logs
 ```
 
-## 🔧 Configuration
+## 🔌 API Endpoints
 
-### Access Point Mode Settings
+### Unified Network Endpoint
 
-- **SSID**: `Omega1-AP`
-- **Password**: `omegawifi123`
-- **Pi IP**: `192.168.4.1`
-- **DHCP Range**: `192.168.4.2` - `192.168.4.20`
-- **Subnet**: `192.168.4.0/24`
+**GET `/api/network`**
 
-### Configuration Files
+Returns comprehensive network summary:
 
-The wizard creates/updates:
-
-- `/etc/hostapd/hostapd.conf` - Access Point configuration
-- `/etc/dnsmasq.conf` - DHCP server configuration
-- `/etc/dhcpcd.conf` - Network interface configuration
-- `/etc/default/hostapd` - Hostapd service defaults
-- `/etc/omega-network/state.json` - Current network state
-
-## 📖 Detailed Usage
-
-### Access Point Mode (Field Mode)
-
-Perfect for field operations where no Wi-Fi network is available:
-
-```bash
-sudo omega-network ap
+```json
+{
+  "ok": true,
+  "mode": "ap",
+  "interface": "wlan0",
+  "ssid": "Omega1-AP",
+  "ip": "192.168.4.1",
+  "gateway": null,
+  "rssi": -45,
+  "vpn_status": {
+    "enabled": true,
+    "ip": "100.93.225.61",
+    "status": "connected"
+  },
+  "pan_status": {
+    "enabled": false,
+    "status": "disconnected"
+  },
+  "services_running": {
+    "hostapd": {"status": "active", "enabled": true},
+    "dnsmasq": {"status": "active", "enabled": true},
+    "dhcpcd": {"status": "active", "enabled": true},
+    "wpa_supplicant": {"status": "inactive", "enabled": false}
+  },
+  "ap_config": {
+    "ssid": "Omega1-AP",
+    "ip": "192.168.4.1"
+  },
+  "errors": [],
+  "warnings": []
+}
 ```
 
-**What happens:**
-1. Installs required packages (if missing)
-2. Creates AP configuration files
-3. Sets static IP `192.168.4.1` on wlan0
-4. Starts hostapd and dnsmasq services
-5. Enables services to start on boot
+### Mode Switching
 
-**After setup:**
-- Connect to `Omega1-AP` Wi-Fi network
-- Password: `omegawifi123`
-- SSH: `ssh omega1@192.168.4.1`
+**POST `/api/network/mode`**
 
-### Client Mode (Home Mode)
-
-Connect to your home Wi-Fi network:
-
-```bash
-sudo omega-network client
+```json
+{
+  "mode": "ap"  // or "client"
+}
 ```
-
-**What happens:**
-1. Stops AP services (hostapd, dnsmasq)
-2. Removes static IP configuration
-3. Enables wpa_supplicant for client mode
-4. Restarts dhcpcd to get DHCP IP
-
-**Note**: You'll need to configure Wi-Fi credentials separately using `raspi-config` or `/etc/wpa_supplicant/wpa_supplicant.conf`.
-
-### Network Status
-
-Check current network configuration:
-
-```bash
-sudo omega-network status
-```
-
-**Shows:**
-- Current mode (AP/Client)
-- Service status (hostapd, dnsmasq, dhcpcd, wpa_supplicant)
-- wlan0 interface IP address
-- Network state information
 
 ### Validation
 
-Run comprehensive validation checks:
+**POST `/api/network/validate`**
 
-```bash
-sudo omega-network validate
+Returns validation results for current configuration.
+
+### Wi-Fi Management
+
+**GET `/api/network/wifi/scan`** - Scan for networks
+
+**POST `/api/network/wifi/connect`** - Connect to network
+```json
+{
+  "ssid": "MyNetwork",
+  "password": "mypassword"
+}
 ```
 
-**Checks:**
-- ✓ AP configuration files exist
-- ✓ hostapd is running with correct config
-- ✓ wlan0 has correct static IP (AP mode)
-- ✓ DHCP service is working
+**DELETE `/api/network/wifi/forget?ssid=MyNetwork`** - Forget network
 
-## 🔄 Switching Between Modes
+## 🔧 Configuration
 
-### AP → Client Mode
+### AP Mode Configuration
 
-```bash
-sudo omega-network client
-# Wait for services to stop
-# Configure Wi-Fi credentials if needed
-sudo systemctl restart dhcpcd
+- **SSID**: `Omega1-AP`
+- **Password**: `omegawifi123`
+- **Static IP**: `192.168.4.1`
+- **DHCP Range**: `192.168.4.2` - `192.168.4.20`
+
+### State File
+
+Network state is saved to `/etc/omega-network/state.json`:
+
+```json
+{
+  "mode": "ap",
+  "ap_ssid": "Omega1-AP",
+  "ap_ip": "192.168.4.1",
+  "last_updated": "2025-01-XX..."
+}
 ```
 
-### Client → AP Mode
+## 📝 Features
+
+### Core Features
+
+- ✅ AP/Client mode switching
+- ✅ Unified network summary endpoint
+- ✅ Wi-Fi network scanning and connection
+- ✅ Tailscale VPN status
+- ✅ Service status monitoring
+- ✅ Configuration validation
+- ✅ Jinja2 template-based config generation
+
+### Optional Features
+
+- Bluetooth PAN support (if module installed)
+- Network diagnostics and error reporting
+
+## 🛠️ Development
+
+### Adding New Features
+
+1. **Wi-Fi Features**: Add to `wifi/` module
+2. **VPN Features**: Add to `vpn/` module
+3. **Diagnostics**: Add to `diagnostics/` module
+4. **API Routes**: Add to `api/network_routes.py`
+5. **CLI Commands**: Add to `cli/omega_network.py`
+
+### Testing
 
 ```bash
-sudo omega-network ap
-# Wait ~10 seconds for services to start
-# Connect to Omega1-AP network
+# Test AP mode
+sudo python3 wizard/network_wizard.py ap
+
+# Test client mode
+sudo python3 wizard/network_wizard.py client
+
+# Test status
+sudo python3 wizard/network_wizard.py status
+
+# Test validation
+sudo python3 wizard/network_wizard.py validate
 ```
 
-## 🛠️ Troubleshooting
+## 📋 Requirements
 
-### AP Mode Not Working
-
-1. **Check service status:**
-   ```bash
-   sudo systemctl status hostapd
-   sudo systemctl status dnsmasq
-   ```
-
-2. **Check logs:**
-   ```bash
-   sudo journalctl -u hostapd -n 50
-   sudo journalctl -u dnsmasq -n 50
-   tail -f /var/log/omega-network.log
-   ```
-
-3. **Validate configuration:**
-   ```bash
-   sudo omega-network validate
-   ```
-
-4. **Check wlan0 interface:**
-   ```bash
-   ip addr show wlan0
-   ```
-
-5. **Restart services:**
-   ```bash
-   sudo systemctl restart hostapd
-   sudo systemctl restart dnsmasq
-   sudo systemctl restart dhcpcd
-   ```
-
-### Can't Connect to AP
-
-- Verify SSID: `Omega1-AP`
-- Verify password: `omegawifi123`
-- Check Pi IP: `192.168.4.1`
-- Ensure hostapd is running: `sudo systemctl status hostapd`
-- Check firewall rules (if any)
-
-### Client Mode Not Connecting
-
-- Verify Wi-Fi credentials in `/etc/wpa_supplicant/wpa_supplicant.conf`
-- Check wpa_supplicant status: `sudo systemctl status wpa_supplicant`
-- Restart dhcpcd: `sudo systemctl restart dhcpcd`
-- Check Wi-Fi signal strength
-
-## 📝 First Boot Setup
-
-For automatic AP mode on first boot:
-
-1. **Add to startup script:**
-   ```bash
-   # Add to /etc/rc.local or create systemd service
-   /usr/local/bin/omega-network ap
-   ```
-
-2. **Or create systemd service:**
-   ```bash
-   sudo nano /etc/systemd/system/omega-network.service
-   ```
-   
-   ```ini
-   [Unit]
-   Description=Omega Network Wizard
-   After=network.target
-   
-   [Service]
-   Type=oneshot
-   ExecStart=/usr/local/bin/omega-network ap
-   RemainAfterExit=yes
-   
-   [Install]
-   WantedBy=multi-user.target
-   ```
-   
-   ```bash
-   sudo systemctl enable omega-network.service
-   ```
+- Python 3.7+
+- Jinja2 (`pip install jinja2`)
+- System packages: `hostapd`, `dnsmasq`, `dhcpcd5`
+- Root/sudo access for mode switching
 
 ## 🔒 Security Notes
 
-- **Change default password**: Edit `AP_PASSWORD` in `network_wizard.py`
-- **Firewall**: Consider enabling `ufw` or `iptables` rules
-- **SSH**: Ensure SSH is enabled and secured
-- **Updates**: Keep system packages updated
+- AP mode password is hardcoded (change in `wizard/network_wizard.py` for production)
+- State file is readable by root only
+- Logs are written to `/var/log/omega-network.log`
 
-## 📊 Logs
+## 📚 Documentation
 
-Network wizard logs are written to:
-- `/var/log/omega-network.log` - Wizard operations
-- `/var/log/syslog` - System service logs
-- `journalctl -u hostapd` - Hostapd service logs
-- `journalctl -u dnsmasq` - Dnsmasq service logs
-
-## 🧪 Testing
-
-### Manual Testing
-
-1. **Enable AP mode:**
-   ```bash
-   sudo omega-network ap
-   ```
-
-2. **Connect from another device:**
-   - Find `Omega1-AP` in Wi-Fi networks
-   - Connect with password `omegawifi123`
-   - Verify IP assignment (should be 192.168.4.x)
-
-3. **SSH test:**
-   ```bash
-   ssh omega1@192.168.4.1
-   ```
-
-4. **Validate:**
-   ```bash
-   sudo omega-network validate
-   ```
-
-## 🔄 Advanced Usage
-
-### Custom SSID/Password
-
-Edit `network_wizard.py`:
-```python
-AP_SSID = "YourCustomSSID"
-AP_PASSWORD = "YourSecurePassword"
-```
-
-### Custom IP Range
-
-Edit `network_wizard.py`:
-```python
-AP_IP = "192.168.5.1"
-AP_DHCP_START = "192.168.5.2"
-AP_DHCP_END = "192.168.5.20"
-```
-
-### Backup Configurations
-
-Configurations are automatically backed up with `.backup` extension before modification.
-
-## 📚 Additional Resources
-
-- [hostapd Documentation](https://wireless.wiki.kernel.org/en/users/Documentation/hostapd)
-- [dnsmasq Documentation](http://www.thekelleys.org.uk/dnsmasq/doc.html)
-- [Raspberry Pi Networking](https://www.raspberrypi.org/documentation/configuration/wireless/)
-
-## 🐛 Known Issues
-
-- **wpa_supplicant conflict**: Automatically disabled in AP mode
-- **Interface naming**: Assumes `wlan0` (adjust if different)
-- **Channel selection**: Uses channel 7 (adjust if interference)
-
-## 📄 License
-
-Part of the Omega-1 Robotics Platform.
-
-## 🤝 Contributing
-
-Report issues and submit pull requests via GitHub.
-
----
-
-**Made for Omega-1 Robotics Platform** 🤖
-
+- See `wizard/network_wizard.py` for core implementation
+- See `diagnostics/net_summary.py` for unified summary logic
+- See `api/network_routes.py` for REST API endpoints

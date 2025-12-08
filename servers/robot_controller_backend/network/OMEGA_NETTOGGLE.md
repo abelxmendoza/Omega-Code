@@ -1,22 +1,24 @@
-# Omega-NetToggle: Clean Network Recovery + AP Mode Script
+# Omega-NetToggle v2: NetworkManager Native Network Management
 
 ## Overview
 
-**Omega-NetToggle** is a clean, robust script for managing network modes on Raspberry Pi OS Bookworm (NetworkManager default). It provides reliable WiFi recovery and AP mode switching with safety backups and comprehensive logging.
+**Omega-NetToggle v2** is a complete rewrite using NetworkManager's native AP mode capabilities, designed specifically for Raspberry Pi OS Bookworm. It eliminates the need for hostapd/dnsmasq and provides a cleaner, more reliable network management system.
 
-**Now includes self-healing capabilities:**
-- ✅ **Network Watchdog** - Auto-restores WiFi if connection is lost
-- ✅ **Boot Safety** - Ensures WiFi is restored on boot, falls back to AP mode after 3 failures
+**Key Features:**
+- ✅ **NetworkManager Native** - Uses built-in AP mode (no hostapd/dnsmasq)
+- ✅ **Simple & Reliable** - Clean `nmcli` commands for all operations
+- ✅ **Self-Healing** - Network Watchdog auto-restores WiFi or falls back to AP mode
+- ✅ **Boot Safety** - Ensures WiFi is restored on boot, falls back to AP mode if needed
 - ✅ **Systemd Integration** - Automatic monitoring and recovery
 
 ## Features
 
-✅ **Restore Normal WiFi Mode** - Complete recovery from breakage  
-✅ **Enable AP Mode** - Clean Access Point setup  
+✅ **Restore WiFi Client Mode** - Switch back to normal WiFi client  
+✅ **Enable AP Mode** - NetworkManager native Access Point (no hostapd needed)  
 ✅ **Network Diagnostics** - Comprehensive status reporting  
-✅ **Safety Backups** - Automatic config backups before changes  
 ✅ **Comprehensive Logging** - All operations logged to `/var/log/omega-nettoggle.log`  
-✅ **NetworkManager Compatible** - Works with Raspberry Pi OS Bookworm default  
+✅ **NetworkManager Native** - Uses Bookworm's default NetworkManager  
+✅ **Always Works** - AP mode works even when WiFi is broken (radio-level control)  
 
 ## Quick Start
 
@@ -52,7 +54,7 @@ sudo ./omega-nettoggle.sh status
 
 ## Modes
 
-### `restore` - Restore Normal WiFi Mode
+### `restore` - Restore WiFi Client Mode
 
 **What it does:**
 - Unblocks WiFi radio
@@ -382,9 +384,9 @@ The **Omega Network Boot Safety** ensures WiFi is restored on boot, and falls ba
 **Features:**
 - Runs automatically on boot
 - Attempts WiFi restore first
-- Tracks failure count in `/etc/omega-net/bootcount`
-- Enables AP mode after 3 failures (recovery mode)
-- Resets counter on success
+- Waits for NetworkManager to be ready
+- Enables AP mode immediately if WiFi fails (no retry counter needed)
+- Ensures robot is always accessible
 
 **Installation:**
 ```bash
