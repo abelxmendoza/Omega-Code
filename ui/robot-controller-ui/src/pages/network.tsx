@@ -16,11 +16,6 @@ const OmegaNetworkWizard = dynamic(
   { ssr: false }
 );
 
-const NetworkManagementPanel = dynamic(
-  () => import('@/components/network/NetworkManagementPanel'),
-  { ssr: false }
-);
-
 export default function NetworkPage() {
   return (
     <>
@@ -46,13 +41,8 @@ export default function NetworkPage() {
             </div>
           </div>
 
-          {/* Comprehensive Network Management Panel */}
-          <NetworkManagementPanel />
-
-          {/* Legacy Omega Network Wizard (kept for compatibility) */}
-          <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 p-6">
-            <OmegaNetworkWizard />
-          </div>
+          {/* Omega Network Wizard */}
+          <OmegaNetworkWizard />
 
           {/* Network Profile Selector */}
           <NetworkProfileSelector 
