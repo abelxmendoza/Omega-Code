@@ -186,6 +186,50 @@ async def validate_config() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/toggle/status")
+async def get_toggle_status() -> Dict[str, Any]:
+    """
+    Get network status using omega-nettoggle.sh diagnostics.
+    
+    Returns comprehensive network diagnostics including:
+    - WiFi radio status
+    - Network interfaces
+    - NetworkManager status
+    - Service status
+    - Current mode detection
+    """
+    try:
+        script_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "network",
+            "omega-nettoggle.sh"
+        )
+        
+        if not os.path.exists(script_path):
+            raise HTTPException(
+                status_code=404,
+                detail="omega-nettoggle.sh not found. Run install.sh first."
+            )
+        
+        result = subprocess.run(
+            ["sudo", script_path, "status"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        return {
+            "ok": True,
+            "status": result.stdout,
+            "exit_code": result.returncode
+        }
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="Status check timed out")
+    except Exception as e:
+        log.error(f"Failed to get toggle status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/wifi/scan")
 async def scan_wifi() -> Dict[str, Any]:
     """
