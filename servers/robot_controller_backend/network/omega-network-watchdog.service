@@ -1,14 +1,15 @@
 [Unit]
 Description=Omega Network Watchdog
 Documentation=file:///home/omega1/Omega-Code/servers/robot_controller_backend/network/OMEGA_NETTOGGLE.md
-After=network.target NetworkManager.service
+After=NetworkManager.service
+Requires=NetworkManager.service
 Wants=network.target
 
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/omega-network-watchdog.sh
 Restart=always
-RestartSec=5
+RestartSec=3
 StandardOutput=journal
 StandardError=journal
 

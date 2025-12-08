@@ -72,15 +72,18 @@ if [ -f "$SCRIPT_DIR/nm-ap-profile.nmconnection" ]; then
     # Ensure AP profile has correct NetworkManager settings (critical for DHCP)
     echo "🔧 Configuring AP profile with correct NetworkManager settings..."
     nmcli connection modify Omega1-AP \
+        802-11-wireless.mode ap \
+        802-11-wireless.band bg \
         ipv4.method shared \
         ipv4.addresses "192.168.4.1/24" \
         ipv4.gateway 192.168.4.1 \
         ipv4.dns "8.8.8.8 1.1.1.1" \
         ipv6.method ignore \
-        wifi.band bg \
-        wifi.hidden no \
-        wifi.mac-address-randomization never 2>/dev/null || true
+        802-11-wireless.hidden no \
+        wifi.mac-address-randomization never \
+        connection.interface-name wlan0 2>/dev/null || true
     echo "✅ AP profile configured with IPv4 shared mode (required for DHCP)"
+    echo "✅ AP profile bound to wlan0 interface (prevents deletion)"
 else
     echo "⚠️  Warning: nm-ap-profile.nmconnection template not found"
 fi

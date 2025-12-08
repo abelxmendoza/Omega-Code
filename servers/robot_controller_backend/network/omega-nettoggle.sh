@@ -45,49 +45,65 @@ restore_wifi_mode() {
     nmcli connection down Omega1-AP 2>/dev/null || true
     sleep 1
 
+    # Reload NetworkManager to prevent stale profile issues
+    log "Reloading NetworkManager connections..."
+    nmcli connection reload
+    sleep 0.5
+
     # Auto-detect and connect to best available WiFi
     log "Scanning for available WiFi networks..."
     AVAILABLE_SSIDS=$(nmcli -t -f SSID dev wifi list | grep -v '^$' | sort -u)
 
     log "Checking known NetworkManager WiFi profiles..."
-    KNOWN_CONNECTIONS=$(nmcli -t -f NAME,TYPE connection show | grep ":wifi" | cut -d: -f1)
+    KNOWN_PROFILES=$(nmcli -t -f NAME,TYPE connection show | \
+      grep ":wifi" | cut -d: -f1 | sort -u)
 
-    BEST_MATCH=""
-
-    # 1️⃣ Pick strongest known WiFi network available
-    for ssid in $AVAILABLE_SSIDS; do
-        for known in $KNOWN_CONNECTIONS; do
-            if [ "$ssid" = "$known" ]; then
-                BEST_MATCH="$ssid"
-                break 2
-            fi
-        done
-    done
-
-    # 2️⃣ If no available known WiFi, fall back to ANY known WiFi
-    if [ -z "$BEST_MATCH" ]; then
-        BEST_MATCH=$(echo "$KNOWN_CONNECTIONS" | head -n1)
-        if [ -n "$BEST_MATCH" ]; then
-            log "No known WiFi is currently in range — using fallback: $BEST_MATCH"
-        fi
-    else
-        log "Best WiFi match found: $BEST_MATCH"
+    # Auto-create placeholder client profile if none exist
+    if [ -z "$KNOWN_PROFILES" ]; then
+        log "No known WiFi profiles. Attempting self-repair..."
+        nmcli connection add type wifi con-name Omega1-Client ifname wlan0 ssid "" autoconnect no 2>/dev/null || true
+        KNOWN_PROFILES=$(nmcli -t -f NAME,TYPE connection show | grep ":wifi" | cut -d: -f1 | sort -u)
     fi
 
-    if [ -z "$BEST_MATCH" ]; then
-        log "ERROR: No usable WiFi profiles found."
-        log "Create one using: nmcli dev wifi connect <SSID> password <PASS>"
+    BEST_WIFI=""
+
+    # Pick strongest known WiFi network available
+    for SSID in $AVAILABLE_SSIDS; do
+        if echo "$KNOWN_PROFILES" | grep -Fxq "$SSID"; then
+            BEST_WIFI="$SSID"
+            break
+        fi
+    done
+
+    if [ -z "$BEST_WIFI" ]; then
+        log "ERROR: No known WiFi networks are available."
+        log "Available networks: $(echo $AVAILABLE_SSIDS | tr '\n' ' ')"
+        log "Known profiles: $(echo $KNOWN_PROFILES | tr '\n' ' ')"
         return 1
     fi
 
+    log "Best WiFi match found: $BEST_WIFI"
+
+    # Auto-create client profile if missing
+    if ! nmcli -t -f NAME connection show | grep -Fxq "$BEST_WIFI"; then
+        log "WiFi profile missing, attempting to recreate..."
+        # Try to connect which will create the profile
+        nmcli device wifi connect "$BEST_WIFI" 2>/dev/null || true
+        sleep 1
+    fi
+
     # Bring up client mode
-    log "Activating WiFi connection: $BEST_MATCH"
-    if nmcli connection up "$BEST_MATCH" 2>/dev/null; then
+    log "Activating WiFi connection: $BEST_WIFI"
+    if nmcli connection up "$BEST_WIFI" 2>/dev/null; then
         log "WiFi client restored successfully."
-        log "Connected to: $BEST_MATCH"
+        log "Connected to: $BEST_WIFI"
         
         # Wait a moment for connection to establish
         sleep 3
+        
+        # Reload after connection to prevent stale state
+        nmcli connection reload
+        sleep 0.5
         
         # Verify connection
         if nmcli -t -f WIFI g | grep -q "enabled"; then
@@ -98,7 +114,7 @@ restore_wifi_mode() {
             return 0  # Still consider it success if WiFi is on
         fi
     else
-        log "ERROR: Could not activate '$BEST_MATCH'"
+        log "ERROR: Could not activate '$BEST_WIFI'"
         log "A password may be required or profile may be invalid."
         return 1
     fi
