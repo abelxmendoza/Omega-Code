@@ -45,10 +45,46 @@ restore_wifi_mode() {
     nmcli connection down Omega1-AP 2>/dev/null || true
     sleep 1
 
+    # Auto-detect and connect to best available WiFi
+    log "Scanning for available WiFi networks..."
+    AVAILABLE_SSIDS=$(nmcli -t -f SSID dev wifi list | grep -v '^$' | sort -u)
+
+    log "Checking known NetworkManager WiFi profiles..."
+    KNOWN_CONNECTIONS=$(nmcli -t -f NAME,TYPE connection show | grep ":wifi" | cut -d: -f1)
+
+    BEST_MATCH=""
+
+    # 1️⃣ Pick strongest known WiFi network available
+    for ssid in $AVAILABLE_SSIDS; do
+        for known in $KNOWN_CONNECTIONS; do
+            if [ "$ssid" = "$known" ]; then
+                BEST_MATCH="$ssid"
+                break 2
+            fi
+        done
+    done
+
+    # 2️⃣ If no available known WiFi, fall back to ANY known WiFi
+    if [ -z "$BEST_MATCH" ]; then
+        BEST_MATCH=$(echo "$KNOWN_CONNECTIONS" | head -n1)
+        if [ -n "$BEST_MATCH" ]; then
+            log "No known WiFi is currently in range — using fallback: $BEST_MATCH"
+        fi
+    else
+        log "Best WiFi match found: $BEST_MATCH"
+    fi
+
+    if [ -z "$BEST_MATCH" ]; then
+        log "ERROR: No usable WiFi profiles found."
+        log "Create one using: nmcli dev wifi connect <SSID> password <PASS>"
+        return 1
+    fi
+
     # Bring up client mode
-    log "Activating client mode connection..."
-    if nmcli connection up Omega1-Client 2>/dev/null; then
+    log "Activating WiFi connection: $BEST_MATCH"
+    if nmcli connection up "$BEST_MATCH" 2>/dev/null; then
         log "WiFi client restored successfully."
+        log "Connected to: $BEST_MATCH"
         
         # Wait a moment for connection to establish
         sleep 3
@@ -62,8 +98,8 @@ restore_wifi_mode() {
             return 0  # Still consider it success if WiFi is on
         fi
     else
-        log "ERROR: Failed to activate client mode connection 'Omega1-Client'"
-        log "Make sure the connection profile exists. Run install.sh to create it."
+        log "ERROR: Could not activate '$BEST_MATCH'"
+        log "A password may be required or profile may be invalid."
         return 1
     fi
 }
