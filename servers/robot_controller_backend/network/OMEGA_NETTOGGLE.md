@@ -350,17 +350,88 @@ ssh omega1@192.168.4.1
 - **Backups:** Stored in `/etc/omega-network/backups/` (protected directory)
 - **Logs:** May contain network info (review before sharing)
 
+## Self-Healing System
+
+### Network Watchdog
+
+The **Omega Network Watchdog** continuously monitors WiFi connectivity and automatically restores it if connection is lost.
+
+**Features:**
+- Checks WiFi every 30 seconds
+- Verifies interface is UP
+- Verifies IP address is assigned
+- Verifies default gateway is reachable
+- Auto-restores WiFi if any check fails
+
+**Installation:**
+```bash
+# Already installed via install.sh
+sudo systemctl start omega-network-watchdog
+sudo systemctl status omega-network-watchdog
+```
+
+**Service:**
+- **File:** `/etc/systemd/system/omega-network-watchdog.service`
+- **Script:** `/usr/local/bin/omega-network-watchdog.sh`
+- **Logs:** `/var/log/omega-nettoggle.log`
+
+### Boot Safety
+
+The **Omega Network Boot Safety** ensures WiFi is restored on boot, and falls back to AP mode after 3 consecutive failures.
+
+**Features:**
+- Runs automatically on boot
+- Attempts WiFi restore first
+- Tracks failure count in `/etc/omega-net/bootcount`
+- Enables AP mode after 3 failures (recovery mode)
+- Resets counter on success
+
+**Installation:**
+```bash
+# Already installed via install.sh
+# Runs automatically on boot
+sudo systemctl status omega-netboot
+```
+
+**Service:**
+- **File:** `/etc/systemd/system/omega-netboot.service`
+- **Script:** `/usr/local/bin/omega-netboot.sh`
+- **State:** `/etc/omega-net/bootcount`
+
+### Manual Control
+
+You can still manually control network modes:
+
+```bash
+# Restore WiFi (overrides watchdog temporarily)
+sudo omega-nettoggle restore
+
+# Enable AP mode
+sudo omega-nettoggle ap
+
+# Check status
+sudo omega-nettoggle status
+
+# Stop watchdog (if needed)
+sudo systemctl stop omega-network-watchdog
+
+# Start watchdog
+sudo systemctl start omega-network-watchdog
+```
+
 ## Future Enhancements
 
+- [x] Network health monitoring
+- [x] Automatic recovery on failure
+- [x] Boot safety fallback
 - [ ] Custom SSID/password via command-line args
 - [ ] Interactive mode for guided setup
-- [ ] Web UI integration
 - [ ] Scheduled mode switching
-- [ ] Network health monitoring
-- [ ] Automatic recovery on failure
+- [ ] Web UI integration for watchdog control
 
 ---
 
 **Built for Omega-1 Robot Platform**  
-**Compatible with Raspberry Pi OS Bookworm**
+**Compatible with Raspberry Pi OS Bookworm**  
+**Self-Healing Network System v1**
 
