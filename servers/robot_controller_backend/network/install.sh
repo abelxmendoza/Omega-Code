@@ -24,20 +24,76 @@ pip3 install jinja2 --quiet || pip install jinja2 --quiet
 chmod +x "$SCRIPT_DIR/wizard/network_wizard.py"
 chmod +x "$SCRIPT_DIR/cli/omega_network.py"
 
-# Make omega-nettoggle.sh executable
+# Make omega-nettoggle.sh executable and create symlink
 NETTOGGLE_SCRIPT="$SCRIPT_DIR/omega-nettoggle.sh"
 if [ -f "$NETTOGGLE_SCRIPT" ]; then
     chmod +x "$NETTOGGLE_SCRIPT"
     echo "✅ Made omega-nettoggle.sh executable"
     
-    # Create symlink for omega-nettoggle command (optional convenience)
-    if [ ! -L "$INSTALL_DIR/omega-nettoggle" ]; then
-        ln -sf "$NETTOGGLE_SCRIPT" "$INSTALL_DIR/omega-nettoggle"
-        chmod +x "$INSTALL_DIR/omega-nettoggle"
-        echo "✅ Created symlink: /usr/local/bin/omega-nettoggle"
-    fi
+    # Create symlink for omega-nettoggle command
+    ln -sf "$NETTOGGLE_SCRIPT" "$INSTALL_DIR/omega-nettoggle"
+    chmod +x "$INSTALL_DIR/omega-nettoggle"
+    echo "✅ Created symlink: /usr/local/bin/omega-nettoggle"
 else
     echo "⚠️  Warning: omega-nettoggle.sh not found at $NETTOGGLE_SCRIPT"
+fi
+
+# Install watchdog script
+WATCHDOG_SCRIPT="$SCRIPT_DIR/omega-network-watchdog.sh"
+if [ -f "$WATCHDOG_SCRIPT" ]; then
+    chmod +x "$WATCHDOG_SCRIPT"
+    ln -sf "$WATCHDOG_SCRIPT" "$INSTALL_DIR/omega-network-watchdog.sh"
+    chmod +x "$INSTALL_DIR/omega-network-watchdog.sh"
+    echo "✅ Installed omega-network-watchdog.sh"
+else
+    echo "⚠️  Warning: omega-network-watchdog.sh not found"
+fi
+
+# Install boot safety script
+BOOT_SCRIPT="$SCRIPT_DIR/omega-netboot.sh"
+if [ -f "$BOOT_SCRIPT" ]; then
+    chmod +x "$BOOT_SCRIPT"
+    ln -sf "$BOOT_SCRIPT" "$INSTALL_DIR/omega-netboot.sh"
+    chmod +x "$INSTALL_DIR/omega-netboot.sh"
+    echo "✅ Installed omega-netboot.sh"
+else
+    echo "⚠️  Warning: omega-netboot.sh not found"
+fi
+
+# Install systemd services
+WATCHDOG_SERVICE="$SCRIPT_DIR/omega-network-watchdog.service"
+BOOT_SERVICE="$SCRIPT_DIR/omega-netboot.service"
+
+if [ -f "$WATCHDOG_SERVICE" ]; then
+    cp "$WATCHDOG_SERVICE" "$SYSTEMD_DIR/omega-network-watchdog.service"
+    chmod 644 "$SYSTEMD_DIR/omega-network-watchdog.service"
+    echo "✅ Installed omega-network-watchdog.service"
+else
+    echo "⚠️  Warning: omega-network-watchdog.service not found"
+fi
+
+if [ -f "$BOOT_SERVICE" ]; then
+    cp "$BOOT_SERVICE" "$SYSTEMD_DIR/omega-netboot.service"
+    chmod 644 "$SYSTEMD_DIR/omega-netboot.service"
+    echo "✅ Installed omega-netboot.service"
+else
+    echo "⚠️  Warning: omega-netboot.service not found"
+fi
+
+# Reload systemd and enable services
+if [ -f "$SYSTEMD_DIR/omega-network-watchdog.service" ] || [ -f "$SYSTEMD_DIR/omega-netboot.service" ]; then
+    systemctl daemon-reload
+    echo "✅ Reloaded systemd daemon"
+    
+    if [ -f "$SYSTEMD_DIR/omega-network-watchdog.service" ]; then
+        systemctl enable omega-network-watchdog.service
+        echo "✅ Enabled omega-network-watchdog.service (start with: sudo systemctl start omega-network-watchdog)"
+    fi
+    
+    if [ -f "$SYSTEMD_DIR/omega-netboot.service" ]; then
+        systemctl enable omega-netboot.service
+        echo "✅ Enabled omega-netboot.service (runs on boot)"
+    fi
 fi
 
 # Create symlink for omega-network command

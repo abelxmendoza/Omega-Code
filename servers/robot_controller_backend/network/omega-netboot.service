@@ -1,0 +1,23 @@
+[Unit]
+Description=Omega Network Boot Safety
+Documentation=file:///home/omega1/Omega-Code/servers/robot_controller_backend/network/OMEGA_NETTOGGLE.md
+After=network.target NetworkManager.service
+Wants=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/omega-netboot.sh
+StandardOutput=journal
+StandardError=journal
+RemainAfterExit=yes
+
+# Security
+User=root
+NoNewPrivileges=true
+
+# Timeout
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target
+

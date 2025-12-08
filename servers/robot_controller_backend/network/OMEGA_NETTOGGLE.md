@@ -4,6 +4,11 @@
 
 **Omega-NetToggle** is a clean, robust script for managing network modes on Raspberry Pi OS Bookworm (NetworkManager default). It provides reliable WiFi recovery and AP mode switching with safety backups and comprehensive logging.
 
+**Now includes self-healing capabilities:**
+- ✅ **Network Watchdog** - Auto-restores WiFi if connection is lost
+- ✅ **Boot Safety** - Ensures WiFi is restored on boot, falls back to AP mode after 3 failures
+- ✅ **Systemd Integration** - Automatic monitoring and recovery
+
 ## Features
 
 ✅ **Restore Normal WiFi Mode** - Complete recovery from breakage  
