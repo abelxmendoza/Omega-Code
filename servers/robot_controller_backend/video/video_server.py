@@ -1439,6 +1439,7 @@ def _schedule_watchdog(resp):
 
 if __name__ == "__main__":
     _log_startup()
+    logging.info(f"🚀 Video server listening on {BIND_HOST}:{PORT}")
     _create_camera()  # first attempt (non-fatal if it fails)
     try:
         if SSL_ENABLED:

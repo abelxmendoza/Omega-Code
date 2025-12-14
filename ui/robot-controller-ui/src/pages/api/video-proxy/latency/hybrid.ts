@@ -6,14 +6,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Get video stream URL from query params or env
+    // Get video base URL from env or fallback to video stream URL
     const profile = (req.query.profile as string) || 'local';
-    const videoStreamUrl = process.env[`NEXT_PUBLIC_VIDEO_STREAM_URL_${profile.toUpperCase()}`] 
-      || process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL
+    const videoBaseUrl = process.env.NEXT_PUBLIC_VIDEO_BASE_URL 
+      || process.env[`NEXT_PUBLIC_VIDEO_STREAM_URL_${profile.toUpperCase()}`]?.replace(/\/video_feed.*$/, '')
+      || process.env.NEXT_PUBLIC_VIDEO_STREAM_URL_LOCAL?.replace(/\/video_feed.*$/, '')
       || 'http://localhost:5000';
     
     // Extract base URL (remove /video_feed if present)
-    const baseUrl = videoStreamUrl.replace(/\/video_feed.*$/, '');
+    const baseUrl = videoBaseUrl.replace(/\/video_feed.*$/, '');
     const latencyUrl = `${baseUrl}/latency/hybrid`;
     
     const response = await fetch(latencyUrl, {
