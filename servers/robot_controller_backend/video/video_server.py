@@ -500,67 +500,70 @@ def _create_camera(device: Optional[str] = None) -> bool:
     global camera, motion_detector, tracker, _last_init_attempt
     _last_init_attempt = time.time()
     
-    # Run hardware verification if CameraManager is available
-    try:
-        from .camera_manager import CameraManager
-        manager = CameraManager(width=CAMERA_WIDTH, height=CAMERA_HEIGHT, fps=CAMERA_FPS)
-        hw_status = manager.verify_hardware()
-        
-        logging.info(f"Camera hardware check: detected={hw_status['camera_detected']}, "
-                     f"supported={hw_status['camera_supported']}, "
-                     f"devices={len(hw_status['devices_found'])}")
-        
-        if hw_status['devices_found']:
-            logging.info(f"Found video devices: {', '.join(hw_status['devices_found'])}")
-        
-        if hw_status['recommendations']:
-            for rec in hw_status['recommendations']:
-                logging.warning(f"⚠ {rec}")
-        
-        # If camera not detected but device exists, provide helpful error
-        if not hw_status['camera_detected'] and hw_status['devices_found']:
-            logging.warning("⚠ Camera device exists but hardware not detected")
-            logging.warning("  → Device exists but no frames — likely ribbon loose or interface disabled")
-            logging.warning("  → Run diagnostic: python3 video/hw_check.py")
-            logging.warning("  → Try reseating CSI ribbon connector (silver contacts face HDMI side)")
-    except ImportError:
-        logging.debug("CameraManager not available, skipping hardware verification")
-    except Exception as e:
-        logging.debug(f"Hardware verification failed: {e}")
+        # Run hardware verification if CameraManager is available
+        try:
+            from .camera_manager import CameraManager
+            manager = CameraManager(width=CAMERA_WIDTH, height=CAMERA_HEIGHT, fps=CAMERA_FPS)
+            hw_status = manager.verify_hardware()
+            
+            logging.info(f"Camera hardware check: detected={hw_status['camera_detected']}, "
+                         f"supported={hw_status['camera_supported']}")
+            
+            if hw_status['recommendations']:
+                for rec in hw_status['recommendations']:
+                    logging.warning(f"⚠ {rec}")
+        except ImportError:
+            logging.debug("CameraManager not available, skipping hardware verification")
+        except Exception as e:
+            logging.debug(f"Hardware verification failed: {e}")
     
     try:
-        # Use specified device or default
-        camera_device = device or os.getenv("CAMERA_DEVICE", "/dev/video0")
-        camera = Camera(device=camera_device, width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
+        # Initialize Picamera2 camera (device parameter ignored - Picamera2 doesn't use device paths)
+        camera = Camera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
         motion_detector = MotionDetector()
         tracker = ObjectTracker()
-        logging.info(f"Camera initialization successful (device: {camera_device}).")
+        logging.info(f"Camera initialization successful (Backend: {camera.backend}).")
         return True
     except Exception as e:
-        logging.warning(f"Camera initialization failed ({e}). Trying mock camera fallback...")
+        # Check if this is a Picamera2 import failure (not on Raspberry Pi)
+        is_pi = False
+        try:
+            if os.path.exists("/proc/device-tree/model"):
+                with open("/proc/device-tree/model", "r") as f:
+                    model = f.read().strip()
+                    if "Raspberry Pi" in model:
+                        is_pi = True
+        except Exception:
+            pass
         
-        # Try mock camera as fallback
-        if MockCamera is not None:
-            try:
-                camera = MockCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
-                camera.start()
-                # Initialize motion detector and tracker, but don't fail if they don't work
-                try:
-                    motion_detector = MotionDetector()
-                except Exception as md_e:
-                    logging.warning(f"Motion detector initialization failed: {md_e}")
-                    motion_detector = None
-                
-                try:
-                    tracker = ObjectTracker()
-                except Exception as tr_e:
-                    logging.warning(f"Object tracker initialization failed: {tr_e}")
-                    tracker = None
-                
-                logging.info("Mock camera fallback successful.")
-                return True
-            except Exception as mock_e:
-                logging.warning(f"Mock camera fallback also failed ({mock_e}). Running without camera.")
+        if is_pi:
+            # On Raspberry Pi, Picamera2 is required - no mock fallback
+            logging.error(f"Camera initialization failed on Raspberry Pi: {e}")
+            logging.error("Picamera2 is required on Raspberry Pi - cannot use mock camera")
+            camera = None
+            return False
+        else:
+            # Not on Pi - allow mock camera as fallback only if Picamera2 import failed
+            if "Picamera2" in str(e) or "picamera2" in str(e).lower() or "ImportError" in str(type(e).__name__):
+                logging.warning(f"Picamera2 not available ({e}). Trying mock camera fallback...")
+                if MockCamera is not None:
+                    try:
+                        camera = MockCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
+                        camera.start()
+                        try:
+                            motion_detector = MotionDetector()
+                        except Exception as md_e:
+                            logging.warning(f"Motion detector initialization failed: {md_e}")
+                            motion_detector = None
+                        try:
+                            tracker = ObjectTracker()
+                        except Exception as tr_e:
+                            logging.warning(f"Object tracker initialization failed: {tr_e}")
+                            tracker = None
+                        logging.info("Mock camera fallback successful (non-Pi system).")
+                        return True
+                    except Exception as mock_e:
+                        logging.warning(f"Mock camera fallback also failed ({mock_e}). Running without camera.")
         
         camera = None
         return False
@@ -906,7 +909,7 @@ def health():
         "ok": connected,
         "camera_present": present,
         "placeholder": PLACEHOLDER_WHEN_NO_CAMERA and not connected,
-        "device": os.getenv("CAMERA_DEVICE", "/dev/video0"),
+        "backend": getattr(camera, "backend", "picamera2") if present else "none",
         "size": [CAMERA_WIDTH, CAMERA_HEIGHT],
         "fps": round(float(fps), 2),
         "frames_total": int(frames_total),
@@ -997,78 +1000,33 @@ def reload_face_recognition():
 
 @app.post("/camera/switch")
 def switch_camera():
-    """Switch to a different camera device (multi-camera support)."""
-    global camera
-    
-    try:
-        data = request.get_json() or {}
-        device = data.get("device")
-        
-        if not device:
-            return jsonify({"ok": False, "error": "device_required"}), 400
-        
-        # Stop current camera
-        if camera:
-            try:
-                camera.stop()
-            except Exception:
-                pass
-        
-        # Create new camera
-        success = _create_camera(device=device)
-        
-        if success:
-            return jsonify({
-                "ok": True,
-                "device": device,
-                "message": f"Switched to camera: {device}"
-            }), 200
-        else:
-            return jsonify({
-                "ok": False,
-                "error": "failed_to_switch",
-                "message": f"Failed to switch to camera: {device}"
-            }), 500
-    
-    except Exception as e:
-        logging.error(f"⚠️ Camera switch error: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+    """Camera switching not supported - Picamera2 uses single CSI camera."""
+    return jsonify({
+        "ok": False,
+        "error": "not_supported",
+        "message": "Camera switching not supported - Picamera2 uses single CSI camera"
+    }), 400
 
 
 @app.get("/camera/list")
 def list_cameras():
-    """List available camera devices."""
-    import glob
-    
+    """List camera info (Picamera2 uses libcamera, not /dev/video* devices)."""
     cameras = []
-    
-    # Check /dev/video* devices
-    for device in glob.glob("/dev/video*"):
-        try:
-            # Try to open device to verify it's accessible
-            import cv2
-            cap = cv2.VideoCapture(device)
-            if cap.isOpened():
-                cameras.append({
-                    "device": device,
-                    "available": True,
-                })
-                cap.release()
-        except Exception:
-            pass
     
     # Add current camera
     if camera:
         cameras.append({
-            "device": getattr(camera, "backend_name", "unknown"),
+            "backend": getattr(camera, "backend", "picamera2"),
             "current": True,
             "available": True,
+            "type": "CSI Ribbon (Picamera2/libcamera)",
         })
     
     return jsonify({
         "ok": True,
         "cameras": cameras,
-        "current": os.getenv("CAMERA_DEVICE", "/dev/video0"),
+        "backend": "picamera2",
+        "note": "Picamera2 uses libcamera - camera is accessed via libcamera API, not /dev/video*",
     }), 200
 
 

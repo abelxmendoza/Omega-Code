@@ -756,54 +756,27 @@ class CameraManager:
     
     def _select_backend_optimized(self) -> BackendType:
         """
-        Optimized backend selection with ML-based recommendations.
+        Force Picamera2 backend on Raspberry Pi.
+        No V4L2 fallback - Picamera2 is required.
         
         Returns:
-            BackendType enum
+            BackendType enum (always PICAMERA2 on Raspberry Pi)
         """
-        # Check for forced backend (highest priority)
-        force_picamera2 = os.getenv("OMEGA_FORCE_PICAMERA2", "0").lower() in ("1", "true", "yes")
-        force_v4l2 = os.getenv("OMEGA_FORCE_V4L2", "0").lower() in ("1", "true", "yes")
-        
-        if force_picamera2:
-            if self._can_use_picamera2():
-                return BackendType.PICAMERA2
-            else:
-                log.warning(f"{Colors.YELLOW}⚠️  OMEGA_FORCE_PICAMERA2 set but Picamera2 not available{Colors.RESET}")
-        
-        if force_v4l2:
-            if self._can_use_v4l2():
-                return BackendType.V4L2
-            else:
-                log.warning(f"{Colors.YELLOW}⚠️  OMEGA_FORCE_V4L2 set but V4L2 not available{Colors.RESET}")
-        
-        # Use sets for O(1) driver lookups
-        unicam_devices = {path: info for path, info in self.device_info.items() 
-                         if info.driver == "unicam"}
-        uvc_devices = {path: info for path, info in self.device_info.items() 
-                      if info.driver == "uvcvideo"}
-        
-        # Priority 1: Picamera2 for ribbon cameras (unicam)
-        if unicam_devices:
-            if self._can_use_picamera2():
-                return BackendType.PICAMERA2
-        
-        # Priority 2: Picamera2 on Raspberry Pi (even if no device detected yet)
+        # Force Picamera2 on Raspberry Pi
         if self.hardware_type == HardwareType.RASPBERRY_PI:
             if self._can_use_picamera2():
                 return BackendType.PICAMERA2
+            else:
+                raise RuntimeError(
+                    "Picamera2 is required on Raspberry Pi but not available. "
+                    "Install with: sudo apt install -y python3-picamera2"
+                )
         
-        # Priority 3: V4L2 for USB cameras (uvcvideo)
-        if uvc_devices:
-            if self._can_use_v4l2():
-                return BackendType.V4L2
+        # For non-Pi hardware, still prefer Picamera2 if available
+        if self._can_use_picamera2():
+            return BackendType.PICAMERA2
         
-        # Priority 4: V4L2 fallback if devices exist
-        if self.device_info:
-            if self._can_use_v4l2():
-                return BackendType.V4L2
-        
-        # Priority 5: Mock camera
+        # Only allow mock if Picamera2 import fails (not on Pi)
         return BackendType.MOCK
     
     def _can_use_picamera2(self) -> bool:
@@ -815,19 +788,20 @@ class CameraManager:
             return False
     
     def _can_use_v4l2(self) -> bool:
-        """Check if V4L2/OpenCV is available."""
-        return CV2_AVAILABLE
+        """V4L2 is disabled - always return False."""
+        return False
     
     def _log_detection_results(self):
         """Log detection results with colored output and ML recommendations."""
         hw_name = self.hardware_type.value if self.hardware_type else "unknown"
-        backend_name = self.backend_type.value if self.backend_type else "unknown"
+        backend_name = "picamera2"  # Always Picamera2 on Raspberry Pi
         
         log.info(f"{Colors.CYAN}{'='*60}{Colors.RESET}")
         log.info(f"{Colors.BOLD}📷 Camera Detection Results{Colors.RESET}")
         log.info(f"{Colors.CYAN}{'='*60}{Colors.RESET}")
         log.info(f"{Colors.BLUE}Hardware:{Colors.RESET} {Colors.GREEN}{hw_name}{Colors.RESET}")
         log.info(f"{Colors.BLUE}Backend:{Colors.RESET} {Colors.GREEN}{backend_name}{Colors.RESET}")
+        log.info(f"{Colors.BLUE}Camera:{Colors.RESET} {Colors.GREEN}CSI Ribbon (OV5647){Colors.RESET}")
         
         # Hardware capabilities
         if self.capabilities:
@@ -844,18 +818,9 @@ class CameraManager:
         
         log.info(f"{Colors.BLUE}Devices found:{Colors.RESET} {Colors.YELLOW}{len(self.device_info)}{Colors.RESET}")
         
-        unicam_devices = [info for info in self.device_info.values() if info.driver == "unicam"]
-        uvc_devices = [info for info in self.device_info.values() if info.driver == "uvcvideo"]
-        
-        if unicam_devices:
-            log.info(f"{Colors.BLUE}Ribbon cameras:{Colors.RESET} {Colors.GREEN}{len(unicam_devices)}{Colors.RESET}")
-            for dev in unicam_devices:
-                log.info(f"  • {Colors.GREEN}{dev.path}{Colors.RESET} ({dev.name})")
-        
-        if uvc_devices:
-            log.info(f"{Colors.BLUE}USB cameras:{Colors.RESET} {Colors.GREEN}{len(uvc_devices)}{Colors.RESET}")
-            for dev in uvc_devices:
-                log.info(f"  • {Colors.GREEN}{dev.path}{Colors.RESET} ({dev.name})")
+        # Log camera info (Picamera2 uses libcamera, not /dev/video* directly)
+        if self.hardware_type == HardwareType.RASPBERRY_PI:
+            log.info(f"{Colors.BLUE}Camera Type:{Colors.RESET} {Colors.GREEN}CSI Ribbon (Picamera2/libcamera){Colors.RESET}")
         
         # ML-based recommendations
         if self.enable_ml and self.capabilities:
@@ -877,8 +842,8 @@ class CameraManager:
     
     def verify_hardware(self) -> Dict[str, Any]:
         """
-        Verify camera hardware before initialization.
-        Runs diagnostic checks and returns status.
+        Verify camera hardware using Picamera2.
+        Tests actual frame capture instead of /dev/video* checks.
         
         Returns:
             Dict with verification results
@@ -886,8 +851,8 @@ class CameraManager:
         result = {
             'camera_detected': False,
             'camera_supported': False,
-            'devices_found': [],
             'libcamera_available': False,
+            'picamera2_available': False,
             'recommendations': []
         }
         
@@ -911,17 +876,14 @@ class CameraManager:
         except Exception as e:
             log.debug(f"vcgencmd check failed: {e}")
         
-        # Check for video devices
+        # Check Picamera2 availability
         try:
-            import glob
-            video_devices = glob.glob("/dev/video*")
-            result['devices_found'] = video_devices
-            if not video_devices:
-                result['recommendations'].append(
-                    "No /dev/video* devices found - camera may not be connected"
-                )
-        except Exception as e:
-            log.debug(f"Device scan failed: {e}")
+            from picamera2 import Picamera2
+            result['picamera2_available'] = True
+        except ImportError:
+            result['recommendations'].append(
+                "Picamera2 not installed - install with: sudo apt install -y python3-picamera2"
+            )
         
         # Check libcamera tools
         try:
@@ -932,6 +894,31 @@ class CameraManager:
             result['recommendations'].append(
                 "libcamera-still not found - install with: sudo apt install libcamera-apps"
             )
+        
+        # Test actual frame capture if Picamera2 is available
+        if result['picamera2_available']:
+            try:
+                from picamera2 import Picamera2
+                test_cam = Picamera2()
+                test_cfg = test_cam.create_preview_configuration(main={"size": (640, 480)})
+                test_cam.configure(test_cfg)
+                test_cam.start()
+                time.sleep(0.5)  # Brief settle
+                test_frame = test_cam.capture_array("main")
+                test_cam.stop()
+                test_cam.close()
+                
+                if test_frame is not None and test_frame.size > 0:
+                    result['camera_detected'] = True
+                    result['camera_supported'] = True
+                else:
+                    result['recommendations'].append(
+                        "Camera detected but no frames received - check camera connection"
+                    )
+            except Exception as e:
+                result['recommendations'].append(
+                    f"Picamera2 test capture failed: {e}"
+                )
         
         return result
     
@@ -961,21 +948,23 @@ class CameraManager:
             try:
                 if self.backend_type == BackendType.PICAMERA2:
                     return self._init_picamera2()
-                elif self.backend_type == BackendType.V4L2:
-                    return self._init_v4l2()
                 elif self.backend_type == BackendType.MOCK:
-                    return self._init_mock()
+                    # Only allow mock if Picamera2 import failed (not on Raspberry Pi)
+                    if self.hardware_type != HardwareType.RASPBERRY_PI:
+                        return self._init_mock()
+                    else:
+                        raise RuntimeError("Mock camera not allowed on Raspberry Pi - Picamera2 required")
+                else:
+                    raise RuntimeError(f"Unsupported backend type: {self.backend_type}")
             except Exception as e:
                 last_error = e
                 error_msg = str(e)
                 
-                # Enhanced error messages for common issues
-                if "/dev/video0" in error_msg or "device" in error_msg.lower():
-                    if os.path.exists("/dev/video0"):
-                        log.error(f"{Colors.RED}Device /dev/video0 exists but returns no frames.{Colors.RESET}")
-                        log.error(f"{Colors.YELLOW}→ Likely ribbon cable loose or interface disabled{Colors.RESET}")
-                        log.error(f"{Colors.YELLOW}→ Run: python3 video/hw_check.py{Colors.RESET}")
-                        log.error(f"{Colors.YELLOW}→ Try reseating CSI ribbon connector (silver contacts face HDMI side){Colors.RESET}")
+                # Enhanced error messages for Picamera2 issues
+                if "device" in error_msg.lower() or "busy" in error_msg.lower():
+                    log.error(f"{Colors.RED}Picamera2 initialization failed: {error_msg}{Colors.RESET}")
+                    log.error(f"{Colors.YELLOW}→ Check if another process is using the camera{Colors.RESET}")
+                    log.error(f"{Colors.YELLOW}→ Ensure libcamera is working: libcamera-hello --list-cameras{Colors.RESET}")
                 
                 if attempt < max_retries - 1:
                     log.warning(f"Backend initialization attempt {attempt + 1} failed: {e}. Retrying...")
@@ -1031,34 +1020,8 @@ class CameraManager:
         return self.camera_instance
     
     def _init_v4l2(self):
-        """Initialize V4L2 backend."""
-        try:
-            from .camera import _V4L2Backend
-        except ImportError:
-            import sys
-            import os
-            sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-            from video.camera import _V4L2Backend
-        
-        # Select best device
-        device = self._select_best_device()
-        
-        # Use ML recommendations if available
-        if self.enable_ml and self.capabilities:
-            recommendations = self.performance_predictor.predict_optimal_settings(
-                self.capabilities, self.fps
-            )
-            self.width = recommendations['width']
-            self.height = recommendations['height']
-            self.fps = recommendations['fps']
-        
-        self.camera_instance = _V4L2Backend(
-            device=device,
-            width=self.width,
-            height=self.height,
-            target_fps=self.fps,
-        )
-        return self.camera_instance
+        """V4L2 backend is disabled."""
+        raise RuntimeError("V4L2 backend is not supported - use Picamera2 only")
     
     def _init_mock(self):
         """Initialize mock camera backend."""
