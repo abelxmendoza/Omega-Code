@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# This script connects the MacBook or Ubuntu Laptop to the iPhone hotspot via USB-C,
+# This script connects the MacBook, Ubuntu Laptop, or Alienware Aurora to the iPhone hotspot via USB-C,
 # checks internet connectivity, verifies the Tailscale connection,
 # and SSHs into the Raspberry Pi using Tailscale IP. It dynamically
-# adjusts settings based on the hostname of the machine (Laptop1-hostname, Laptop2-hostname, or scythe).
+# adjusts settings based on the hostname of the machine (Laptop1-hostname, Laptop2-hostname, scythe, or aurora-desktop).
 
 # Determine project root. Allow override via OMEGA_CODE_ROOT
 ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -89,9 +89,18 @@ elif [ "$HOSTNAME" == "scythe" ] || [ "$HOSTNAME" == "$HOSTNAME_LAPTOP3" ]; then
         echo "Warning: TAILSCALE_IP not configured for this laptop. Please set HOSTNAME_LAPTOP3, PI_USER_LAPTOP3, and TAILSCALE_IP_LAPTOP3 in config/.env.script2"
     fi
     check_iphone_usb
+elif [ "$HOSTNAME" == "$HOSTNAME_AURORA" ] || [ "$HOSTNAME" == "aurora-desktop" ]; then
+    # Alienware Aurora - use AURORA config
+    PI_USER="${PI_USER_AURORA:-pi}"
+    TAILSCALE_IP="${TAILSCALE_IP_AURORA:-}"
+    if [ -z "$TAILSCALE_IP" ]; then
+        echo "Warning: TAILSCALE_IP not configured for Aurora. Please set HOSTNAME_AURORA, PI_USER_AURORA, and TAILSCALE_IP_AURORA in config/.env.script2"
+    fi
+    # Aurora is desktop, skip USB hotspot check (uses Ethernet/WiFi)
+    echo "Alienware Aurora detected - skipping USB hotspot check (using Ethernet/WiFi)"
 else
     echo "Unknown hostname: $HOSTNAME"
-    echo "Supported hostnames: $HOSTNAME_LAPTOP1, $HOSTNAME_LAPTOP2, scythe (or set HOSTNAME_LAPTOP3)"
+    echo "Supported hostnames: $HOSTNAME_LAPTOP1, $HOSTNAME_LAPTOP2, scythe (or set HOSTNAME_LAPTOP3), aurora-desktop (or set HOSTNAME_AURORA)"
     exit 1
 fi
 
