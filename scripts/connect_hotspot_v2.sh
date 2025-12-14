@@ -3,7 +3,7 @@
 # This script connects the MacBook or Ubuntu Laptop to the iPhone hotspot via USB-C,
 # checks internet connectivity, verifies the Tailscale connection,
 # and SSHs into the Raspberry Pi using Tailscale IP. It dynamically
-# adjusts settings based on the hostname of the machine (Laptop1-hostname or Laptop2-hostname).
+# adjusts settings based on the hostname of the machine (Laptop1-hostname, Laptop2-hostname, or scythe).
 
 # Determine project root. Allow override via OMEGA_CODE_ROOT
 ROOT_DIR="${OMEGA_CODE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -23,12 +23,24 @@ HOSTNAME=$(hostname)
 # Function to check iPhone USB connection
 check_iphone_usb() {
     echo "Checking iPhone USB connection..."
-    if networksetup -listallhardwareports | grep -q "iPhone USB"; then
-        echo "iPhone USB connection found."
-        networksetup -setnetworkserviceenabled "iPhone USB" on
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        # macOS
+        if networksetup -listallhardwareports | grep -q "iPhone USB"; then
+            echo "iPhone USB connection found."
+            networksetup -setnetworkserviceenabled "iPhone USB" on
+        else
+            echo "No iPhone USB connection found. Please connect your iPhone via USB-C."
+            exit 1
+        fi
     else
-        echo "No iPhone USB connection found. Please connect your iPhone via USB-C."
-        exit 1
+        # Linux - check for USB network interface
+        if ip link show | grep -q "usb\|enp.*usb\|eth.*usb"; then
+            echo "USB network interface detected."
+        else
+            echo "No USB network interface found. Please connect your iPhone via USB-C."
+            echo "Note: On Linux, you may need to enable USB tethering on your iPhone."
+            exit 1
+        fi
     fi
 }
 
@@ -69,8 +81,17 @@ elif [ "$HOSTNAME" == "$HOSTNAME_LAPTOP2" ]; then
     PI_USER="$PI_USER_LAPTOP2"
     TAILSCALE_IP="$TAILSCALE_IP_LAPTOP2"
     check_iphone_usb  # Assuming both laptops will use the USB-C connection for the hotspot
+elif [ "$HOSTNAME" == "scythe" ] || [ "$HOSTNAME" == "$HOSTNAME_LAPTOP3" ]; then
+    # New laptop (scythe) - use LAPTOP3 config if available, otherwise use defaults
+    PI_USER="${PI_USER_LAPTOP3:-${PI_USER_LAPTOP2:-pi}}"
+    TAILSCALE_IP="${TAILSCALE_IP_LAPTOP3:-${TAILSCALE_IP_LAPTOP2:-}}"
+    if [ -z "$TAILSCALE_IP" ]; then
+        echo "Warning: TAILSCALE_IP not configured for this laptop. Please set HOSTNAME_LAPTOP3, PI_USER_LAPTOP3, and TAILSCALE_IP_LAPTOP3 in config/.env.script2"
+    fi
+    check_iphone_usb
 else
     echo "Unknown hostname: $HOSTNAME"
+    echo "Supported hostnames: $HOSTNAME_LAPTOP1, $HOSTNAME_LAPTOP2, scythe (or set HOSTNAME_LAPTOP3)"
     exit 1
 fi
 
