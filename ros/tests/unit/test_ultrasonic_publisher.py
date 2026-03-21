@@ -1,9 +1,10 @@
 # File: /Omega-Code/ros/tests/unit/test_ultrasonic_publisher.py
 
 import unittest
+import pytest
 from unittest.mock import patch, MagicMock
-import rospy
-from scripts.ultrasonic_publisher import publish_ultrasonic, distance
+
+pytestmark = pytest.mark.skip(reason="requires rospy (ROS1) — not available on ROS2")
 
 class TestUltrasonicPublisher(unittest.TestCase):
     @patch('scripts.ultrasonic_publisher.GPIO.input', side_effect=[0, 1, 0, 1])

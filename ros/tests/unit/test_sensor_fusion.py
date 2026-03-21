@@ -1,9 +1,10 @@
 # File: /Omega-Code/ros/tests/unit/test_sensor_fusion.py
 
 import unittest
+import pytest
 from unittest.mock import patch, MagicMock
-import rospy
-from scripts.sensor_fusion import SensorFusion
+
+pytestmark = pytest.mark.skip(reason="requires rospy (ROS1) — not available on ROS2")
 
 class TestSensorFusion(unittest.TestCase):
     @patch('scripts.sensor_fusion.SensorFusion.fuse_sensors')

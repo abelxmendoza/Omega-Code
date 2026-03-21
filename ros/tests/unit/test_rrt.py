@@ -3,6 +3,7 @@
 import unittest
 import random
 import math
+from scripts.rrt import RRT
 
 class Node:
     def __init__(self, x, y):

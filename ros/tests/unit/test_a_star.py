@@ -20,8 +20,12 @@ class TestAStarSearch(unittest.TestCase):
         self.assertEqual(path[-1], self.goal)
 
     def test_no_path(self):
-        self.grid[2][2] = 1  # Block the only path
-        path = a_star_search(self.start, self.goal, self.grid)
+        # Row 1 is a wall with a single gap at (1,1); blocking it seals all routes
+        grid = [[0, 0, 0],
+                [1, 0, 1],
+                [0, 0, 0]]
+        grid[1][1] = 1  # Close the only gap — no path exists
+        path = a_star_search((0, 0), (2, 2), grid)
         self.assertIsNone(path)
 
     def test_start_equals_goal(self):

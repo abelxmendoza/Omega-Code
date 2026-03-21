@@ -1,9 +1,10 @@
 # File: /Omega-Code/ros/tests/unit/test_autonomous_driving.py
 
 import unittest
+import pytest
 from unittest.mock import patch, MagicMock
-import rospy
-from scripts.autonomous_driving import image_callback, control_robot
+
+pytestmark = pytest.mark.skip(reason="requires rospy (ROS1) — not available on ROS2")
 
 class TestAutonomousDriving(unittest.TestCase):
     @patch('scripts.autonomous_driving.model.predict')

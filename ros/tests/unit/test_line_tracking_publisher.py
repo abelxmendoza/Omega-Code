@@ -1,9 +1,10 @@
 # File: /Omega-Code/ros/tests/unit/test_line_tracking_publisher.py
 
 import unittest
+import pytest
 from unittest.mock import patch, MagicMock
-import rospy
-from scripts.line_tracking_publisher import publish_line_tracking, read_line_sensors
+
+pytestmark = pytest.mark.skip(reason="requires rospy (ROS1) — not available on ROS2")
 
 class TestLineTrackingPublisher(unittest.TestCase):
     @patch('scripts.line_tracking_publisher.GPIO.input', side_effect=[1, 0, 1])

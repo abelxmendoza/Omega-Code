@@ -60,10 +60,10 @@ def a_star_search(start, goal, grid):
 def get_neighbors(position, grid):
     neighbors = []
     x, y = position
-    if x > 0: neighbors.append((x - 1, y))
-    if x < len(grid) - 1: neighbors.append((x + 1, y))
-    if y > 0: neighbors.append((x, y - 1))
-    if y < len(grid[0]) - 1: neighbors.append((x, y + 1))
+    if x > 0 and grid[x - 1][y] == 0: neighbors.append((x - 1, y))
+    if x < len(grid) - 1 and grid[x + 1][y] == 0: neighbors.append((x + 1, y))
+    if y > 0 and grid[x][y - 1] == 0: neighbors.append((x, y - 1))
+    if y < len(grid[0]) - 1 and grid[x][y + 1] == 0: neighbors.append((x, y + 1))
     return neighbors
 
 def reconstruct_path(came_from, current):
