@@ -235,7 +235,7 @@ class SensorNode(Node):
             self._us_sensor = Ultrasonic()
             self.get_logger().info('Ultrasonic sensor initialised (TRIG=27, ECHO=22)')
         except Exception as exc:
-            self.get_logger().error('Ultrasonic init failed: %s -- using sim', exc)
+            self.get_logger().error(f'Ultrasonic init failed: {exc} -- using sim')
             self._us_sensor = None
 
     def _setup_line_tracking(self) -> None:
@@ -252,7 +252,7 @@ class SensorNode(Node):
                 _lgpio.gpio_claim_input(self._gpio_handle, pin)
             self.get_logger().info(f'Line tracking GPIO initialised (pins {pins})')
         except Exception as exc:
-            self.get_logger().error('Line tracking GPIO init failed: %s -- using sim', exc)
+            self.get_logger().error(f'Line tracking GPIO init failed: {exc} -- using sim')
             self._gpio_handle = None
 
     def _setup_battery(self) -> None:
@@ -264,7 +264,7 @@ class SensorNode(Node):
                 f'ADS1115 ADC initialised (channel {self.get_parameter("ads1115_channel").value})'
             )
         except Exception as exc:
-            self.get_logger().error('ADS1115 init failed: %s -- using sim', exc)
+            self.get_logger().error(f'ADS1115 init failed: {exc} -- using sim')
             self._adc = None
 
     # ------------------------------------------------------------------
@@ -300,7 +300,7 @@ class SensorNode(Node):
                     return None
                 return cm / 100.0
             except Exception as exc:
-                self.get_logger().debug('Ultrasonic read error: %s', exc)
+                self.get_logger().debug(f'Ultrasonic read error: {exc}')
                 return None
 
         # Simulation: sine-wave oscillating between 0.3 m and 3.0 m
@@ -393,7 +393,7 @@ class SensorNode(Node):
             try:
                 return self._adc.read_voltage(self._bat_chan)
             except Exception as exc:
-                self.get_logger().debug('Battery read error: %s', exc)
+                self.get_logger().debug(f'Battery read error: {exc}')
 
         # Simulation: slowly discharging from 8.2V to 6.0V over 10 minutes
         t = time.monotonic()

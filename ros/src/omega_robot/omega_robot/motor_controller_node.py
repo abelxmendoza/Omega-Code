@@ -194,7 +194,14 @@ class MotorControllerNode(Node):
             self._motor = _NoopMotor()
             self.get_logger().info('sim_mode=True -- hardware writes are no-ops')
         else:
-            self._motor = Motor()
+            try:
+                self._motor = Motor()
+            except Exception as _motor_exc:
+                self.get_logger().warning(
+                    f'Motor hardware init failed: {_motor_exc} -- falling back to sim mode'
+                )
+                self._sim = True
+                self._motor = _NoopMotor()
 
         # ---- straight-drive assist ------------------------------------
         self._sda = StraightDriveAssist(self._motor) if not self._sim else None
@@ -486,7 +493,7 @@ class MotorControllerNode(Node):
             self._safe_stop()
             self._motor.stop()
         except Exception as exc:
-            self.get_logger().error('Error during shutdown stop: %s', exc)
+            self.get_logger().error(f'Error during shutdown stop: {exc}')
         super().destroy_node()
 
 
