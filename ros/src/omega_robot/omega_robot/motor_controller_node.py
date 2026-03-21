@@ -175,8 +175,8 @@ class MotorControllerNode(Node):
         self.declare_parameter('thermal_enabled',  True)
         self.declare_parameter('ramp_enabled',     True)
         self.declare_parameter('ramp_type',      'linear')
-        self.declare_parameter('accel_rate',     150.0)
-        self.declare_parameter('decel_rate',     200.0)
+        self.declare_parameter('accel_rate',    4000.0)
+        self.declare_parameter('decel_rate',    6000.0)
 
         p = self.get_parameter
         self._sim: bool       = p('sim_mode').value or not _hw_available
@@ -217,9 +217,11 @@ class MotorControllerNode(Node):
             _accel = p('accel_rate').value
             _decel = p('decel_rate').value
             self._left_ramp  = MovementRamp(accel_rate=_accel, decel_rate=_decel,
-                                            ramp_type=_rtype, max_pwm=self._max_pwm)
+                                            ramp_type=_rtype,
+                                            min_pwm=-self._max_pwm, max_pwm=self._max_pwm)
             self._right_ramp = MovementRamp(accel_rate=_accel, decel_rate=_decel,
-                                            ramp_type=_rtype, max_pwm=self._max_pwm)
+                                            ramp_type=_rtype,
+                                            min_pwm=-self._max_pwm, max_pwm=self._max_pwm)
         else:
             self._left_ramp = None
             self._right_ramp = None
