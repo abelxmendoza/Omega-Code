@@ -1,0 +1,27 @@
+<!-- CycloneDDS configuration for Raspberry Pi (omega1) -->
+<!-- Set via: export CYCLONEDDS_URI=file:///path/to/this/file -->
+<CycloneDDS>
+  <Domain id="0">
+    <General>
+      <!-- Bind to wlan0 (WiFi hotspot interface on Pi) -->
+      <!-- Change to eth0 if using wired connection -->
+      <NetworkInterfaceAddress>wlan0</NetworkInterfaceAddress>
+      <!-- Disable multicast: many hotspot APs block it -->
+      <AllowMulticast>false</AllowMulticast>
+    </General>
+    <Discovery>
+      <!-- Static unicast peers -- update IPs to match your network -->
+      <Peers>
+        <Peer address="192.168.1.107"/>   <!-- Pi (self) -->
+        <Peer address="192.168.1.202"/>   <!-- Laptop -->
+        <Peer address="100.107.112.110"/> <!-- Jetson Orin (Tailscale) -->
+      </Peers>
+      <!-- Participant lease: how long before a dead node is removed -->
+      <ParticipantIndex>auto</ParticipantIndex>
+    </Discovery>
+    <Internal>
+      <!-- Reduce buffer sizes for Pi RAM constraints -->
+      <ReceiveBufferSize>1048576</ReceiveBufferSize>  <!-- 1 MB -->
+    </Internal>
+  </Domain>
+</CycloneDDS>

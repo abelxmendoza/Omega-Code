@@ -1,0 +1,19 @@
+<!-- CycloneDDS configuration for development laptop (scythe/Lenovo) -->
+<!-- Set via: export CYCLONEDDS_URI=file:///path/to/this/file -->
+<CycloneDDS>
+  <Domain id="0">
+    <General>
+      <!-- Use auto-detection; works for both wlan0 and eth0 -->
+      <NetworkInterfaceAddress>auto</NetworkInterfaceAddress>
+      <AllowMulticast>false</AllowMulticast>
+    </General>
+    <Discovery>
+      <Peers>
+        <Peer address="192.168.1.107"/>   <!-- Pi (omega1) -->
+        <Peer address="192.168.1.202"/>   <!-- Laptop (self) -->
+        <Peer address="100.107.112.110"/> <!-- Jetson Orin (Tailscale) -->
+      </Peers>
+      <ParticipantIndex>auto</ParticipantIndex>
+    </Discovery>
+  </Domain>
+</CycloneDDS>

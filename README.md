@@ -1,632 +1,445 @@
-# OMEGA-1 — Autonomous Robotics Platform (Omega Technologies)
+# Omega-1 — Hybrid ROS2 Robotics Platform
 
-Omega-1 is not a "remote-control car."  
+Omega-1 is a modular autonomous robotics platform built around a Raspberry Pi 4B.
+It runs a **hybrid architecture**: a Next.js web UI and FastAPI backend handle
+operator interaction, while ROS2 (Humble) handles robot communication, sensor
+integration, and autonomous operation.
 
-It is a **modular, full-stack robotics platform** engineered to scale from:
-
-- GPIO-level control →  
-- Real-time perception →  
-- Multi-sensor autonomy →  
-- Jetson-powered machine learning.
-
-This project represents **Season 1** of the Omega Technologies robotic ecosystem.
+The design philosophy is pragmatic — keep what works (web UI, Go services, MJPEG
+stream), add ROS2 where it creates real value (motor control, sensors, navigation).
 
 ---
 
-## 🚀 Quick Start — Running the Robot
+## System Architecture
 
-### Prerequisites
+```
+[Next.js UI]  http/ws (unchanged)
+     |
+[FastAPI]  port 8000    <-- OmegaRosBridge embeds rclpy node here
+     |  /cmd_vel (Twist)
+     |  ROS2 DDS (CycloneDDS, no fixed port)
+     +--------+--------+
+              |
+   +----------v----------+
+   |    Raspberry Pi      |
+   |  ROS2 Node Graph     |
+   |                      |
+   |  motor_controller  <-- /cmd_vel
+   |       |               --> /odom
+   |       |               --> /omega/motor_state
+   |       v               --> /tf (odom -> base_link)
+   |    PCA9685 (I2C)      |
+   |    Motor HAL          |
+   |                      |
+   |  sensor_node          --> /omega/ultrasonic
+   |  (HC-SR04, IR, ADC)   --> /omega/line_tracking/*
+   |                       --> /omega/battery
+   |                      |
+   |  camera_publisher     --> /omega/camera/image_raw/compressed
+   |  (Picamera2/V4L2)     --> /omega/camera/camera_info
+   |                      |
+   |  static_tf            --> base_link -> camera_link
+   |                       --> base_link -> ultrasonic_front
+   +---------------------+
 
-- **Raspberry Pi 4B** (or compatible) running Raspberry Pi OS
-- **Python 3.9+** and **Go 1.19+** installed
-- **Network connectivity** (Wi-Fi or Ethernet)
-- **Hardware components** connected (motors, sensors, camera, LEDs)
+Non-ROS (separate processes, managed by OmegaOS):
+  Go lighting server    ws://pi:8082
+  MJPEG video stream    http://pi:5000   (Flask)
+  FastAPI REST/WS       http://pi:8000
 
-### Step 1: Clone and Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/your-repo/Omega-Code.git
-cd Omega-Code
-
-# Navigate to backend
-cd servers/robot_controller_backend
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install Python dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
-
-# Install Go dependencies
-go mod download
+Multi-machine DDS (CycloneDDS):
+  Pi (omega1)    <--> Laptop (scythe)  <--> Jetson Orin (Tailscale)
 ```
 
-### Step 2: Configure Environment
-
-```bash
-# Copy example environment file
-cp .env.example .env
-
-# Edit .env with your settings
-nano .env
+### TF Tree
+```
+odom
+ └── base_link          (dynamic: motor_controller_node @ 50 Hz)
+      ├── camera_link   (static: 8 cm forward, 10 cm up)
+      └── ultrasonic_front  (static: 12 cm forward)
 ```
 
-**Key environment variables:**
-- `PI_IP` - Your Pi's IP address (e.g., `192.168.1.100`)
-- `PORT_MOVEMENT` - Movement WebSocket port (default: `8081`)
-- `VIDEO_PORT` - Video server port (default: `5000`)
-- `CAMERA_BACKEND` - Camera backend (`picamera2` or `v4l2`)
+### ROS Topic Map
 
-### Step 3: Start the Robot Services
+| Topic | Type | Hz | Producer |
+|---|---|---|---|
+| `/cmd_vel` | `geometry_msgs/Twist` | on-demand | FastAPI bridge |
+| `/odom` | `nav_msgs/Odometry` | 50 | motor_controller_node |
+| `/omega/motor_state` | `omega_interfaces/MotorState` | 10 | motor_controller_node |
+| `/omega/ultrasonic` | `sensor_msgs/Range` | 10 | sensor_node |
+| `/omega/line_tracking/center` | `std_msgs/Bool` | 20 | sensor_node |
+| `/omega/battery` | `sensor_msgs/BatteryState` | 1 | sensor_node |
+| `/omega/camera/image_raw/compressed` | `sensor_msgs/CompressedImage` | 30 | camera_publisher_node |
+| `/omega/capabilities` | `std_msgs/String` (JSON) | 0.2 | system_capabilities |
 
-#### Option A: Using OmegaOS Service Orchestrator (Recommended)
+---
 
-The **OmegaOS Service Orchestrator** automatically manages all robot services:
+## Repository Structure
 
-```bash
-# Install the orchestrator
-cd omega_services
-sudo ./install.sh
-
-# Start orchestrator (auto-starts all services)
-sudo systemctl start omega-orchestrator
-
-# Enable auto-start on boot
-sudo systemctl enable omega-orchestrator
-
-# Check status
-sudo systemctl status omega-orchestrator
-
-# View logs
-sudo journalctl -u omega-orchestrator -f
 ```
-
-**What it does:**
-- ✅ Automatically starts all configured services
-- ✅ Monitors and restarts crashed services
-- ✅ Provides REST API for service management
-- ✅ Logs everything to `/var/log/omega/`
-
-**Manage services via Web UI:**
-Navigate to `http://omega1.local:3000/services` (or `http://<pi-ip>:3000/services`)
-
-**Manage services via API:**
-```bash
-# List all services
-curl http://localhost:8000/api/services/list
-
-# Start a service
-curl -X POST http://localhost:8000/api/services/start/movement_ws_server
-
-# Check service status
-curl http://localhost:8000/api/services/status/video_server
-```
-
-#### Option B: Manual Service Startup
-
-If you prefer to start services manually:
-
-```bash
-# Terminal 1: Movement WebSocket Server
-cd servers/robot_controller_backend
-python movement/movement_ws_server.py
-
-# Terminal 2: Video Server
-python video/video_server.py
-
-# Terminal 3: Main API Server
-uvicorn main_api:app --host 0.0.0.0 --port 8000
-
-# Terminal 4: Gateway API (optional)
-uvicorn servers.gateway_api:app --host 0.0.0.0 --port 7070
-
-# Terminal 5: Ultrasonic Sensor Server (Go)
-go run sensors/main_ultrasonic.go
-
-# Terminal 6: Line Tracker Server
-python sensors/line_tracking_ws_server.py
-```
-
-#### Option C: Using Startup Scripts
-
-```bash
-# Start all services with monitoring
-cd servers/robot_controller_backend
-bash scripts/start.sh
-
-# Or use the all-in-one script
-bash scripts/start_all.sh
-```
-
-### Step 4: Access the Web UI
-
-1. **Start the frontend** (on your development machine or Pi):
-
-```bash
-cd ui/robot-controller-ui
-npm install
-npm run dev
-```
-
-2. **Open in browser:**
-   - Local: `http://localhost:3000`
-   - Remote: `http://<pi-ip>:3000` or `http://omega1.local:3000`
-
-3. **Available pages:**
-   - `/` - Main control dashboard
-   - `/control` - Joystick control
-   - `/services` - Service management (OmegaOS)
-   - `/network` - Network configuration
-   - `/ros` - ROS 2 dashboard
-   - `/telemetry` - System metrics
-
-### Step 5: Verify Everything Works
-
-**Check service status:**
-```bash
-# Via API
-curl http://localhost:8000/api/services/list
-
-# Via Web UI
-# Navigate to http://<pi-ip>:3000/services
-```
-
-**Test endpoints:**
-```bash
-# Health check
-curl http://localhost:8000/health
-
-# Video feed
-curl http://localhost:5000/video_feed
-
-# Movement WebSocket (test with wscat)
-wscat -c ws://localhost:8081/
+Omega-Code/
+├── setup.py                        # pip install -e . makes backend importable
+├── ros/
+│   ├── src/
+│   │   ├── omega_robot/            # ROS node implementations
+│   │   │   ├── omega_robot/
+│   │   │   │   ├── motor_controller_node.py
+│   │   │   │   ├── sensor_node.py
+│   │   │   │   ├── camera_publisher_node.py
+│   │   │   │   ├── system_capabilities.py
+│   │   │   │   └── ... (action servers, path planner)
+│   │   │   ├── package.xml
+│   │   │   └── setup.py
+│   │   ├── omega_bringup/          # Launch files + config (no executable code)
+│   │   │   ├── launch/
+│   │   │   │   ├── omega_hybrid.launch.py   # full stack on Pi
+│   │   │   │   ├── omega_sim.launch.py      # laptop simulation
+│   │   │   │   └── omega_minimal.launch.py  # motor + sensors only
+│   │   │   └── config/
+│   │   │       ├── cyclonedds_pi.xml
+│   │   │       └── cyclonedds_laptop.xml
+│   │   └── omega_interfaces/       # Custom message / service / action types
+│   │       ├── msg/MotorState.msg
+│   │       ├── msg/SensorBundle.msg
+│   │       ├── srv/SetVelocity.srv
+│   │       ├── action/DriveToGoal.action
+│   │       ├── CMakeLists.txt
+│   │       └── package.xml
+│   └── launch/                     # Legacy launch files (kept for reference)
+├── servers/
+│   └── robot_controller_backend/
+│       ├── movement/               # Motor HAL: PCA9685, PID, ramp, odometry
+│       ├── sensors/                # HC-SR04, line tracking, ADC
+│       ├── video/                  # Camera pipeline, MJPEG, vision modes
+│       ├── api/
+│       │   └── ros_bridge.py       # FastAPI <-> ROS bridge
+│       ├── controllers/lighting/   # Go LED server
+│       ├── omega_services/         # OmegaOS process orchestrator
+│       └── main_api.py             # FastAPI entry point
+├── ui/robot-controller-ui/         # Next.js 14 frontend
+├── docker/ros2_robot/              # Docker setup for Pi deployment
+└── scripts/                        # Setup and utility scripts
 ```
 
 ---
 
-## 🔥 Vision
+## Requirements
 
-Build an affordable, modular robot capable of:
+### All Machines
+- ROS2 Humble Hawksbill
+- Python 3.10+
+- `rmw-cyclonedds-cpp` (`sudo apt install ros-humble-rmw-cyclonedds-cpp`)
 
-- Real-time video streaming
-- Remote operation
-- Lighting + signaling systems
-- Sensor-driven safety
-- Hybrid autonomy
-- Future ML-assisted navigation
+### Raspberry Pi 4B
+- Ubuntu 22.04 Server (64-bit)
+- `sudo apt install python3-lgpio python3-picamera2`
+- `pip install smbus2`
+- Hardware: PCA9685 (I2C 0x40), HC-SR04 (GPIO 27/22), IR sensors (GPIO 14/15/23), ADS1115 (I2C 0x48)
 
-Omega-1 is designed as the **prototype brain and skeleton** for future upgrades (Omega-2 on Jetson).
+### Development Laptop
+- Ubuntu 22.04 Desktop
+- `sudo apt install ros-humble-desktop`
+- Node.js 18+ (for UI development)
 
----
-
-## 🧠 System Architecture Overview
-
-```
-Frontend (Next.js UI)
-    ↓ WebSocket / REST APIs
-OmegaOS Service Orchestrator
-    ↓
-Go Lighting Server (8082)
-Python Backend (movement, video, sensors)
-    ↓
-Raspberry Pi 4B Hardware Layer
-```
-
-### Subsystems:
-
-- **OmegaOS Service Orchestrator** - Unified service management
-- **Movement Engine V2** - Advanced motor control with profiles
-- **Lighting Engine (Go + Python)** - LED pattern control
-- **Video Streaming Server** - Real-time camera feed
-- **Hybrid System Manager** - Multi-platform support
-- **Network Wizard** - AP/Client mode switching
-- **Diagnostics + Health Monitoring** - System health tracking
-- **Modular Communication Layers** - WebSocket + REST APIs
-- **Autonomy-Ready Hooks** - ROS 2 integration
-
-Each subsystem is isolated, documented, and future-extendable.
+### Jetson Orin Nano (optional)
+- JetPack 5.x with ROS2 Humble
+- CUDA 11.4+, PyTorch, Ultralytics YOLOv8
+- Tailscale for VPN connectivity to the Pi
 
 ---
 
-## 📋 Service Management (OmegaOS)
+## Installation
 
-Omega-1 uses **OmegaOS Service Orchestrator** for unified service management.
+### 1. Clone the Repository
 
-### Pre-configured Services
-
-1. **movement_ws_server** - Movement WebSocket (autostart, always restart)
-2. **video_server** - Video streaming (autostart, on-failure restart)
-3. **main_api** - FastAPI server (autostart, always restart)
-4. **ultrasonic_ws_server** - Ultrasonic sensors (autostart, on-failure restart)
-5. **line_tracking_ws_server** - Line tracker (autostart, on-failure restart)
-6. **lighting_server** - LED control (manual start, no restart)
-7. **ros_core** - ROS 2 Docker (manual start, on-failure restart)
-8. **gateway_api** - Gateway proxy (autostart, always restart)
-
-### Managing Services
-
-**Via Web UI:**
-- Navigate to `/services` page
-- Click Start/Stop/Restart buttons
-- View logs and health status
-
-**Via API:**
 ```bash
-# List services
-GET /api/services/list
-
-# Start service
-POST /api/services/start/{name}
-
-# Stop service
-POST /api/services/stop/{name}
-
-# Restart service
-POST /api/services/restart/{name}
-
-# View logs
-GET /api/services/logs/{name}?lines=100
-
-# Check health
-GET /api/services/health/{name}
+git clone https://github.com/your-org/Omega-Code.git ~/Desktop/Omega-Code
 ```
 
-**Via CLI:**
+### 2. Install Backend as Python Package
+
+Run once per machine. This makes `servers.robot_controller_backend.*` importable
+in ROS nodes without `sys.path` hacks:
+
 ```bash
-# Start orchestrator
+pip install -e ~/Desktop/Omega-Code/
+
+# Verify
+python3 -c "from servers.robot_controller_backend.movement.minimal_motor_control import Motor; print('OK')"
+```
+
+### 3. Create the Colcon Workspace
+
+```bash
+mkdir -p ~/omega_ws/src
+cd ~/omega_ws/src
+
+ln -s ~/Desktop/Omega-Code/ros/src/omega_robot      omega_robot
+ln -s ~/Desktop/Omega-Code/ros/src/omega_bringup    omega_bringup
+ln -s ~/Desktop/Omega-Code/ros/src/omega_interfaces omega_interfaces
+```
+
+### 4. Install ROS Dependencies
+
+```bash
+source /opt/ros/humble/setup.bash
+cd ~/omega_ws
+rosdep update
+rosdep install --from-paths src --ignore-src -r -y
+```
+
+### 5. Build
+
+```bash
+cd ~/omega_ws
+
+# omega_interfaces must build first (other packages depend on its messages)
+colcon build --packages-select omega_interfaces
+colcon build --packages-select omega_robot omega_bringup --symlink-install
+```
+
+`--symlink-install` means Python edits to node files are live immediately.
+
+### 6. Configure Environment
+
+Add to `~/.bashrc`:
+
+```bash
+# ROS2 Omega workspace
+source /opt/ros/humble/setup.bash
+source ~/omega_ws/install/setup.bash
+export ROS_DOMAIN_ID=42
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+# Pi:     export CYCLONEDDS_URI=file://$HOME/Desktop/Omega-Code/ros/src/omega_bringup/config/cyclonedds_pi.xml
+# Laptop: export CYCLONEDDS_URI=file://$HOME/Desktop/Omega-Code/ros/src/omega_bringup/config/cyclonedds_laptop.xml
+```
+
+Update the IP addresses in the CycloneDDS config files to match your network
+before launching.
+
+---
+
+## Running the Robot
+
+### Full Hybrid Stack (Pi, hardware mode)
+
+```bash
+# Terminal 1: ROS2 layer (motor, sensors, camera, TF)
+ros2 launch omega_bringup omega_hybrid.launch.py
+
+# Terminal 2: FastAPI backend (web UI bridge)
+cd ~/Desktop/Omega-Code/servers/robot_controller_backend
+python3 main_api.py
+
+# Terminal 3: (optional) Go LED server
+cd ~/Desktop/Omega-Code/servers/robot_controller_backend/controllers/lighting
+./start_lighting_server.sh
+```
+
+Or start everything via OmegaOS:
+
+```bash
+cd ~/Desktop/Omega-Code/servers/robot_controller_backend
 python3 -m omega_services.service_manager
-
-# Check service status
-curl http://localhost:8000/api/services/status/movement_ws_server
 ```
 
-See `servers/robot_controller_backend/omega_services/README.md` for complete documentation.
-
----
-
-## 🎥 Video Server (Real-Time Perception)
-
-**Tech:** Flask-SocketIO, OpenCV, Picamera2, V4L2, ArUco
-
-**Features:**
-
-- Live MJPEG video streaming  
-- Motion detection  
-- ArUco marker detection  
-- Object tracking (KCF)  
-- Hardware-aware performance tuning  
-- Automatic camera fallback  
-- Frame buffering + overlay system  
-- Diagnostic module (`hw_check.py`)
-
-> If the camera fails, Omega-1 self-diagnoses and prints repair instructions.
-
-**Endpoints:**
-- `GET /video_feed` - Main MJPEG stream
-- `GET /video_feed_low` - Low quality (320x240)
-- `GET /video_feed_high` - High quality (1280x720)
-- `GET /health` - Health check with camera status
-- `GET /snapshot` - Single frame capture
-- `POST /recording/start` - Start video recording
-- `POST /recording/stop` - Stop recording
-
-**Start:**
-```bash
-python video/video_server.py
-```
-
----
-
-## 💡 Lighting Engine (Go + Python Hybrid)
-
-**Tech:** Go WebSocket server + Python rpi_ws281x
-
-**Capabilities:**
-
-- 13+ lighting patterns (rainbow, aurora, matrix, fire, rave, breathing, **omega_signature**)  
-- Omega Technologies custom theme (purple/red cyberpunk palette)  
-- Real-time WebSocket control  
-- Hardware fallback mode  
-- Ultra-low latency LED updates  
-- Pattern dispatching + color caching  
-- REST + WS control
-
-**Custom Omega Patterns:**
-- `omega_signature` - Brand signature pattern (purple/red pulsing)
-
-**Start:**
-```bash
-# Go WebSocket server
-go run controllers/lighting/main_lighting.go
-
-# Or via orchestrator
-curl -X POST http://localhost:8000/api/services/start/lighting_server
-```
-
----
-
-## 🌐 Network Setup
-
-Omega-1 includes **two network management tools**:
-
-### Omega-NetToggle (Recommended for Recovery)
-
-**Clean network recovery + AP mode script** - Best for fixing broken WiFi:
+### Motor + Sensors Only (Pi, minimal)
 
 ```bash
-# Restore normal WiFi mode (recover from breakage)
-sudo omega-nettoggle restore
-
-# Enable AP mode
-sudo omega-nettoggle ap
-
-# Show network diagnostics
-sudo omega-nettoggle status
+ros2 launch omega_bringup omega_minimal.launch.py
 ```
 
-**Features:**
-- ✅ Complete WiFi recovery (driver reload, NetworkManager restart)
-- ✅ Clean AP mode switching
-- ✅ Safety backups + comprehensive logging
-- ✅ NetworkManager compatible (Raspberry Pi OS Bookworm)
-
-See `servers/robot_controller_backend/network/OMEGA_NETTOGGLE.md` for complete documentation.
-
-### Network Setup Wizard (Full Configuration)
-
-**Comprehensive network configuration** - Best for initial setup:
+### From the Laptop — Observe and Control
 
 ```bash
-# Enable AP mode
-sudo omega-network ap
-
-# Enable client mode
-sudo omega-network client
-
-# Scan and connect
-sudo omega-network wifi-scan
-sudo omega-network wifi-connect "YourWiFi" "password"
+ros2 topic list
+ros2 topic echo /odom
+ros2 topic echo /omega/ultrasonic
+ros2 topic echo /omega/motor_state
 ```
-
-**Via Web UI:**
-Navigate to `/network` page for visual network management.
-
-See `servers/robot_controller_backend/network/README.md` for complete documentation.
 
 ---
 
-## 🔧 Configuration
+## Simulation Mode
 
-### Environment Variables
-
-Key variables in `.env`:
+No hardware required. Runs on any Ubuntu machine with ROS2 Humble.
 
 ```bash
-# Network
-PI_IP=192.168.1.100
-TAILSCALE_IP_PI=100.x.x.x
-
-# Ports
-PORT_MOVEMENT=8081
-VIDEO_PORT=5000
-PORT_ULTRASONIC=8080
-
-# Camera
-CAMERA_BACKEND=picamera2
-CAMERA_WIDTH=640
-CAMERA_HEIGHT=480
-CAMERA_FPS=30
-
-# Hardware
-USE_RPI=1
-ROBOT_SIM=0  # Set to 1 for development without hardware
+ros2 launch omega_bringup omega_sim.launch.py
 ```
 
-### Service Registry
-
-Edit `servers/robot_controller_backend/omega_services/service_registry.json` to:
-- Add new services
-- Change autostart settings
-- Modify restart policies
-- Update health checks
+All hardware writes are no-ops. Sensors return synthetic data.
+The camera publishes a scrolling test pattern.
 
 ---
 
-## 🛠️ Troubleshooting
+## Manual Control
 
-### Services Won't Start
-
-1. **Check logs:**
-   ```bash
-   # Orchestrator logs
-   sudo journalctl -u omega-orchestrator -f
-   
-   # Service logs
-   tail -f /var/log/omega/{service_name}.stdout.log
-   tail -f /var/log/omega/{service_name}.stderr.log
-   ```
-
-2. **Check permissions:**
-   ```bash
-   # GPIO access
-   sudo chown root:gpio /dev/gpiochip0
-   sudo chmod g+rw /dev/gpiochip0
-   ```
-
-3. **Verify dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   go mod download
-   ```
-
-### Camera Not Working
-
-1. **Run diagnostics:**
-   ```bash
-   python video/hw_check.py
-   ```
-
-2. **Check camera:**
-   ```bash
-   vcgencmd get_camera
-   libcamera-still -o test.jpg
-   ```
-
-3. **Verify backend:**
-   ```bash
-   # Check .env
-   CAMERA_BACKEND=picamera2
-   CAMERA_DEVICE=/dev/video0
-   ```
-
-### Network Issues
-
-1. **Check network status:**
-   ```bash
-   sudo omega-network status
-   ```
-
-2. **Restart network services:**
-   ```bash
-   sudo systemctl restart hostapd
-   sudo systemctl restart dnsmasq
-   ```
-
-### Web UI Not Connecting
-
-1. **Check backend is running:**
-   ```bash
-   curl http://localhost:8000/health
-   ```
-
-2. **Verify CORS settings:**
-   ```bash
-   # In .env
-   ORIGIN_ALLOW=http://localhost:3000,http://omega1.local:3000
-   ```
-
-3. **Check firewall:**
-   ```bash
-   sudo ufw allow 8000/tcp
-   sudo ufw allow 3000/tcp
-   ```
-
----
-
-## 📚 Documentation
-
-- **Service Orchestrator:** `servers/robot_controller_backend/omega_services/README.md`
-- **Network Wizard:** `servers/robot_controller_backend/network/README.md`
-- **Backend API:** `servers/robot_controller_backend/README.md`
-- **Video Server:** `servers/robot_controller_backend/video/README.md`
-- **Movement V2:** `servers/robot_controller_backend/movement/MOVEMENT_V2_SUMMARY.md`
-
----
-
-## 🧪 Testing
+All velocity values are normalised to `[-1.0, 1.0]`:
 
 ```bash
-# Python tests
-cd servers/robot_controller_backend
-pytest tests/
+# Drive forward at 50% speed
+ros2 topic pub --once /cmd_vel geometry_msgs/Twist \
+  '{linear: {x: 0.5}, angular: {z: 0.0}}'
 
-# Go tests
-go test ./...
+# Rotate left in-place
+ros2 topic pub --once /cmd_vel geometry_msgs/Twist \
+  '{linear: {x: 0.0}, angular: {z: 0.6}}'
 
-# Frontend tests
-cd ui/robot-controller-ui
-npm test
+# Stop
+ros2 topic pub --once /cmd_vel geometry_msgs/Twist '{}'
+
+# Continuous stream at 10 Hz (until Ctrl+C)
+ros2 topic pub --rate 10 /cmd_vel geometry_msgs/Twist \
+  '{linear: {x: 0.3}, angular: {z: 0.2}}'
 ```
 
 ---
 
-## 📦 Deployment
-
-### Production Setup
-
-1. **Install orchestrator:**
-   ```bash
-   cd servers/robot_controller_backend/omega_services
-   sudo ./install.sh
-   ```
-
-2. **Enable services:**
-   ```bash
-   sudo systemctl enable omega-orchestrator
-   sudo systemctl start omega-orchestrator
-   ```
-
-3. **Configure network:**
-   ```bash
-   sudo omega-network ap  # For field use
-   # or
-   sudo omega-network client  # For home use
-   ```
-
-4. **Access Web UI:**
-   - Deploy frontend to Vercel or run on Pi
-   - Navigate to `http://omega1.local:3000`
-
----
-
-## 🎯 Development
-
-### Running in Development Mode
+## Testing
 
 ```bash
-# Set simulation mode (no hardware)
-export ROBOT_SIM=1
+# Check node graph
+ros2 node list
+ros2 node info /omega_motor_controller
 
-# Run services individually
-python movement/movement_ws_server.py
-python video/video_server.py
-uvicorn main_api:app --reload
+# Topic rates
+ros2 topic hz /odom                               # ~50 Hz
+ros2 topic hz /omega/camera/image_raw/compressed  # ~30 Hz
+ros2 topic hz /omega/ultrasonic                   # ~10 Hz
+
+# TF tree (creates frames.pdf)
+ros2 run tf2_tools view_frames
+
+# Run unit tests
+cd ~/omega_ws
+colcon test --packages-select omega_robot
+colcon test-result --verbose
 ```
 
-### Adding New Services
+---
 
-1. **Add to service registry:**
-   ```json
-   {
-     "name": "my_service",
-     "cmd": "python3",
-     "args": ["my_service.py"],
-     "autostart": true,
-     "restart_policy": "always"
-   }
-   ```
+## Multi-Machine Setup
 
-2. **Add health check** (optional):
-   ```python
-   # In omega_services/health_checks.py
-   def my_service_check():
-       return {"healthy": True, "message": "OK"}
-   ```
+### Requirements
+- Same `ROS_DOMAIN_ID` on all machines
+- Same `RMW_IMPLEMENTATION` on all machines
+- Correct peer IPs in CycloneDDS XML config
+- All machines reachable (same LAN or Tailscale)
+
+### Verify Cross-Machine Communication
+
+```bash
+# Pi: start nodes
+ros2 launch omega_bringup omega_minimal.launch.py
+
+# Laptop: confirm Pi's topics are visible
+ros2 topic list        # should show /omega/ultrasonic, /odom, etc.
+ros2 topic echo /omega/ultrasonic
+```
+
+### Jetson Orin via Tailscale
+
+The Jetson connects via Tailscale VPN (`100.107.112.110`). This IP is already
+in the CycloneDDS config files. No additional setup needed beyond:
+
+```bash
+# On Jetson:
+export ROS_DOMAIN_ID=42
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI=file:///path/to/cyclonedds_jetson.xml
+ros2 run omega_robot orin_ai_brain
+```
 
 ---
 
-## 📄 License
+## Troubleshooting
 
-MIT License - See LICENSE file for details.
+### Nodes on Pi not visible from laptop
+1. `echo $ROS_DOMAIN_ID` — must match on both machines
+2. `echo $RMW_IMPLEMENTATION` — must be `rmw_cyclonedds_cpp`
+3. Peer IPs in `cyclonedds_*.xml` must match actual network addresses
+4. Disable multicast: `<AllowMulticast>false</AllowMulticast>` in CycloneDDS config
+
+### Motors not responding
+```bash
+ros2 topic echo /omega/motor_state | python3 -c "import sys,json; [print(json.loads(l)['watchdog']) for l in sys.stdin]"
+# watchdog state "triggered" means no /cmd_vel received in 500 ms
+ros2 topic pub --once /cmd_vel geometry_msgs/Twist '{}'  # resets watchdog
+```
+
+### I2C / PCA9685 not found
+```bash
+i2cdetect -y 1  # PCA9685 should appear at 0x40
+sudo modprobe i2c-dev
+```
+
+### Camera not publishing
+```bash
+ros2 topic hz /omega/camera/image_raw/compressed  # 0 Hz = not publishing
+python3 -c "from picamera2 import Picamera2; c = Picamera2(); print('OK')"
+v4l2-ctl --list-devices  # fallback V4L2
+```
+
+### `Package 'omega_robot' not found`
+```bash
+source /opt/ros/humble/setup.bash
+source ~/omega_ws/install/setup.bash
+```
+
+### `ImportError: No module named 'servers'`
+```bash
+pip install -e ~/Desktop/Omega-Code/
+```
+
+### Build error: omega_interfaces messages not found
+```bash
+# Build interfaces first
+colcon build --packages-select omega_interfaces
+source ~/omega_ws/install/setup.bash
+colcon build --packages-select omega_robot
+```
 
 ---
 
-## 🤝 Contributing
+## Overengineering to Remove
 
-Contributions welcome! Please read CONTRIBUTING.md for guidelines.
-
----
-
-## 📞 Support
-
-- **Issues:** GitHub Issues
-- **Documentation:** See `/docs` directory
-- **Wiki:** GitHub Wiki (coming soon)
+| Item | Problem | Action |
+|---|---|---|
+| `sensors/ultrasonic_ws_server.py` | Python duplicate of `main_ultrasonic.go` | Delete it |
+| OmegaOS PID management | Reinvents systemd | Delegate to `systemctl`; keep web UI layer |
+| 7 open ports | Firewall complexity, UI coupling | Route all WS through FastAPI port 8000 |
+| PYTHONPATH in launch files | Fragile, breaks on path changes | Replaced by `pip install -e .` |
 
 ---
 
-**Built with ❤️ by Omega Technologies**
+## Roadmap
+
+### Near-term
+- **Wheel encoders** — AS5600 magnetic encoders → accurate `/odom` → enable nav2
+- **Consolidate ports** — all WebSocket traffic through port 8000 via FastAPI path routing
+
+### Medium-term
+- **nav2** — plug in once encoders + lidar are available; TF tree is already correct
+- **slam_toolbox** — add RPLIDAR A1 (~$100), get 2D maps immediately
+
+### Long-term
+- **Jetson AI perception** — complete `orin_ai_brain.py` with YOLOv8 + `/omega/detections`
+- **nav2 behavior trees** — use existing action server scaffolding (`navigate_to_goal_action.py`, `obstacle_avoidance_action.py`)
+- **Multi-robot coordination** — `ros2_domain_bridge` for Pi ↔ Jetson isolation
+
+---
+
+## Architecture Decision Log
+
+| Decision | Rationale |
+|---|---|
+| Keep Next.js UI | Browser-native WebSocket; no ROS on client |
+| FastAPI embeds rclpy | Single entry point; no additional bridge process |
+| Go lighting server stays | LED timing is critical; goroutines > rclpy timers |
+| MJPEG separate from ROS camera | Avoids two-consumer camera conflicts on Pi |
+| Dead-reckoning odom with large covariance | Honest uncertainty until encoders added |
+| CycloneDDS unicast-only | Hotspot APs drop multicast; static peers is reliable |
+| omega_bringup is launch-only | Nodes must not depend on their own launch config |
+| pip install -e . for backend | Cleaner than sys.path hacks; works in all envs |

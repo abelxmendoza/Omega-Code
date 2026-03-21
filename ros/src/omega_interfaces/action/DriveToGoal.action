@@ -1,0 +1,17 @@
+# Goal: drive to a 2D position relative to current pose
+float32 x_m          # metres forward
+float32 y_m          # metres lateral
+float32 heading_rad  # desired final heading (NaN = don't care)
+float32 tolerance_m  # arrival tolerance in metres (default 0.05)
+---
+# Result
+bool success
+string message
+float32 final_x_m
+float32 final_y_m
+float32 final_heading_rad
+---
+# Feedback
+float32 distance_remaining_m
+float32 heading_error_rad
+string phase   # "rotating" | "driving" | "final_adjust" | "done"

@@ -1,0 +1,8 @@
+# Request: set velocity directly via REST (alternative to /cmd_vel topic)
+float32 linear_x     # m/s normalised [-1.0, 1.0]
+float32 angular_z    # rad/s normalised [-1.0, 1.0]
+float32 duration_sec # 0.0 = indefinite
+---
+# Response
+bool success
+string message

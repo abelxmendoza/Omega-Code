@@ -20,6 +20,11 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            # --- Hybrid architecture nodes (new) ---
+            'motor_controller = omega_robot.motor_controller_node:main',
+            'sensor_node = omega_robot.sensor_node:main',
+            'camera_publisher_node = omega_robot.camera_publisher_node:main',
+            # --- Legacy nodes (kept for compatibility) ---
             'telemetry_publisher = omega_robot.telemetry_publisher:main',
             'telemetry_listener = omega_robot.telemetry_listener:main',
             'sensor_data_publisher = omega_robot.sensor_data_publisher:main',

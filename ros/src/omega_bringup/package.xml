@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>omega_bringup</name>
+  <version>0.1.0</version>
+  <description>
+    Launch files, parameters, and system configuration for Omega-1.
+    This package contains no executable code -- only launch files and config.
+  </description>
+  <maintainer email="abelxmendoza@gmail.com">Abel Mendoza</maintainer>
+  <license>BSD</license>
+
+  <exec_depend>omega_robot</exec_depend>
+  <exec_depend>omega_interfaces</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
