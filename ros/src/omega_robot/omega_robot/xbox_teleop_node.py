@@ -48,7 +48,7 @@ from typing import Optional
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, Vector3
 
 # ---------------------------------------------------------------------------
 # evdev import (optional — node falls back to zero-velocity if absent)
@@ -68,12 +68,14 @@ except ImportError:
 # (valid for Xbox One S/X controller via xpad or bluetooth on Linux)
 # ---------------------------------------------------------------------------
 if _evdev_ok:
-    _ABS_LX  = ecodes.ABS_X     # Left stick horizontal
-    _ABS_LY  = ecodes.ABS_Y     # Left stick vertical (unused in GTA-style)
+    _ABS_LX  = ecodes.ABS_X     # Left stick horizontal  → drive angular
+    _ABS_LY  = ecodes.ABS_Y     # Left stick vertical    (unused for drive)
+    _ABS_RX  = ecodes.ABS_RX    # Right stick horizontal → servo yaw
+    _ABS_RY  = ecodes.ABS_RY    # Right stick vertical   → servo pitch
     _ABS_LT  = ecodes.ABS_Z     # Left trigger  (0 = released, max = full)
     _ABS_RT  = ecodes.ABS_RZ    # Right trigger (0 = released, max = full)
-    _ABS_DX  = ecodes.ABS_HAT0X # D-Pad horizontal (-1=left, +1=right)
-    _ABS_DY  = ecodes.ABS_HAT0Y # D-Pad vertical   (-1=up,   +1=down)
+    _ABS_DX  = ecodes.ABS_HAT0X # D-Pad horizontal (-1=left,  +1=right) → servo yaw step
+    _ABS_DY  = ecodes.ABS_HAT0Y # D-Pad vertical   (-1=up,    +1=down)  → servo pitch step
     _BTN_A   = ecodes.BTN_SOUTH  # A / Cross (emergency stop while held)
     _BTN_B   = ecodes.BTN_EAST   # B / Circle (horn)
     _BTN_X   = ecodes.BTN_NORTH  # X / Square
@@ -121,14 +123,19 @@ class XboxTeleopNode(Node):
         self._dead_zone: float   = p('dead_zone').value
         self._watchdog_s: float  = p('watchdog_s').value
 
-        # ---- publisher ------------------------------------------------
-        self._cmd_pub = self.create_publisher(Twist, '/cmd_vel', _reliable_qos())
+        # ---- publishers -----------------------------------------------
+        self._cmd_pub   = self.create_publisher(Twist,   '/cmd_vel',               _reliable_qos())
+        self._servo_pub = self.create_publisher(Vector3, '/omega/servo_increment',  _reliable_qos())
 
         # ---- controller state (protected by lock) ---------------------
         self._lock = threading.Lock()
-        self._lin: float   = 0.0   # [-1, 1] normalised
-        self._ang: float   = 0.0   # [-1, 1] normalised
+        self._lin: float   = 0.0   # [-1, 1] normalised drive
+        self._ang: float   = 0.0   # [-1, 1] normalised drive
         self._estop: bool  = False  # A button held
+        # Servo: right stick (continuous) and D-pad (discrete steps)
+        # Values are normalised [-1, 1] and published each timer tick
+        self._srv_yaw: float   = 0.0
+        self._srv_pitch: float = 0.0
         self._last_event_t: float = time.monotonic()
         self._connected: bool = False
 
@@ -267,15 +274,41 @@ class XboxTeleopNode(Node):
                 self._lin = self._combine_triggers(self._forward, rev)
 
         elif code == _ABS_LX:
-            # Left stick X → angular
+            # Left stick X → drive angular
             info = abs_caps.get(_ABS_LX)
             ang = self._norm_stick(event.value, info)
             with self._lock:
                 self._last_event_t = time.monotonic()
                 self._ang = -ang   # positive stick right → turn right (negative angular)
 
-        # D-Pad: store for future camera servo integration
-        # (no publisher wired yet)
+        elif code == _ABS_RX:
+            # Right stick X → servo yaw (continuous, proportional)
+            info = abs_caps.get(_ABS_RX)
+            yaw = self._norm_stick(event.value, info)
+            with self._lock:
+                self._last_event_t = time.monotonic()
+                self._srv_yaw = yaw   # positive = pan right
+
+        elif code == _ABS_RY:
+            # Right stick Y → servo pitch (continuous, proportional)
+            # Stick down (+) → pitch down (-) so invert
+            info = abs_caps.get(_ABS_RY)
+            pitch = self._norm_stick(event.value, info)
+            with self._lock:
+                self._last_event_t = time.monotonic()
+                self._srv_pitch = -pitch
+
+        elif code == _ABS_DX:
+            # D-Pad left/right → servo yaw (discrete step, one pulse per press)
+            with self._lock:
+                self._last_event_t = time.monotonic()
+                self._srv_yaw = float(event.value)  # -1, 0, or +1
+
+        elif code == _ABS_DY:
+            # D-Pad up/down → servo pitch (up = -1 evdev, map to +1 pitch up)
+            with self._lock:
+                self._last_event_t = time.monotonic()
+                self._srv_pitch = -float(event.value)  # invert: HAT0Y -1 = up
 
     def _handle_key(self, event) -> None:
         if event.code == _BTN_A:
@@ -344,17 +377,26 @@ class XboxTeleopNode(Node):
 
     def _publish_cmd(self) -> None:
         with self._lock:
-            lin = self._lin
-            ang = self._ang
+            lin  = self._lin
+            ang  = self._ang
             stop = self._estop
+            yaw   = self._srv_yaw
+            pitch = self._srv_pitch
 
         if stop:
             lin, ang = 0.0, 0.0
 
-        msg = Twist()
-        msg.linear.x  = float(lin) * self._max_lin
-        msg.angular.z = float(ang) * self._max_ang
-        self._cmd_pub.publish(msg)
+        # /cmd_vel
+        twist = Twist()
+        twist.linear.x  = float(lin) * self._max_lin
+        twist.angular.z = float(ang) * self._max_ang
+        self._cmd_pub.publish(twist)
+
+        # /omega/servo_increment — always publish (zero = hold position)
+        srv = Vector3()
+        srv.x = float(yaw)
+        srv.y = float(pitch)
+        self._servo_pub.publish(srv)
 
     def _watchdog_check(self) -> None:
         """Zero velocity if controller has gone silent (disconnect/timeout)."""
@@ -364,8 +406,10 @@ class XboxTeleopNode(Node):
 
         if connected and stale:
             with self._lock:
-                self._lin = 0.0
-                self._ang = 0.0
+                self._lin       = 0.0
+                self._ang       = 0.0
+                self._srv_yaw   = 0.0
+                self._srv_pitch = 0.0
             self.get_logger().warning(
                 f'No controller event for >{self._watchdog_s}s -- zeroing velocity'
             )

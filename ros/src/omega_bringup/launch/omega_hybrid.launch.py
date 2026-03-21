@@ -53,6 +53,17 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('pin_left',           default_value='14'),
         DeclareLaunchArgument('pin_center',         default_value='15'),
         DeclareLaunchArgument('pin_right',          default_value='23'),
+        # Servo / pan-tilt parameters
+        DeclareLaunchArgument('launch_servo',       default_value='true'),
+        DeclareLaunchArgument('yaw_ch',             default_value='8'),
+        DeclareLaunchArgument('pitch_ch',           default_value='9'),
+        DeclareLaunchArgument('yaw_center_us',      default_value='1500'),
+        DeclareLaunchArgument('pitch_center_us',    default_value='1500'),
+        DeclareLaunchArgument('yaw_min_us',         default_value='1000'),
+        DeclareLaunchArgument('yaw_max_us',         default_value='2000'),
+        DeclareLaunchArgument('pitch_min_us',       default_value='1300'),
+        DeclareLaunchArgument('pitch_max_us',       default_value='1700'),
+        DeclareLaunchArgument('servo_scale_us',     default_value='15.0'),
         # TF geometry (metres) -- adjust to your robot
         # camera: x=forward, z=up from base_link origin
         DeclareLaunchArgument('camera_x',           default_value='0.08'),
@@ -130,6 +141,31 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     # ------------------------------------------------------------------
+    # Servo controller (pan-tilt gimbal on channels 8 and 9)
+    # ------------------------------------------------------------------
+    servo_node = Node(
+        package='omega_robot',
+        executable='servo_controller',
+        name='omega_servo_controller',
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('launch_servo')),
+        parameters=[{
+            'sim_mode':         sim,
+            'yaw_ch':           LaunchConfiguration('yaw_ch'),
+            'pitch_ch':         LaunchConfiguration('pitch_ch'),
+            'yaw_center_us':    LaunchConfiguration('yaw_center_us'),
+            'pitch_center_us':  LaunchConfiguration('pitch_center_us'),
+            'yaw_min_us':       LaunchConfiguration('yaw_min_us'),
+            'yaw_max_us':       LaunchConfiguration('yaw_max_us'),
+            'pitch_min_us':     LaunchConfiguration('pitch_min_us'),
+            'pitch_max_us':     LaunchConfiguration('pitch_max_us'),
+            'scale_us':         LaunchConfiguration('servo_scale_us'),
+            'rate_hz':          20.0,
+            'deadzone':         0.10,
+        }],
+    )
+
+    # ------------------------------------------------------------------
     # Capability detector (publishes /omega/capabilities)
     # ------------------------------------------------------------------
     capability_node = Node(
@@ -179,6 +215,7 @@ def generate_launch_description() -> LaunchDescription:
         motor_node,
         sensor_node,
         camera_node,
+        servo_node,
         capability_node,
         tf_camera,
         tf_ultrasonic,
