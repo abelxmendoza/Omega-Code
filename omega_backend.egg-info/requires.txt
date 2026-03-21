@@ -1,0 +1,11 @@
+websockets>=12.0
+fastapi
+uvicorn
+smbus2
+
+[pi]
+lgpio
+picamera2
+
+[ros]
+opencv-python
