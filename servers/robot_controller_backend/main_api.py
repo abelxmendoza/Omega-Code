@@ -1,16 +1,28 @@
 # main_api.py
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from api import router as api_router
 from api.security_middleware import create_security_middleware_stack
 from api.error_handlers import global_exception_handler, http_exception_handler
+from api.ros_bridge import OmegaRosBridge
 import uvicorn
 import logging
 import os
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Omega Robot Controller API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    bridge = OmegaRosBridge.create()
+    app.state.ros_bridge = bridge
+    logger.info('ROS bridge active=%s', bridge.is_active)
+    yield
+    bridge.shutdown()
+
+
+app = FastAPI(title="Omega Robot Controller API", lifespan=lifespan)
 
 # Load security configuration from config manager (if available)
 try:

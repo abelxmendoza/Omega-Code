@@ -3,7 +3,7 @@
 System Capability Detector Node for Omega Robot
 
 Auto-detects system capabilities and publishes capability profile:
-- Detects device type (MacBook, Lenovo Linux, Jetson Orin Nano)
+- Detects device type (Raspberry Pi 4, Alienware Aurora, Jetson Orin Nano)
 - Checks for CUDA/GPU availability
 - Checks for ROS2 development tools
 - Determines maximum capabilities
@@ -54,6 +54,8 @@ class CapabilityDetector(Node):
             "os": platform.system(),
             "os_version": platform.version(),
             "is_jetson": self.is_jetson(),
+            "is_raspberry_pi": self.is_raspberry_pi(),
+            "is_alienware": self.is_alienware(),
             "cuda": self.check_cuda(),
             "ros2_dev": self.check_ros_tools(),
             "ml_capable": False,
@@ -69,6 +71,9 @@ class CapabilityDetector(Node):
             "gpu_available": False,
             "gpu_name": None,
             "cpu_count": os.cpu_count() or 1,
+            "sim": True,
+            "i2c": False,
+            "gpio": False,
         }
 
         # Jetson mode (Profile C - Omega Mode)
@@ -83,23 +88,47 @@ class CapabilityDetector(Node):
                 "profile_mode": "jetson",
                 "gpu_available": True,
                 "gpu_name": self.get_gpu_name(),
+                "sim": False,
+                "i2c": False,
+                "gpio": False,
             })
             self.get_logger().info("✅ Jetson Orin Nano detected - Full autonomy mode enabled")
 
-        # Lenovo Linux mode (Profile B - Dev Mode)
-        elif profile["ros2_dev"] and platform.system() == "Linux" and not profile["is_jetson"]:
+        # Raspberry Pi mode (Profile R - Hardware Mode)
+        elif self.is_raspberry_pi():
             profile.update({
-                "slam_capable": True,
-                "ml_capable": False,  # Can run CPU YOLO but slow
-                "face_recognition": True,  # CPU-based, slow
-                "yolo": False,  # Disabled by default (too slow)
-                "max_resolution": "1280x720",
-                "max_fps": 25,
-                "profile_mode": "lenovo",
+                "ml_capable": False,
+                "slam_capable": False,
+                "face_recognition": False,
+                "yolo": False,
+                "max_resolution": "640x480",
+                "max_fps": 30,
+                "profile_mode": "raspberry_pi",
+                "sim": False,
+                "i2c": True,
+                "gpio": True,
             })
-            self.get_logger().info("✅ Lenovo Linux detected - Dev mode enabled")
+            self.get_logger().info("✅ Raspberry Pi 4 detected - Hardware mode enabled")
 
-        # MacBook mode (Profile A - Light Mode)
+        # Alienware Aurora mode (Profile A - Dev Mode)
+        elif self.is_alienware():
+            profile.update({
+                "ml_capable": True,
+                "slam_capable": False,
+                "face_recognition": False,
+                "yolo": False,
+                "max_resolution": "1280x720",
+                "max_fps": 30,
+                "profile_mode": "alienware",
+                "gpu_available": True,
+                "gpu_name": self.get_gpu_name(),
+                "sim": True,
+                "i2c": False,
+                "gpio": False,
+            })
+            self.get_logger().info("✅ Alienware Aurora detected - Dev mode enabled")
+
+        # Unknown Linux fallback
         else:
             profile.update({
                 "slam_capable": False,
@@ -108,9 +137,15 @@ class CapabilityDetector(Node):
                 "yolo": False,
                 "max_resolution": "640x480",
                 "max_fps": 20,
-                "profile_mode": "mac",
+                "profile_mode": "unknown_linux",
+                "sim": True,
+                "i2c": False,
+                "gpio": False,
             })
-            self.get_logger().info("✅ MacBook/Light system detected - Light mode enabled")
+            self.get_logger().warning(
+                f"Unknown Linux system (node={platform.node()}, arch={platform.machine()}) "
+                "- sim mode enabled. Add detection in is_raspberry_pi() or is_alienware()."
+            )
 
         # Save profile to temp file for launch files
         self.save_profile(profile)
@@ -127,20 +162,75 @@ class CapabilityDetector(Node):
                     model = f.read()
                     if "NVIDIA" in model or "Jetson" in model:
                         return True
-            
+
             # Check for Tegra-specific files
             if os.path.exists("/sys/devices/soc0/family"):
                 with open("/sys/devices/soc0/family", "r") as f:
                     if "Tegra" in f.read():
                         return True
-            
+
             # Check environment variables
             if os.getenv("JETSON") or os.getenv("JETSON_MODEL"):
                 return True
-                
+
         except Exception as e:
             self.get_logger().debug(f"Error checking Jetson: {e}")
-        
+
+        return False
+
+    def is_raspberry_pi(self):
+        """Check if running on Raspberry Pi hardware."""
+        try:
+            # Primary: /proc/device-tree/model (most reliable on Pi)
+            if os.path.exists("/proc/device-tree/model"):
+                with open("/proc/device-tree/model", "r") as f:
+                    if "Raspberry Pi" in f.read():
+                        return True
+
+            # /proc/cpuinfo Model line
+            if os.path.exists("/proc/cpuinfo"):
+                with open("/proc/cpuinfo", "r") as f:
+                    for line in f:
+                        if line.startswith("Model") and "Raspberry Pi" in line:
+                            return True
+
+            # Hostname set on omegaOne
+            if platform.node() == "omegaOne":
+                return True
+
+            # aarch64 with raspi kernel
+            if platform.machine() == "aarch64" and "raspi" in platform.version():
+                return True
+
+        except Exception as e:
+            self.get_logger().debug(f"Error checking Raspberry Pi: {e}")
+
+        return False
+
+    def is_alienware(self):
+        """Check if running on Alienware Aurora hardware (Scythe dev machine)."""
+        try:
+            # DMI chassis vendor
+            vendor_path = "/sys/class/dmi/id/chassis_vendor"
+            if os.path.exists(vendor_path):
+                with open(vendor_path, "r") as f:
+                    if "Alienware" in f.read():
+                        return True
+
+            # DMI product name
+            product_path = "/sys/class/dmi/id/product_name"
+            if os.path.exists(product_path):
+                with open(product_path, "r") as f:
+                    if "Alienware" in f.read():
+                        return True
+
+            # Hostname set on Scythe
+            if platform.node() == "scythe":
+                return True
+
+        except Exception as e:
+            self.get_logger().debug(f"Error checking Alienware: {e}")
+
         return False
 
     def check_cuda(self):
