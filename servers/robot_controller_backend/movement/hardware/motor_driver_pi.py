@@ -44,12 +44,15 @@ class PiMotorDriver(BaseMotorDriver):
     # ------------------------------------------------------------------ #
 
     def left_upper_wheel(self, duty: int) -> None:
+        # ch0/ch1 are swapped relative to the other three wheels: ch1 is the
+        # driving channel (PWM) and ch0 is the return channel.  This matches
+        # the physical wiring on this specific Freenove hat.
         if duty > 0:
-            self.pca9685.set_motor_pwm(0, 0)
-            self.pca9685.set_motor_pwm(1, duty)
-        elif duty < 0:
             self.pca9685.set_motor_pwm(1, 0)
-            self.pca9685.set_motor_pwm(0, abs(duty))
+            self.pca9685.set_motor_pwm(0, duty)
+        elif duty < 0:
+            self.pca9685.set_motor_pwm(0, 0)
+            self.pca9685.set_motor_pwm(1, abs(duty))
         else:
             self.pca9685.set_motor_pwm(0, 4095)
             self.pca9685.set_motor_pwm(1, 4095)
