@@ -116,9 +116,13 @@ class PiMotorDriver(BaseMotorDriver):
 
         Positive = forward, negative = backward, 0 = stop.
         Trim offsets are applied before clamping.
+
+        Duty is negated here because the physical motor wiring drives the
+        wheels backward when the Freenove "forward" channel is active.
+        Negating at this level keeps all higher-level sign conventions intact.
         """
-        left  = max(-_MAX_DUTY, min(_MAX_DUTY, left_pwm  + self.trim_left))
-        right = max(-_MAX_DUTY, min(_MAX_DUTY, right_pwm + self.trim_right))
+        left  = max(-_MAX_DUTY, min(_MAX_DUTY, -left_pwm  + self.trim_left))
+        right = max(-_MAX_DUTY, min(_MAX_DUTY, -right_pwm + self.trim_right))
         self.set_motor_model(left, left, right, right)
 
     def stop(self) -> None:
