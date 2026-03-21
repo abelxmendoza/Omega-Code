@@ -218,11 +218,10 @@ class SensorNode(Node):
         self._bat_timer  = self.create_timer(bat_period,  self._publish_battery)
 
         self.get_logger().info(
-            'SensorNode ready [sim=%s us=%.1fHz line=%.1fHz bat=%.1fHz]',
-            self._sim,
-            p('ultrasonic_rate_hz').value,
-            p('line_rate_hz').value,
-            p('battery_rate_hz').value,
+            f'SensorNode ready [sim={self._sim} '
+            f'us={p("ultrasonic_rate_hz").value:.1f}Hz '
+            f'line={p("line_rate_hz").value:.1f}Hz '
+            f'bat={p("battery_rate_hz").value:.1f}Hz]'
         )
 
     # ------------------------------------------------------------------
@@ -251,7 +250,7 @@ class SensorNode(Node):
             ]
             for pin in pins:
                 _lgpio.gpio_claim_input(self._gpio_handle, pin)
-            self.get_logger().info('Line tracking GPIO initialised (pins %s)', pins)
+            self.get_logger().info(f'Line tracking GPIO initialised (pins {pins})')
         except Exception as exc:
             self.get_logger().error('Line tracking GPIO init failed: %s -- using sim', exc)
             self._gpio_handle = None
@@ -261,8 +260,9 @@ class SensorNode(Node):
             return
         try:
             self._adc = _ADS1115()
-            self.get_logger().info('ADS1115 ADC initialised (channel %d)',
-                                   self.get_parameter('ads1115_channel').value)
+            self.get_logger().info(
+                f'ADS1115 ADC initialised (channel {self.get_parameter("ads1115_channel").value})'
+            )
         except Exception as exc:
             self.get_logger().error('ADS1115 init failed: %s -- using sim', exc)
             self._adc = None

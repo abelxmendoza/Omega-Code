@@ -81,12 +81,19 @@ try:
     from servers.robot_controller_backend.movement.straight_drive_assist import (
         StraightDriveAssist,
     )
-    from servers.robot_controller_backend.movement.odometry import Odometry as OmegaOdometry
     _hw_available = True
 except ImportError as _e:
     logging.getLogger(__name__).warning(
         'Hardware modules not importable (%s). Node will run in forced sim_mode.', _e
     )
+
+# Odometry is pure Python — import it independently so it works in sim mode too.
+_odom_available = False
+try:
+    from servers.robot_controller_backend.movement.odometry import Odometry as OmegaOdometry
+    _odom_available = True
+except ImportError:
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +135,18 @@ class _NoopMotor:
 
     def set_trim(self, left: int = 0, right: int = 0):
         return {'left': left, 'right': right}
+
+
+class _NoopWatchdog:
+    """Silent drop-in for MovementWatchdog in sim mode."""
+    def kick(self) -> None:
+        pass
+
+    def should_stop(self) -> bool:
+        return False
+
+    def get_status(self) -> dict:
+        return {'state': 'ok', 'elapsed_since_update': 0.0, 'trigger_count': 0}
 
 
 # ---------------------------------------------------------------------------
@@ -207,17 +226,22 @@ class MotorControllerNode(Node):
         # ---- watchdog -------------------------------------------------
         # We call watchdog.kick() inside the /cmd_vel callback.
         # The control loop checks watchdog.should_stop() every cycle.
-        self._watchdog = MovementWatchdog(
-            timeout_sec=self._wd_timeout,
-            stop_callback=None,   # handled synchronously in control loop
-            enabled=True,
-        )
+        if self._sim:
+            self._watchdog = _NoopWatchdog()
+        else:
+            self._watchdog = MovementWatchdog(
+                timeout_sec=self._wd_timeout,
+                stop_callback=None,   # handled synchronously in control loop
+                enabled=True,
+            )
 
         # ---- odometry -------------------------------------------------
+        # OmegaOdometry is pure Python -- create it regardless of sim_mode
+        # so /odom always publishes (sim uses dead-reckoning from PWM targets).
         self._odom = OmegaOdometry(
             wheel_base=self._wheel_base,
             wheel_radius=self._wheel_radius,
-        ) if not self._sim else None
+        ) if _odom_available else None
 
         # ---- state -------------------------------------------------------
         # Target PWM values written by the subscription callback;
@@ -253,10 +277,10 @@ class MotorControllerNode(Node):
         self._state_timer = self.create_timer(0.10, self._publish_motor_state)
 
         self.get_logger().info(
-            'MotorControllerNode ready '
-            '[sim=%s wheel_base=%.3fm wheel_radius=%.3fm watchdog=%.2fs ramp=%s]',
-            self._sim, self._wheel_base, self._wheel_radius,
-            self._wd_timeout, self._ramp_enabled,
+            f'MotorControllerNode ready '
+            f'[sim={self._sim} wheel_base={self._wheel_base:.3f}m '
+            f'wheel_radius={self._wheel_radius:.3f}m '
+            f'watchdog={self._wd_timeout:.2f}s ramp={self._ramp_enabled}]'
         )
 
     # ------------------------------------------------------------------
