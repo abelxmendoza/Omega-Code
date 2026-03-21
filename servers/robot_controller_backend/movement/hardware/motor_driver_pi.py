@@ -1,7 +1,7 @@
 """
-Raspberry Pi Motor Driver — Freenove 4WD channel mapping
-=========================================================
-Channel layout (matches official Freenove motor.py exactly):
+Raspberry Pi Motor Driver — mirrors Freenove Ordinary_Car exactly
+==================================================================
+Channel layout (matches official Freenove motor.py):
 
   Wheel            Forward ch   Backward ch
   ---------------  -----------  ------------
@@ -25,38 +25,70 @@ set_pwm(left_pwm, right_pwm)
 
 from .base_motor_driver import BaseMotorDriver
 from .pca9685_real import PCA9685
-from servers.robot_controller_backend.hardware.pwm_singleton import get_pca
 
-# Freenove channel assignments
-_CH = {
-    'left_upper_fwd':  1,
-    'left_upper_bwd':  0,
-    'left_lower_fwd':  2,
-    'left_lower_bwd':  3,
-    'right_upper_fwd': 7,
-    'right_upper_bwd': 6,
-    'right_lower_fwd': 5,
-    'right_lower_bwd': 4,
-}
-
-_STOP_DUTY = 4095   # Freenove stop value (both channels high)
-_MAX_DUTY  = 4095
+_MAX_DUTY = 4095
 
 
 class PiMotorDriver(BaseMotorDriver):
     """
-    Real PCA9685 motor control on Raspberry Pi using Freenove channel mapping.
+    Real PCA9685 motor control on Raspberry Pi — mirrors Freenove Ordinary_Car.
     """
-
-    __slots__ = ("pca",)
 
     def __init__(self, trim_left: int = 0, trim_right: int = 0):
         super().__init__(trim_left, trim_right)
-        self.pca = get_pca(PCA9685, 0x40, debug=False)
-        self.pca.set_pwm_freq(50)
+        self.pca9685 = PCA9685()
+        self.pca9685.set_pwm_freq(50)
 
     # ------------------------------------------------------------------ #
-    # Core Freenove-style API                                             #
+    # Per-wheel methods (Freenove Ordinary_Car style)                     #
+    # ------------------------------------------------------------------ #
+
+    def left_upper_wheel(self, duty: int) -> None:
+        if duty > 0:
+            self.pca9685.set_motor_pwm(0, 0)
+            self.pca9685.set_motor_pwm(1, duty)
+        elif duty < 0:
+            self.pca9685.set_motor_pwm(1, 0)
+            self.pca9685.set_motor_pwm(0, abs(duty))
+        else:
+            self.pca9685.set_motor_pwm(0, 4095)
+            self.pca9685.set_motor_pwm(1, 4095)
+
+    def left_lower_wheel(self, duty: int) -> None:
+        if duty > 0:
+            self.pca9685.set_motor_pwm(3, 0)
+            self.pca9685.set_motor_pwm(2, duty)
+        elif duty < 0:
+            self.pca9685.set_motor_pwm(2, 0)
+            self.pca9685.set_motor_pwm(3, abs(duty))
+        else:
+            self.pca9685.set_motor_pwm(2, 4095)
+            self.pca9685.set_motor_pwm(3, 4095)
+
+    def right_upper_wheel(self, duty: int) -> None:
+        if duty > 0:
+            self.pca9685.set_motor_pwm(6, 0)
+            self.pca9685.set_motor_pwm(7, duty)
+        elif duty < 0:
+            self.pca9685.set_motor_pwm(7, 0)
+            self.pca9685.set_motor_pwm(6, abs(duty))
+        else:
+            self.pca9685.set_motor_pwm(6, 4095)
+            self.pca9685.set_motor_pwm(7, 4095)
+
+    def right_lower_wheel(self, duty: int) -> None:
+        if duty > 0:
+            self.pca9685.set_motor_pwm(4, 0)
+            self.pca9685.set_motor_pwm(5, duty)
+        elif duty < 0:
+            self.pca9685.set_motor_pwm(5, 0)
+            self.pca9685.set_motor_pwm(4, abs(duty))
+        else:
+            self.pca9685.set_motor_pwm(4, 4095)
+            self.pca9685.set_motor_pwm(5, 4095)
+
+    # ------------------------------------------------------------------ #
+    # High-level API                                                       #
     # ------------------------------------------------------------------ #
 
     def set_motor_model(self, duty1: int, duty2: int, duty3: int, duty4: int) -> None:
@@ -69,38 +101,18 @@ class PiMotorDriver(BaseMotorDriver):
             duty3: Right upper wheel
             duty4: Right lower wheel
         """
-        self._drive_wheel(duty1, _CH['left_upper_fwd'],  _CH['left_upper_bwd'])
-        self._drive_wheel(duty2, _CH['left_lower_fwd'],  _CH['left_lower_bwd'])
-        self._drive_wheel(duty3, _CH['right_upper_fwd'], _CH['right_upper_bwd'])
-        self._drive_wheel(duty4, _CH['right_lower_fwd'], _CH['right_lower_bwd'])
-
-    def _drive_wheel(self, duty: int, fwd_ch: int, bwd_ch: int) -> None:
-        """Apply a signed duty to one wheel's forward/backward channel pair."""
-        duty = max(-_MAX_DUTY, min(_MAX_DUTY, int(duty)))
-        if duty > 0:
-            # Forward: zero the backward channel, apply duty to forward channel
-            self.pca.set_motor_pwm(bwd_ch, 0)
-            self.pca.set_motor_pwm(fwd_ch, duty)
-        elif duty < 0:
-            # Backward: zero the forward channel, apply abs(duty) to backward channel
-            self.pca.set_motor_pwm(fwd_ch, 0)
-            self.pca.set_motor_pwm(bwd_ch, abs(duty))
-        else:
-            # Stop: both channels to 4095
-            self.pca.set_motor_pwm(fwd_ch, _STOP_DUTY)
-            self.pca.set_motor_pwm(bwd_ch, _STOP_DUTY)
-
-    # ------------------------------------------------------------------ #
-    # BaseMotorDriver interface                                            #
-    # ------------------------------------------------------------------ #
+        duty1 = max(-_MAX_DUTY, min(_MAX_DUTY, int(duty1)))
+        duty2 = max(-_MAX_DUTY, min(_MAX_DUTY, int(duty2)))
+        duty3 = max(-_MAX_DUTY, min(_MAX_DUTY, int(duty3)))
+        duty4 = max(-_MAX_DUTY, min(_MAX_DUTY, int(duty4)))
+        self.left_upper_wheel(duty1)
+        self.left_lower_wheel(duty2)
+        self.right_upper_wheel(duty3)
+        self.right_lower_wheel(duty4)
 
     def set_pwm(self, left_pwm: int, right_pwm: int) -> None:
         """
         Set left and right motor pairs with signed duty values.
-
-        Args:
-            left_pwm:  Signed duty for both left  wheels (-4095…4095)
-            right_pwm: Signed duty for both right wheels (-4095…4095)
 
         Positive = forward, negative = backward, 0 = stop.
         Trim offsets are applied before clamping.
