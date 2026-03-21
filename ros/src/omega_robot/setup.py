@@ -24,6 +24,7 @@ setup(
             'motor_controller = omega_robot.motor_controller_node:main',
             'sensor_node = omega_robot.sensor_node:main',
             'camera_publisher_node = omega_robot.camera_publisher_node:main',
+            'xbox_teleop = omega_robot.xbox_teleop_node:main',
             # --- Legacy nodes (kept for compatibility) ---
             'telemetry_publisher = omega_robot.telemetry_publisher:main',
             'telemetry_listener = omega_robot.telemetry_listener:main',
