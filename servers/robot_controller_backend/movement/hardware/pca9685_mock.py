@@ -45,3 +45,16 @@ class PCA9685:
         if self.debug:
             print(f"[MOCK PCA9685] Servo channel {channel}: pulse={pulse}us -> PWM={int(pulse_pwm)}")
 
+    # Freenove-compatible primary names (aliases)
+    def set_pwm_freq(self, freq: int) -> None:
+        self.setPWMFreq(freq)
+
+    def set_pwm(self, channel: int, on: int, off: int) -> None:
+        self.setPWM(channel, on, off)
+
+    def set_motor_pwm(self, channel: int, duty: int) -> None:
+        self.setMotorPwm(channel, duty)
+
+    def set_servo_pulse(self, channel: int, pulse: int) -> None:
+        self.setServoPulse(channel, pulse)
+

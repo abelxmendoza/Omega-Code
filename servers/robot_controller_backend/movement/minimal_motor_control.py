@@ -122,38 +122,17 @@ class Motor:
     def _set_lr(self, left_duty: int, right_duty: int) -> None:
         """
         Set left and right motor PWM values.
-        
+
         Args:
-            left_duty: PWM value for left motors (-4095 to 4095, signed)
-            right_duty: PWM value for right motors (-4095 to 4095, signed)
+            left_duty:  Signed PWM for left  motors (-4095…4095)
+            right_duty: Signed PWM for right motors (-4095…4095)
+
+        Positive = forward, negative = backward, 0 = stop.
+        The driver (PiMotorDriver) handles direction via signed values.
         """
-        # Clamp signed duty values
-        left_duty = self._clamp_duty(left_duty)
+        left_duty  = self._clamp_duty(left_duty)
         right_duty = self._clamp_duty(right_duty)
-        
-        # Convert signed duty to unsigned PWM
-        left_pwm = abs(left_duty) if left_duty != 0 else 0
-        right_pwm = abs(right_duty) if right_duty != 0 else 0
-        
-        # Direction flags for Pi motor driver
-        left_reverse = left_duty < 0
-        right_reverse = right_duty < 0
-        
-        # === VALIDATION LOGGING ===
-        print(
-            "[MOTOR-VALIDATION] "
-            f"LD={left_duty} RD={right_duty} | "
-            f"LPWM={left_pwm} RPWM={right_pwm} | "
-            f"LREV={left_reverse} RREV={right_reverse}"
-        )
-        
-        # Check if driver supports reverse parameter (PiMotorDriver)
-        if hasattr(self.driver, 'set_pwm') and 'left_reverse' in self.driver.set_pwm.__code__.co_varnames:
-            # PiMotorDriver supports reverse parameter
-            self.driver.set_pwm(left_pwm, right_pwm, left_reverse=left_reverse, right_reverse=right_reverse)
-        else:
-            # Other drivers (Mac, Linux, Sim) just use unsigned PWM
-            self.driver.set_pwm(left_pwm, right_pwm)
+        self.driver.set_pwm(left_duty, right_duty)
 
     # Internal helpers -------------------------------------------------------
 
