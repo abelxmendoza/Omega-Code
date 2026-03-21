@@ -81,11 +81,17 @@ except ImportError:
     logging.getLogger(__name__).warning('lgpio unavailable -- line tracking will be simulated')
 
 _adc_available = False
+_SMBus = None
 try:
-    from smbus2 import SMBus as _SMBus  # type: ignore
+    import smbus as _smbus_mod  # system python3-smbus
+    _SMBus = _smbus_mod.SMBus
     _adc_available = True
 except ImportError:
-    logging.getLogger(__name__).warning('smbus2 unavailable -- battery readings will be simulated')
+    try:
+        from smbus2 import SMBus as _SMBus  # type: ignore  # pip fallback
+        _adc_available = True
+    except ImportError:
+        logging.getLogger(__name__).warning('smbus/smbus2 unavailable -- battery readings will be simulated')
 
 
 # ---------------------------------------------------------------------------
