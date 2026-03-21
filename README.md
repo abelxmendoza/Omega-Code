@@ -1,5 +1,11 @@
 # Omega-1 — Hybrid ROS2 Robotics Platform
 
+<p align="center">
+  <img src="image/README/1719168223539.png" alt="Omega-1 Robot" width="480"/>
+  <br/>
+  <img src="image/README/1719064424761.png" alt="Omega-1 Logo" width="300"/>
+</p>
+
 Omega-1 is a modular autonomous robotics platform built around a Raspberry Pi 4B.
 It runs a **hybrid architecture**: a Next.js web UI and FastAPI backend handle
 operator interaction, while ROS2 (Humble) handles robot communication, sensor
