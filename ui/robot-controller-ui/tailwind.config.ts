@@ -127,6 +127,13 @@ const config: Config = {
         'omega': '10px',
         'proxy': '20px',
       },
+
+      // Desktop breakpoints (no mobile handling — operator UI)
+      screens: {
+        xl2: '1512px',
+        xl3: '1728px',
+        xl4: '1920px',
+      },
     },
   },
   plugins: [],

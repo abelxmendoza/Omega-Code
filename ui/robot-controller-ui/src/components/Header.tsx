@@ -93,6 +93,12 @@ const InstallButton: React.FC = () => {
 
 interface HeaderProps {
   batteryLevel: number;
+  /** Pass current gamepad connected state from useGamepad hook */
+  gamepadConnected?: boolean;
+  /** Name of the connected gamepad (for tooltip) */
+  gamepadName?: string;
+  /** True when gamepad is connected but sending is paused */
+  gamepadPaused?: boolean;
 }
 
 /* ----------------------------- utilities ------------------------------ */
@@ -147,7 +153,7 @@ const Dot: React.FC<{ state: HeaderState }> = ({ state }) => {
     state === 'connecting'  ? 'bg-amber-400'  :
     state === 'no_camera'   ? 'bg-sky-500'    :
                               'bg-rose-500';
-  return <span className={`inline-block w-2 h-2 rounded-full ${color}`} aria-hidden />;
+  return <span className={`inline-block w-2 xl4:w-2.5 h-2 xl4:h-2.5 rounded-full ${color}`} aria-hidden />;
 };
 
 type PillProps = {
@@ -174,7 +180,7 @@ const Pill: React.FC<PillProps> = ({
     state === 'no_camera'  ? 'text-sky-300'    : 'text-rose-400';
 
   const base =
-    'flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md bg-black/30 border border-white/10';
+    'flex items-center gap-1.5 text-[11px] xl4:text-sm px-2 xl4:px-3 py-1 xl4:py-1.5 rounded-md bg-black/30 border border-white/10';
   const interactive = isInteractive
     ? ' cursor-pointer hover:bg-black/40 focus:outline-none focus:ring-2 focus:ring-white/20'
     : '';
@@ -525,7 +531,7 @@ const QuickActions: React.FC<{
    Header
    ============================ */
 
-const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
+const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false, gamepadName = '', gamepadPaused = false }) => {
   const [showNetwork, setShowNetwork] = useState(false);
   const [showQuick, setShowQuick] = useState(false);
   const [showServers, setShowServers] = useState(true);
@@ -588,72 +594,61 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
   const profile = getActiveProfile();
 
   return (
-    <div className="flex flex-col gap-2 bg-gray-800 text-white p-4 sticky top-0 z-10 shadow-md">
+    <div className="bg-gray-800 text-white px-4 xl4:px-10 py-3 xl4:py-5 sticky top-0 z-10 shadow-md">
+      <div className="max-w-[1600px] mx-auto flex flex-col gap-2 xl4:gap-4">
       <div className="flex justify-between items-center">
-        <div className="text-lg font-bold flex items-center gap-2">
+        <div className="text-lg xl4:text-2xl font-bold flex items-center gap-2 xl4:gap-3">
           <img
             src="/image/README/omegatechlogopro-noBackground.png"
             alt="Omega Tech Logo"
             width="40"
             height="40"
-            className="h-10 w-auto object-contain"
+            className="h-10 xl4:h-14 w-auto object-contain"
           />
           Robot Controller
           {/* Profile + MOCK badges (no hostnames = no leaks) */}
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 border border-white/15">
+          <span className="text-[10px] xl4:text-sm px-1.5 xl4:px-2 py-0.5 xl4:py-1 rounded bg-white/10 border border-white/15">
             {profile.toUpperCase()}
           </span>
           {MOCK_WS && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/40 text-amber-100">
+            <span className="text-[10px] xl4:text-sm px-1.5 xl4:px-2 py-0.5 xl4:py-1 rounded bg-amber-500/20 border border-amber-400/40 text-amber-100">
               MOCK
             </span>
           )}
-          
+
           {/* Network Management Link */}
-          <div className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 border border-blue-400/40 text-blue-100 hover:bg-blue-500/30 transition-colors">
-            <Link 
-              href="/network"
-              title="Network Management"
-            >
-              <Settings className="w-3 h-3" />
+          <div className="text-[10px] xl4:text-sm px-1.5 xl4:px-2.5 py-0.5 xl4:py-1 rounded bg-blue-500/20 border border-blue-400/40 text-blue-100 hover:bg-blue-500/30 transition-colors">
+            <Link href="/network" title="Network Management">
+              <Settings className="w-3 xl4:w-4 h-3 xl4:h-4" />
             </Link>
           </div>
-          
+
           {/* ROS Dashboard Link */}
-          <div className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-400/40 text-purple-100 hover:bg-purple-500/30 transition-colors">
-            <Link 
-              href="/ros"
-              title="ROS 2 Dashboard (with Debug Tools)"
-            >
+          <div className="text-[10px] xl4:text-sm px-1.5 xl4:px-2.5 py-0.5 xl4:py-1 rounded bg-purple-500/20 border border-purple-400/40 text-purple-100 hover:bg-purple-500/30 transition-colors">
+            <Link href="/ros" title="ROS 2 Dashboard (with Debug Tools)">
               ROS
             </Link>
           </div>
-          
+
           {/* Services Management Link */}
-          <div className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 border border-green-400/40 text-green-100 hover:bg-green-500/30 transition-colors">
-            <Link 
-              href="/services"
-              title="Service Management"
-            >
+          <div className="text-[10px] xl4:text-sm px-1.5 xl4:px-2.5 py-0.5 xl4:py-1 rounded bg-green-500/20 border border-green-400/40 text-green-100 hover:bg-green-500/30 transition-colors">
+            <Link href="/services" title="Service Management">
               Services
             </Link>
           </div>
-          
+
           {/* Settings Link */}
-          <div className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 border border-yellow-400/40 text-yellow-100 hover:bg-yellow-500/30 transition-colors">
-            <Link 
-              href="/settings"
-              title="Robot Settings"
-            >
-              <Settings className="w-3 h-3" />
+          <div className="text-[10px] xl4:text-sm px-1.5 xl4:px-2.5 py-0.5 xl4:py-1 rounded bg-yellow-500/20 border border-yellow-400/40 text-yellow-100 hover:bg-yellow-500/30 transition-colors">
+            <Link href="/settings" title="Robot Settings">
+              <Settings className="w-3 xl4:w-4 h-3 xl4:h-4" />
             </Link>
           </div>
         </div>
 
         {/* Overall status + battery */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-4 xl4:space-x-6 xl4:text-base">
           {/* Pi Connection Status Indicator */}
-          <div className="flex items-center text-sm">
+          <div className="flex items-center text-sm xl4:text-base">
             <span className="opacity-80">Pi:</span>
             {allGood ? (
               // Wrapping the icon because Lucide icons do NOT accept `title`
@@ -684,7 +679,7 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
               </span>
             )}
           </div>
-          <div className="flex items-center text-sm">
+          <div className="flex items-center text-sm xl4:text-base">
             <span className="opacity-80">Status:</span>
             {allGood ? (
               <CheckCircle aria-label="All services reachable" className="text-green-500 ml-2" />
@@ -694,10 +689,10 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
             <span className="ml-2 opacity-80">{upCount}/{states.length} online</span>
           </div>
 
-          <div className="flex items-center text-sm">
+          <div className="flex items-center text-sm xl4:text-base">
             <span className="opacity-80">Battery:</span>
-            <div className="ml-2 w-32 battery-container">
-              <div className={`h-4 rounded ${batteryClass}`} style={{ width: `${batteryLevel}%` }} />
+            <div className="ml-2 w-32 xl4:w-48 battery-container">
+              <div className={`h-4 xl4:h-5 rounded ${batteryClass}`} style={{ width: `${batteryLevel}%` }} />
             </div>
             <span className="ml-2 opacity-80">{batteryLevel}%</span>
           </div>
@@ -775,6 +770,40 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
             <Pill label="Video"      state={video.status}  latency={video.latency} />
           </>
         )}
+
+        {/* Xbox Controller pill — always visible */}
+        <div
+          className="flex items-center gap-1.5 text-[11px] xl4:text-sm px-2 xl4:px-3 py-1 xl4:py-1.5 rounded-md bg-black/30 border border-white/10"
+          title={
+            gamepadConnected
+              ? `Xbox: ${gamepadName || 'Connected'}${gamepadPaused ? ' (paused)' : ' — active'}`
+              : 'Xbox: no controller detected'
+          }
+        >
+          <span
+            className={`inline-block w-2 xl4:w-2.5 h-2 xl4:h-2.5 rounded-full ${
+              gamepadConnected && !gamepadPaused
+                ? 'bg-emerald-500'
+                : gamepadConnected && gamepadPaused
+                ? 'bg-amber-400'
+                : 'bg-zinc-600'
+            }`}
+            aria-hidden
+          />
+          <span className="text-white/90">Xbox</span>
+          <span
+            className={
+              gamepadConnected && !gamepadPaused
+                ? 'text-emerald-400 ml-0.5'
+                : gamepadConnected && gamepadPaused
+                ? 'text-amber-300 ml-0.5'
+                : 'text-zinc-500 ml-0.5'
+            }
+            aria-hidden
+          >
+            {gamepadConnected && !gamepadPaused ? '✓' : gamepadConnected && gamepadPaused ? '‖' : '×'}
+          </span>
+        </div>
       </div>
 
       {/* Quick Actions row */}
@@ -791,6 +820,7 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel }) => {
           <NetworkWizard />
         </div>
       )}
+      </div>
     </div>
   );
 };

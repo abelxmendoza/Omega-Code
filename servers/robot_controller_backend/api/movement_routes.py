@@ -74,10 +74,25 @@ async def ws_movement(websocket: WebSocket, request: Request):
                 })
                 continue
 
-            # Movement / stop commands
+            # Raw twist from gamepad (proportional velocity)
+            if cmd == 'twist':
+                linear_x  = max(-1.0, min(1.0, float(data.get('linear_x',  0.0))))
+                angular_z = max(-1.0, min(1.0, float(data.get('angular_z', 0.0))))
+                ros_sent = bool(bridge and bridge.send_twist(linear_x, angular_z))
+                await websocket.send_json({
+                    'type': 'ack',
+                    'action': 'twist',
+                    'status': 'ok',
+                    'ros_sent': ros_sent,
+                    'ts': int(time.time() * 1000),
+                })
+                continue
+
+            # Discrete movement / stop commands (buttons, keyboard)
+            speed = max(0.0, min(1.0, float(data.get('speed', 0.5))))
             bridge_cmd = _UI_TO_BRIDGE.get(cmd)
             if bridge_cmd is not None:
-                ros_sent = bool(bridge and bridge.send_command(bridge_cmd))
+                ros_sent = bool(bridge and bridge.send_command(bridge_cmd, speed))
                 await websocket.send_json({
                     'type': 'ack',
                     'action': cmd,

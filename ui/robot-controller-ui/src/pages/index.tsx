@@ -39,6 +39,8 @@ import { COMMAND } from '../control_definitions';
 import Header from '../components/Header';
 import LedModal from '../components/lighting/LedModal';
 import { v4 as uuidv4 } from 'uuid';
+import { useGamepad } from '../hooks/useGamepad';
+import XboxControllerStatus from '../components/control/XboxControllerStatus';
 
 // Autonomy API client (WS/HTTP/mock wires)
 import {
@@ -54,7 +56,7 @@ const MOCK_WS = process.env.NEXT_PUBLIC_MOCK_WS === '1';
 const CameraFrame = dynamic(() => import('../components/CameraFrame'), {
   ssr: false,
   loading: () => (
-    <div className="w-[720px] max-w-[42vw]">
+    <div className="w-full">
       <div
         className="relative bg-gray-900 rounded-lg shadow-md border border-white/10 overflow-hidden"
         style={{ paddingTop: '56.25%' }}
@@ -128,6 +130,7 @@ export default function Home() {
   const { addCommand } = useCommand();
 
   const [isLedModalOpen, setIsLedModalOpen] = useState(false);
+  const [gamepadPaused, setGamepadPaused] = useState(false);
 
   /* -------- Camera proxy URL (built on client so we can read page query) -------- */
   const cameraProxyUrl = useMemo(() => {
@@ -248,6 +251,11 @@ export default function Home() {
     };
   }, [connectWebSocket, addCommand]);
 
+  /* ----------------------------- Gamepad ---------------------------------- */
+  // Pass the ws ref directly so the hook always reads the live socket even
+  // after reconnects, without triggering re-renders.
+  const gamepadState = useGamepad({ wsRef: ws, paused: gamepadPaused || MOCK_WS });
+
   /* ---------------- Autonomy API (WS wire, with mock toggle) --------------- */
   const autonomyApi = useMemo(() => {
     try {
@@ -326,122 +334,117 @@ export default function Home() {
         `}</style>
       </Head>
 
-      {/* Header computes live service dots internally; passing battery for now */}
-      <Header batteryLevel={75} />
+      <Header
+        batteryLevel={75}
+        gamepadConnected={gamepadState.connected}
+        gamepadName={gamepadState.name}
+        gamepadPaused={gamepadPaused}
+      />
 
-      <main className="cyber-content p-4 space-y-4 overflow-x-hidden">
-        <div className="flex flex-wrap justify-center items-start gap-4 lg:gap-8">
-          <div className="flex-shrink-0">
-            <CarControlPanel />
+      <main className="cyber-content px-4 xl:px-8 py-4 overflow-x-hidden">
+        <div className="max-w-[1600px] mx-auto space-y-6">
 
-            {/* Autonomy panel under the car controller */}
-            <AutonomyPanel
-              connected={isConnected}
-              batteryPct={75}
-              onStart={async (mode, params) => {
-                try {
-                  await autonomyApi.start(mode, params);
-                  addCommand(`Sent: autonomy-start (${mode})`);
-                  autonomyApi.maybeSuggestLights(Boolean((params as any)?.headlights));
-                } catch (e) {
-                  addCommand(`autonomy-start failed: ${String(e)}`);
-                }
-              }}
-              onStop={async () => {
-                try {
-                  await autonomyApi.stop();
-                  addCommand('Sent: autonomy-stop');
-                } catch (e) {
-                  addCommand(`autonomy-stop failed: ${String(e)}`);
-                }
-              }}
-              onDock={async () => {
-                try {
-                  await autonomyApi.dock();
-                  addCommand('Sent: autonomy-dock');
-                } catch (e) {
-                  addCommand(`autonomy-dock failed: ${String(e)}`);
-                }
-              }}
-              onSetWaypoint={async (label, lat, lon) => {
-                try {
-                  await autonomyApi.setWaypoint(label, lat, lon);
-                  addCommand(`Sent: set-waypoint "${label}" (${lat}, ${lon})`);
-                } catch (e) {
-                  addCommand(`set-waypoint failed: ${String(e)}`);
-                }
-              }}
-              onUpdate={async (params) => {
-                try {
-                  await autonomyApi.update(params);
-                  addCommand('Sent: autonomy-update (params)');
-                } catch (e) {
-                  addCommand(`autonomy-update failed: ${String(e)}`);
-                }
-              }}
-            />
+          {/* Zone 1: Controls | Camera | Camera Controls */}
+          <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr_auto] gap-4 xl:gap-6 items-center">
+            <div className="shrink-0 space-y-3">
+              <CarControlPanel />
+              <AutonomyPanel
+                connected={isConnected}
+                batteryPct={75}
+                onStart={async (mode, params) => {
+                  try {
+                    await autonomyApi.start(mode, params);
+                    addCommand(`Sent: autonomy-start (${mode})`);
+                    autonomyApi.maybeSuggestLights(Boolean((params as any)?.headlights));
+                  } catch (e) {
+                    addCommand(`autonomy-start failed: ${String(e)}`);
+                  }
+                }}
+                onStop={async () => {
+                  try {
+                    await autonomyApi.stop();
+                    addCommand('Sent: autonomy-stop');
+                  } catch (e) {
+                    addCommand(`autonomy-stop failed: ${String(e)}`);
+                  }
+                }}
+                onDock={async () => {
+                  try {
+                    await autonomyApi.dock();
+                    addCommand('Sent: autonomy-dock');
+                  } catch (e) {
+                    addCommand(`autonomy-dock failed: ${String(e)}`);
+                  }
+                }}
+                onSetWaypoint={async (label, lat, lon) => {
+                  try {
+                    await autonomyApi.setWaypoint(label, lat, lon);
+                    addCommand(`Sent: set-waypoint "${label}" (${lat}, ${lon})`);
+                  } catch (e) {
+                    addCommand(`set-waypoint failed: ${String(e)}`);
+                  }
+                }}
+                onUpdate={async (params) => {
+                  try {
+                    await autonomyApi.update(params);
+                    addCommand('Sent: autonomy-update (params)');
+                  } catch (e) {
+                    addCommand(`autonomy-update failed: ${String(e)}`);
+                  }
+                }}
+              />
+              <XboxControllerStatus
+                state={gamepadState}
+                paused={gamepadPaused}
+                onTogglePause={() => setGamepadPaused(p => !p)}
+              />
+            </div>
+
+            {/* Camera fills available space */}
+            <div className="min-w-0">
+              <CameraFrame
+                src={cameraProxyUrl}
+                title="Front Camera"
+                className="w-full"
+              />
+            </div>
+
+            <div className="shrink-0">
+              <CameraControlPanel />
+            </div>
           </div>
 
-          {/* Framed camera (via proxy to avoid mixed content/CORS) */}
-          <div className="flex-shrink-0 w-full lg:w-auto">
-            <CameraFrame
-              src={cameraProxyUrl}
-              title="Front Camera"
-              className="w-full max-w-[720px] lg:max-w-[42vw]"
-            />
-          </div>
-
-          <div className="flex-shrink-0 flex flex-col items-center w-full lg:w-auto">
-            <CameraControlPanel />
-          </div>
-        </div>
-
-        <div className="flex flex-wrap justify-center items-start gap-4 lg:gap-6 mt-6">
-          <div className="w-full lg:w-1/3 max-w-full">
+          {/* Zone 2: Sensors | Telemetry */}
+          <div className="grid grid-cols-1 xl:grid-cols-[520px_1fr] gap-4 xl:gap-6 items-start">
             <ErrorBoundary>
               <SensorDashboard />
             </ErrorBoundary>
-          </div>
-          <div className="flex flex-wrap gap-4 lg:gap-4 flex-1 min-w-0">
-            <div className="w-full sm:w-64 min-w-0">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
               <SpeedControl />
-            </div>
-            <div className="w-full sm:w-72 min-w-0">
               <MotorTelemetryPanel />
-            </div>
-            <div className="w-full sm:w-72 min-w-0">
               <EnhancedServoTelemetryPanel />
             </div>
           </div>
-        </div>
 
-        {/* System Mode Dashboard */}
-        <div className="mt-8 flex justify-center">
-          <ErrorBoundary>
-            <div className="w-full max-w-4xl">
+          {/* Zone 3: System Mode + Latency side by side */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 xl:gap-6">
+            <ErrorBoundary>
               <SystemModeDashboard />
-            </div>
-          </ErrorBoundary>
-        </div>
-
-        {/* Latency Dashboard */}
-        <div className="mt-8 flex justify-center">
-          <ErrorBoundary>
-            <div className="w-full max-w-4xl">
+            </ErrorBoundary>
+            <ErrorBoundary>
               <LatencyDashboard />
-            </div>
-          </ErrorBoundary>
-        </div>
+            </ErrorBoundary>
+          </div>
 
-        {/* Performance Dashboard */}
-        <div className="mt-8 flex justify-center">
+          {/* Zone 4: Performance Dashboard (full width below) */}
           <ErrorBoundary>
             <PerformanceDashboard />
           </ErrorBoundary>
-        </div>
 
-        <div className="flex flex-col items-center space-y-6 mt-6">
-          <CommandLog />
+          <div className="flex justify-center">
+            <CommandLog />
+          </div>
+
         </div>
       </main>
 

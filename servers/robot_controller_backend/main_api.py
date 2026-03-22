@@ -6,6 +6,8 @@ from api import router as api_router
 from api.security_middleware import create_security_middleware_stack
 from api.error_handlers import global_exception_handler, http_exception_handler
 from api.ros_bridge import OmegaRosBridge
+from api.sensor_bridge import OmegaSensorBridge
+import asyncio
 import uvicorn
 import logging
 import os
@@ -15,11 +17,21 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # ROS publish bridge (movement, lighting, system commands)
     bridge = OmegaRosBridge.create()
     app.state.ros_bridge = bridge
     logger.info('ROS bridge active=%s', bridge.is_active)
+
+    # ROS subscribe bridge (ultrasonic, line tracking → WebSocket fan-out)
+    loop = asyncio.get_event_loop()
+    sensor_bridge = OmegaSensorBridge.create(loop)
+    app.state.sensor_bridge = sensor_bridge
+    logger.info('Sensor bridge active=%s', sensor_bridge.is_active)
+
     yield
+
     bridge.shutdown()
+    sensor_bridge.shutdown()
 
 
 app = FastAPI(title="Omega Robot Controller API", lifespan=lifespan)
