@@ -152,18 +152,46 @@ Omega-Code/
 │       └── omega_interfaces/       # Custom msg / srv / action types
 │           ├── msg/MotorState.msg
 │           └── ...
-└── servers/
-    └── robot_controller_backend/
-        ├── movement/               # Motor HAL: PCA9685, ramp, PID, odometry
-        ├── sensors/                # HC-SR04, IR, ADC
-        ├── video/
-        │   ├── video_server.py     # Flask MJPEG server (port 5000)
-        │   └── camera.py           # GStreamer/libcamerasrc Camera class
-        ├── api/
-        │   ├── ros_bridge.py       # FastAPI <-> ROS2 bridge (publishes /cmd_vel_in)
-        │   ├── sensor_bridge.py    # ROS subscriber → WebSocket fan-out
-        │   └── sensor_ws_routes.py # /ws/ultrasonic, /ws/line, /ws/battery
-        └── main_api.py             # FastAPI entry point
+├── servers/
+│   └── robot_controller_backend/
+│       ├── movement/               # Motor HAL: PCA9685, ramp, PID, odometry, watchdog
+│       ├── sensors/                # HC-SR04, IR, ADC WebSocket servers
+│       ├── video/
+│       │   ├── video_server.py     # Flask MJPEG server (port 5000)
+│       │   └── camera.py           # GStreamer/libcamerasrc Camera class
+│       ├── api/
+│       │   ├── ros_bridge.py       # FastAPI <-> ROS2 bridge (publishes /cmd_vel_in)
+│       │   ├── sensor_bridge.py    # ROS subscriber → WebSocket fan-out
+│       │   ├── sensor_ws_routes.py # WS /ws/ultrasonic, /ws/line, /ws/battery
+│       │   ├── movement_routes.py  # REST movement and servo endpoints
+│       │   ├── config_routes.py    # Read/write omega_config sections
+│       │   ├── system_mode_routes.py
+│       │   ├── service_routes.py
+│       │   ├── capability_routes.py
+│       │   ├── security_middleware.py
+│       │   └── ...
+│       ├── autonomy/               # Pluggable autonomy controller + mode handlers
+│       ├── controllers/            # Servo, buzzer, lighting device drivers
+│       ├── omega_config/           # YAML config + config_manager.py
+│       ├── omega_services/         # Process supervisor, service manager, systemd unit
+│       ├── network/                # Wi-Fi scan, AP mode, Tailscale, network watchdog
+│       ├── hardware/               # Camera drivers, motor/LED helpers, hardware detection
+│       ├── servers/                # Gateway proxy (gateway_api.py) + snapshot blueprint
+│       ├── tests/                  # 53 test files across 9 suites (unit → faults)
+│       └── main_api.py             # FastAPI entry point + security middleware stack
+└── ui/
+    └── robot-controller-ui/        # Next.js 13 (Pages Router) operator dashboard
+        ├── src/
+        │   ├── pages/              # Routes: index, network, ros, services, settings + API proxies
+        │   ├── components/         # UI by domain: control/, lighting/, sensors/, network/,
+        │   │                       #   ros/, settings/, services/, capability/, macros/, common/, ui/
+        │   ├── context/            # CommandContext (WS + log), MacroContext, CapabilityContext
+        │   ├── hooks/              # WS lifecycle, HTTP polling, gamepad, ROS2 status
+        │   ├── utils/              # robotFetch / RobotResponse, connect*Ws connectors, autonomy client
+        │   ├── config/             # gateway.ts — profile-aware URL resolution
+        │   ├── themes/             # omega-theme.ts (dark industrial), cyber-theme.ts (neon)
+        │   └── control_definitions.ts  # Single source of truth for all WS command strings
+        └── tests/                  # 90 Jest + MSW unit/component tests
 
 scripts/
 └── setup_pi_camera.sh              # One-shot Pi camera stack bootstrap
