@@ -146,9 +146,12 @@ if _rclpy_ok:
         def __init__(self) -> None:
             super().__init__('omega_web_bridge')
 
-            # /cmd_vel -- consumed by motor_controller_node
+            # /cmd_vel_in -- consumed by ultrasonic_avoidance_node, which
+            # filters and republishes to /cmd_vel for motor_controller_node.
+            # When the avoidance node is not running this topic is unused;
+            # remap the motor_controller subscriber or launch avoidance node.
             self._cmd_vel_pub = self.create_publisher(
-                Twist, '/cmd_vel', _reliable_qos(depth=10)
+                Twist, '/cmd_vel_in', _reliable_qos(depth=10)
             )
 
             # /omega/lighting_cmd -- consumed by a future lighting ROS node
@@ -163,7 +166,7 @@ if _rclpy_ok:
             )
 
             self.get_logger().info(
-                'omega_web_bridge ready -- publishing to /cmd_vel, '
+                'omega_web_bridge ready -- publishing to /cmd_vel_in, '
                 '/omega/lighting_cmd, /omega/system_cmd'
             )
 

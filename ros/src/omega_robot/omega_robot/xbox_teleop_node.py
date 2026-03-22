@@ -124,7 +124,7 @@ class XboxTeleopNode(Node):
         self._watchdog_s: float  = p('watchdog_s').value
 
         # ---- publishers -----------------------------------------------
-        self._cmd_pub   = self.create_publisher(Twist,   '/cmd_vel',               _reliable_qos())
+        self._cmd_pub   = self.create_publisher(Twist,   '/cmd_vel_in',            _reliable_qos())
         self._servo_pub = self.create_publisher(Vector3, '/omega/servo_increment',  _reliable_qos())
 
         # ---- controller state (protected by lock) ---------------------

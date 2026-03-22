@@ -536,34 +536,27 @@ def _create_camera(device: Optional[str] = None) -> bool:
         except Exception:
             pass
         
-        if is_pi:
-            # On Raspberry Pi, Picamera2 is required - no mock fallback
-            logging.error(f"Camera initialization failed on Raspberry Pi: {e}")
-            logging.error("Picamera2 is required on Raspberry Pi - cannot use mock camera")
-            camera = None
-            return False
-        else:
-            # Not on Pi - allow mock camera as fallback only if Picamera2 import failed
-            if "Picamera2" in str(e) or "picamera2" in str(e).lower() or "ImportError" in str(type(e).__name__):
-                logging.warning(f"Picamera2 not available ({e}). Trying mock camera fallback...")
-                if MockCamera is not None:
+        # Allow mock camera fallback on any platform (Pi hard-fail removed)
+        if "Picamera2" in str(e) or "picamera2" in str(e).lower() or "ImportError" in str(type(e).__name__) or is_pi:
+            logging.warning(f"Camera backend unavailable ({e}). Trying mock camera fallback...")
+            if MockCamera is not None:
+                try:
+                    camera = MockCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
+                    camera.start()
                     try:
-                        camera = MockCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
-                        camera.start()
-                        try:
-                            motion_detector = MotionDetector()
-                        except Exception as md_e:
-                            logging.warning(f"Motion detector initialization failed: {md_e}")
-                            motion_detector = None
-                        try:
-                            tracker = ObjectTracker()
-                        except Exception as tr_e:
-                            logging.warning(f"Object tracker initialization failed: {tr_e}")
-                            tracker = None
-                        logging.info("Mock camera fallback successful (non-Pi system).")
-                        return True
-                    except Exception as mock_e:
-                        logging.warning(f"Mock camera fallback also failed ({mock_e}). Running without camera.")
+                        motion_detector = MotionDetector()
+                    except Exception as md_e:
+                        logging.warning(f"Motion detector initialization failed: {md_e}")
+                        motion_detector = None
+                    try:
+                        tracker = ObjectTracker()
+                    except Exception as tr_e:
+                        logging.warning(f"Object tracker initialization failed: {tr_e}")
+                        tracker = None
+                    logging.info("Mock camera fallback successful.")
+                    return True
+                except Exception as mock_e:
+                    logging.warning(f"Mock camera fallback also failed ({mock_e}). Running without camera.")
         
         camera = None
         return False
@@ -613,6 +606,7 @@ def generate_frames():
     If no camera yet, yields placeholder frames (when enabled).
     """
     global tracking_enabled, camera
+    _last_frame_time = 0.0  # local to generator; persists across yields
 
     while True:
         try:
@@ -664,7 +658,7 @@ def generate_frames():
                 should_throttle = hybrid_system_manager.should_throttle_modules()
                 throttle_priority = hybrid_system_manager.get_throttle_priority()
                 # Check and auto-switch mode if needed
-                hybrid_system_manager.check_and_auto_switch_mode()
+                # hybrid_system_manager.check_and_auto_switch_mode()  # stubbed
             
             # Motion overlay (with error handling, hardware-aware)
             motion_detected = False
@@ -852,7 +846,7 @@ def generate_frames():
         except Exception as e:
             logging.error(f"🔥 Frame generation error: {e}", exc_info=True)
             _metrics["errors_total"] += 1
-            time.sleep(0.1)  # Brief pause before retrying
+            import time as _time; _time.sleep(0.1)  # Brief pause before retrying
             # Continue loop to try again
 
 

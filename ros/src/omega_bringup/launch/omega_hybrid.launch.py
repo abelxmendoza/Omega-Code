@@ -72,6 +72,17 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('us_x',               default_value='0.12'),
         DeclareLaunchArgument('us_y',               default_value='0.0'),
         DeclareLaunchArgument('us_z',               default_value='0.02'),
+        # Obstacle avoidance
+        DeclareLaunchArgument('launch_avoidance',   default_value='true',
+                              description='Launch ultrasonic obstacle avoidance node'),
+        DeclareLaunchArgument('warn_distance_m',    default_value='0.50',
+                              description='Slow-down zone start distance (m)'),
+        DeclareLaunchArgument('stop_distance_m',    default_value='0.25',
+                              description='Hard-stop / pivot trigger distance (m)'),
+        DeclareLaunchArgument('pivot_speed',        default_value='0.70',
+                              description='Angular velocity during pivot (normalised rad/s)'),
+        DeclareLaunchArgument('pivot_duration_s',   default_value='1.20',
+                              description='Duration of each pivot burst (seconds)'),
     ]
 
     sim         = LaunchConfiguration('sim_mode')
@@ -174,6 +185,27 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     # ------------------------------------------------------------------
+    # Ultrasonic obstacle avoidance (cmd_vel mux)
+    # Subscribes to /cmd_vel_in from bridge/teleop, publishes to /cmd_vel.
+    # When disabled it passes commands through unchanged.
+    # ------------------------------------------------------------------
+    avoidance_node = Node(
+        package='omega_robot',
+        executable='obstacle_avoidance_node',
+        name='omega_ultrasonic_avoidance',
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('launch_avoidance')),
+        parameters=[{
+            'warn_distance_m':  LaunchConfiguration('warn_distance_m'),
+            'stop_distance_m':  LaunchConfiguration('stop_distance_m'),
+            'pivot_speed':      LaunchConfiguration('pivot_speed'),
+            'pivot_duration_s': LaunchConfiguration('pivot_duration_s'),
+            'sensor_timeout_s': 1.0,
+            'control_rate_hz':  20.0,
+        }],
+    )
+
+    # ------------------------------------------------------------------
     # Capability detector (publishes /omega/capabilities)
     # ------------------------------------------------------------------
     capability_node = Node(
@@ -222,6 +254,7 @@ def generate_launch_description() -> LaunchDescription:
         LogInfo(msg=['[omega_hybrid] Starting full hybrid stack (sim=', sim, ')']),
         motor_node,
         sensor_node,
+        avoidance_node,
         camera_node,
         servo_node,
         capability_node,

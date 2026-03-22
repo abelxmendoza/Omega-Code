@@ -23,6 +23,7 @@ setup(
             # --- Hybrid architecture nodes (new) ---
             'motor_controller = omega_robot.motor_controller_node:main',
             'sensor_node = omega_robot.sensor_node:main',
+            'obstacle_avoidance_node = omega_robot.ultrasonic_avoidance_node:main',
             'camera_publisher_node = omega_robot.camera_publisher_node:main',
             'xbox_teleop      = omega_robot.xbox_teleop_node:main',
             'servo_controller = omega_robot.servo_controller_node:main',

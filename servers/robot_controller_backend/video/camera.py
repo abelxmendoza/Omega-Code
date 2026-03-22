@@ -503,6 +503,16 @@ class Camera:
     def backend(self) -> str:
         return self.backend_name
 
+    @property
+    def is_open(self) -> bool:
+        """Compatibility shim: True if camera is alive and delivering frames."""
+        return self.is_alive()
+
+    def read(self):
+        """Compatibility shim: returns (ok, frame) tuple like cv2.VideoCapture.read()."""
+        frame = self.get_frame()
+        return (frame is not None), frame
+
     def stop(self) -> None:
         try:
             if self._backend:
