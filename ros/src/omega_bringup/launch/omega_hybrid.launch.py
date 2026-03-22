@@ -43,9 +43,8 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('launch_camera',      default_value='true'),
         DeclareLaunchArgument('camera_width',       default_value='640'),
         DeclareLaunchArgument('camera_height',      default_value='480'),
-        DeclareLaunchArgument('camera_fps',         default_value='30'),
-        DeclareLaunchArgument('camera_jpeg_quality',default_value='80'),
-        DeclareLaunchArgument('publish_raw_images', default_value='false'),
+        DeclareLaunchArgument('camera_fps',         default_value='10',
+                              description='Capture framerate for libcamerasrc pipeline'),
         DeclareLaunchArgument('ultrasonic_rate_hz', default_value='10.0'),
         DeclareLaunchArgument('line_rate_hz',       default_value='20.0'),
         DeclareLaunchArgument('battery_rate_hz',    default_value='1.0'),
@@ -122,6 +121,11 @@ def generate_launch_description() -> LaunchDescription:
 
     # ------------------------------------------------------------------
     # Camera node (optional)
+    # Backend priority: libcamerasrc (GStreamer) > Picamera2 > sim
+    # V4L2 is NOT used -- it fails on this Pi's CSI OV5647 camera.
+    # Requires env vars pointing at the local libcamera build:
+    #   LD_LIBRARY_PATH=$HOME/libcamera/build/src/libcamera:...
+    #   GST_PLUGIN_PATH=$HOME/libcamera/build/src/gstreamer:...
     # ------------------------------------------------------------------
     camera_node = Node(
         package='omega_robot',
@@ -134,9 +138,13 @@ def generate_launch_description() -> LaunchDescription:
             'width':           LaunchConfiguration('camera_width'),
             'height':          LaunchConfiguration('camera_height'),
             'fps':             LaunchConfiguration('camera_fps'),
-            'jpeg_quality':    LaunchConfiguration('camera_jpeg_quality'),
-            'publish_raw':     LaunchConfiguration('publish_raw_images'),
+            'jpeg_quality':    80,
+            'publish_raw':     False,
             'camera_frame_id': 'camera_link',
+            # Leave gstreamer_pipeline empty to auto-build from width/height/fps.
+            # Override example:
+            #   'gstreamer_pipeline': 'libcamerasrc ! video/x-raw,...'
+            'gstreamer_pipeline': '',
         }],
     )
 

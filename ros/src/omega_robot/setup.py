@@ -26,6 +26,7 @@ setup(
             'camera_publisher_node = omega_robot.camera_publisher_node:main',
             'xbox_teleop      = omega_robot.xbox_teleop_node:main',
             'servo_controller = omega_robot.servo_controller_node:main',
+            'camera_debug     = omega_robot.camera_debug_node:main',
             # --- Legacy nodes (kept for compatibility) ---
             'telemetry_publisher = omega_robot.telemetry_publisher:main',
             'telemetry_listener = omega_robot.telemetry_listener:main',

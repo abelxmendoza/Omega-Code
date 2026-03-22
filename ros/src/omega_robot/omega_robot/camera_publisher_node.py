@@ -83,6 +83,12 @@ try:
 except ImportError:
     pass
 
+# GStreamer + libcamerasrc is the preferred backend on this Pi.
+# Requires: libcamera built from source with GStreamer plugin enabled.
+# Env vars must be set before launch:
+#   export LD_LIBRARY_PATH=$HOME/libcamera/build/src/libcamera:$LD_LIBRARY_PATH
+#   export GST_PLUGIN_PATH=$HOME/libcamera/build/src/gstreamer:$GST_PLUGIN_PATH
+
 
 def _sensor_qos(depth: int = 2) -> QoSProfile:
     return QoSProfile(
@@ -96,6 +102,53 @@ def _sensor_qos(depth: int = 2) -> QoSProfile:
 # ---------------------------------------------------------------------------
 # Camera abstraction -- returns BGR numpy arrays
 # ---------------------------------------------------------------------------
+
+class _LibcameraGStreamerSource:
+    """
+    Capture via GStreamer + libcamerasrc plugin.
+
+    This is the only backend that works reliably with a CSI OV5647 on
+    Raspberry Pi when libcamera is built from source.  V4L2 and Picamera2
+    failed during bring-up; do not replace this with either of those.
+
+    Pipeline design:
+      - queue leaky=downstream: drop old frames, always deliver the newest
+      - videoconvert + format=BGR: output matches OpenCV's native format,
+        avoiding an extra colour-space conversion inside OpenCV
+      - appsink max-buffers=1 drop=true sync=false: low-latency sink
+    """
+
+    def __init__(self, width: int, height: int, fps: int,
+                 pipeline_override: str = '') -> None:
+        if pipeline_override:
+            pipeline = pipeline_override
+        else:
+            pipeline = (
+                f'libcamerasrc ! '
+                f'video/x-raw,width={width},height={height},framerate={fps}/1 ! '
+                f'queue leaky=downstream max-size-buffers=1 ! '
+                f'videoconvert ! '
+                f'video/x-raw,format=BGR ! '
+                f'appsink max-buffers=1 drop=true sync=false'
+            )
+        self._cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+        if not self._cap.isOpened():
+            raise RuntimeError(
+                'libcamerasrc GStreamer pipeline failed to open. '
+                'Ensure GST_PLUGIN_PATH and LD_LIBRARY_PATH point to your '
+                'libcamera build and that no other process holds the camera.'
+            )
+
+    def read_frame(self) -> Optional['np.ndarray']:
+        ok, frame = self._cap.read()
+        return frame if ok else None
+
+    def close(self) -> None:
+        try:
+            self._cap.release()
+        except Exception:
+            pass
+
 
 class _PiCamera2Source:
     def __init__(self, width: int, height: int, fps: int) -> None:
@@ -174,24 +227,28 @@ class CameraPublisherNode(Node):
         super().__init__('omega_camera_publisher')
 
         # ---- parameters -----------------------------------------------
-        self.declare_parameter('standalone',       True)
-        self.declare_parameter('width',            640)
-        self.declare_parameter('height',           480)
-        self.declare_parameter('fps',               30)
-        self.declare_parameter('jpeg_quality',      80)
-        self.declare_parameter('publish_raw',      False)
-        self.declare_parameter('camera_frame_id',  'camera_link')
-        self.declare_parameter('device_index',      0)
+        self.declare_parameter('standalone',          True)
+        self.declare_parameter('width',               640)
+        self.declare_parameter('height',              480)
+        self.declare_parameter('fps',                  10)
+        self.declare_parameter('jpeg_quality',         80)
+        self.declare_parameter('publish_raw',         False)
+        self.declare_parameter('camera_frame_id',     'camera_link')
+        self.declare_parameter('device_index',         0)
+        # Set this to override the full GStreamer pipeline string.
+        # Leave empty to auto-build from width/height/fps.
+        self.declare_parameter('gstreamer_pipeline',  '')
 
         p = self.get_parameter
-        self._standalone:  bool = p('standalone').value
-        self._width:       int  = p('width').value
-        self._height:      int  = p('height').value
-        self._fps:         int  = p('fps').value
-        self._jpeg_q:      int  = p('jpeg_quality').value
-        self._publish_raw: bool = p('publish_raw').value
-        self._frame_id:    str  = p('camera_frame_id').value
-        self._device_idx:  int  = p('device_index').value
+        self._standalone:       bool = p('standalone').value
+        self._width:            int  = p('width').value
+        self._height:           int  = p('height').value
+        self._fps:              int  = p('fps').value
+        self._jpeg_q:           int  = p('jpeg_quality').value
+        self._publish_raw:      bool = p('publish_raw').value
+        self._frame_id:         str  = p('camera_frame_id').value
+        self._device_idx:       int  = p('device_index').value
+        self._gst_pipeline_ovr: str  = p('gstreamer_pipeline').value
 
         # ---- cv_bridge ------------------------------------------------
         self._bridge = CvBridge() if _cv_bridge_ok else None
@@ -237,22 +294,30 @@ class CameraPublisherNode(Node):
     # ------------------------------------------------------------------
 
     def _open_camera(self):
+        # 1. libcamerasrc (preferred on Pi with CSI camera — V4L2 does not work)
+        if _cv2_ok:
+            try:
+                src = _LibcameraGStreamerSource(
+                    self._width, self._height, self._fps,
+                    pipeline_override=self._gst_pipeline_ovr,
+                )
+                self.get_logger().info('Camera backend: libcamerasrc (GStreamer)')
+                return src
+            except Exception as exc:
+                self.get_logger().warning(
+                    'libcamerasrc GStreamer failed: %s -- trying Picamera2', exc
+                )
+
+        # 2. Picamera2 (works if python3-picamera2 is installed)
         if _picamera2_ok:
             try:
                 src = _PiCamera2Source(self._width, self._height, self._fps)
                 self.get_logger().info('Camera backend: Picamera2')
                 return src
             except Exception as exc:
-                self.get_logger().warning('Picamera2 failed: %s -- trying V4L2', exc)
+                self.get_logger().warning('Picamera2 failed: %s -- sim mode', exc)
 
-        if _cv2_ok:
-            try:
-                src = _V4L2Source(self._width, self._height, self._fps, self._device_idx)
-                self.get_logger().info('Camera backend: V4L2 /dev/video%d', self._device_idx)
-                return src
-            except Exception as exc:
-                self.get_logger().warning('V4L2 failed: %s -- using sim source', exc)
-
+        # 3. Sim (no hardware — test pattern)
         self.get_logger().warning('No real camera available -- publishing test pattern')
         return _SimSource(self._width, self._height)
 
