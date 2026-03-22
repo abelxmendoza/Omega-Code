@@ -11,8 +11,7 @@ import Link from 'next/link';
 import { ROSManagementPanel, TelemetryVisualization } from '@/components/ros';
 import { getROSStatus, controlROSContainer, listROSTopics } from '@/utils/rosApi';
 import { buildGatewayUrl } from '@/config/gateway';
-import { robotFetch } from '@/utils/network';
-import { robotWS } from '@/utils/ws';
+import { robotFetch, robotWS } from '@/utils/network';
 
 // Debug mode - logs to console and DevTools
 const DEBUG = process.env.NEXT_PUBLIC_ROS_DEBUG === '1' || typeof window !== 'undefined' && window.localStorage.getItem('ros_debug') === 'true';

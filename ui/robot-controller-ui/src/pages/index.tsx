@@ -28,7 +28,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import CarControlPanel from '../components/control/CarControlPanel';
 import CameraControlPanel from '../components/control/CameraControlPanel';
 import ServoTelemetryPanel from '../components/control/ServoTelemetryPanel';
-import { robotWS } from '../utils/ws';
+import { robotWS } from '../utils/network';
 import PerformanceDashboard from '../components/PerformanceDashboard';
 import EnhancedServoTelemetryPanel from '../components/control/EnhancedServoTelemetryPanel';
 import AutonomyPanel from '../components/control/AutonomyModal';

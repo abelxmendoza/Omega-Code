@@ -63,3 +63,20 @@ export async function robotFetch(
     return createOfflineResponse(path);
   }
 }
+
+//
+// 4. Safe WebSocket factory — respects ROBOT_ENABLED offline guard
+//
+
+export function robotWS(url: string): WebSocket | null {
+  if (!ROBOT_ENABLED) {
+    console.warn(`[Robot OFFLINE] Blocked WS: ${url}`);
+    return null;
+  }
+  try {
+    return new WebSocket(url);
+  } catch (err) {
+    console.error('[robotWS] failed:', err);
+    return null;
+  }
+}

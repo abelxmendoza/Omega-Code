@@ -12,7 +12,7 @@ import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { COMMAND } from '@/control_definitions';
 import { useCommand } from '@/context/CommandContext';
 import LedModal from '@/components/lighting/LedModal';
-import { withOptimization, useDebouncedCallback } from '@/utils/optimization';
+import { useDebouncedCallback } from '@/utils/debounce';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -86,6 +86,7 @@ const SpeedControl: React.FC = () => {
   const debouncedSpeedChange = useDebouncedCallback(
     sendSetSpeedPct,
     100, // 100ms debounce
+    undefined,
     [sendCommand]
   );
 

@@ -9,7 +9,6 @@
 */
 
 import React, { useState, useEffect, memo } from 'react';
-import { performanceMonitor, performanceMetrics } from '@/utils/optimization';
 
 interface PerformanceData {
   timestamp: number;

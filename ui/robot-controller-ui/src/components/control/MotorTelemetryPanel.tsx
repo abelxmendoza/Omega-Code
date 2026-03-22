@@ -11,7 +11,6 @@
 import React, { useState, memo, useMemo, useEffect } from 'react';
 import { useRobustWebSocket } from '@/utils/RobustWebSocket';
 import { handleWebSocketError, handleComponentError } from '@/utils/errorHandling';
-import { withOptimization, performanceMonitor } from '@/utils/optimization';
 import { unifiedNetworkManager, addNetworkChangeListener } from '@/utils/unifiedNetworkManager';
 import { useCommand } from '@/context/CommandContext';
 import { COMMAND } from '@/control_definitions';
