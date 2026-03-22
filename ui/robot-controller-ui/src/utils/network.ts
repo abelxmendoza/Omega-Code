@@ -39,10 +39,17 @@ export function createOfflineResponse(path: string): OfflineResponse {
 // 3. Wrapper for fetch() — returns OfflineResponse on Vercel
 //
 
+/**
+ * A regular fetch Response extended to indicate it is NOT offline.
+ * Allows callers to use `if (response.offline)` without a type cast,
+ * since both union members expose the `offline` discriminant.
+ */
+export type RobotResponse = OfflineResponse | (Response & { offline?: never });
+
 export async function robotFetch(
   path: string,
   options?: RequestInit
-): Promise<Response | OfflineResponse> {
+): Promise<RobotResponse> {
   if (!ROBOT_ENABLED) {
     console.warn(`[Robot OFFLINE] Blocked fetch: ${path}`);
     return createOfflineResponse(path);

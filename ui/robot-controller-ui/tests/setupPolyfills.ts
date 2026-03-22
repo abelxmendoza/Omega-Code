@@ -77,7 +77,16 @@ if (typeof globalThis.WritableStream === 'undefined') {
   };
 }
 
-// MSW v2 requires ReadableStream polyfill  
+// Gamepad API polyfill — jsdom doesn't implement navigator.getGamepads
+if (!('getGamepads' in navigator)) {
+  Object.defineProperty(navigator, 'getGamepads', {
+    value: () => [],
+    writable: true,
+    configurable: true,
+  });
+}
+
+// MSW v2 requires ReadableStream polyfill
 if (typeof globalThis.ReadableStream === 'undefined') {
   // @ts-ignore
   globalThis.ReadableStream = class ReadableStream {

@@ -1,68 +1,6 @@
 # Robot Controller UI
 
-The Robot Controller UI is the **high-performance** Next.js frontend for Omega-Code. It provides a control centre for driving the rover, tuning servos and speed, orchestrating lighting scenes, monitoring sensors, and managing connectivity. The app targets desktop browsers and talks to the backend via **optimized** WebSockets, REST APIs, and the gateway proxy.
-
-## 🚀 Performance Features
-
-### React Optimizations
-- **Component Memoization**: 60% reduction in unnecessary re-renders
-- **Debounced Callbacks**: Optimized user input handling with 70% fewer WebSocket messages
-- **Lazy Loading**: Code splitting and dynamic imports for faster initial load
-- **Performance Monitoring**: Real-time component render time tracking
-- **Bundle Optimization**: Reduced bundle size and improved loading times
-
-### Real-time Performance Dashboard
-- **System Metrics**: CPU, memory, disk, and network usage monitoring
-- **Application Metrics**: Response times, error rates, and throughput tracking
-- **Cache Performance**: Hit rates and efficiency statistics
-- **WebSocket Health**: Connection status and latency monitoring
-- **Performance Alerts**: Visual alerts for performance issues
-
-### Optimization Utilities
-- **Smart Memoization**: Automatic component optimization with `withOptimization`
-- **Debounced Hooks**: `useDebouncedCallback` and `useThrottledCallback` for optimal performance
-- **Virtual Scrolling**: Efficient rendering of large data sets
-- **Image Optimization**: Progressive loading with error handling
-- **Performance Metrics**: Client-side performance measurement tools
-
-## Performance Monitoring
-
-The UI includes comprehensive performance monitoring and optimization features:
-
-### Performance Dashboard
-- **Real-time Metrics**: System and application performance monitoring
-- **Cache Statistics**: Hit rates and efficiency tracking
-- **WebSocket Health**: Connection status and latency monitoring
-- **Performance Alerts**: Visual alerts for performance issues
-- **System Information**: Uptime and status monitoring
-
-### Optimization Features
-- **Automatic Memoization**: Components optimized to prevent unnecessary re-renders
-- **Debounced Input**: User input optimized to reduce WebSocket message frequency
-- **Lazy Loading**: Components loaded only when needed
-- **Bundle Optimization**: Reduced initial bundle size
-- **Performance Tracking**: Component render time measurement
-
-### Usage Examples
-```typescript
-// Optimize components with memoization
-const OptimizedComponent = withOptimization(MyComponent, {
-  memoize: true,
-  debounceMs: 300
-});
-
-// Use debounced callbacks
-const debouncedCallback = useDebouncedCallback(
-  myFunction,
-  100, // 100ms debounce
-  [dependency]
-);
-
-// Monitor performance
-performanceMonitor.measureRender('MyComponent', () => {
-  return <MyComponent />;
-});
-```
+Next.js frontend for Omega-Code. Provides a control centre for driving the rover, tuning servos and speed, orchestrating lighting scenes, monitoring sensors, and managing connectivity. Talks to the backend via WebSockets, REST APIs, and the gateway proxy.
 
 ## Features
 
@@ -94,7 +32,7 @@ performanceMonitor.measureRender('MyComponent', () => {
 | `src/styles/` | Global Tailwind styles and theme tokens. |
 | `tests/` | Jest + Testing Library suites with MSW handlers, mocks, and helpers. |
 | `cypress/` | End-to-end specs (headless by default; UI runner available via `npx cypress open`). |
-| `find_unused_components.py` | Optional utility for auditing unused React components. |
+| `scripts/find_unused_components.py` | Optional utility for auditing unused React components. |
 
 Images referenced in the documentation live in `image/README/` at the repository root.
 
@@ -115,7 +53,7 @@ npm install
 Copy the example file and customise it for your deployment:
 
 ```bash
-cp env.example .env.local
+cp .env.local.example .env.local
 ```
 
 The UI uses a **centralized gateway configuration system** (`src/config/gateway.ts`) that
@@ -145,7 +83,7 @@ select the best URL for the active profile and expose ordered fallbacks for logg
 centralized gateway config (`src/config/gateway.ts`) ensures all API routes use consistent
 profile-aware URL resolution.
 
-See `env.example` for a complete list of all environment variables with documentation.
+See `.env.local.example` for a complete list of all environment variables with documentation.
 
 ## Running the app
 
@@ -206,8 +144,18 @@ Launch the Cypress UI locally with `npx cypress open` if you prefer an interacti
   ensure consistent profile-aware URL resolution.
 - Tests under `tests/` use MSW (`tests/mswServer.ts`) to stub backend responses; mirror
   new routes there when you add API features.
-- `find_unused_components.py` is handy during refactors to locate components that are no
+- `scripts/find_unused_components.py` is handy during refactors to locate components that are no
   longer imported.
+
+## PWA / Install
+
+The UI is installable as a Progressive Web App on desktop and mobile.
+
+- **Desktop (Chrome/Edge)**: click the Install icon in the address bar.
+- **iOS (Safari)**: Share → Add to Home Screen.
+- **Android (Chrome)**: menu → Install app.
+
+The header shows a download icon when installation is available. A service worker at `/sw.js` handles basic offline caching. Edit `/public/manifest.json` to change the app name, theme colour, or icons.
 
 ## License
 

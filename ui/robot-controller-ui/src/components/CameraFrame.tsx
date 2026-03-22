@@ -526,6 +526,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
       {/* Media area (16:9 default) */}
       <div className={`relative bg-black ${filterClass(filter)}`} style={{ paddingTop: '56.25%' }}>
         {playing ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             ref={imgRef}
             key={IMG_SRC}
@@ -539,6 +540,7 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
           />
         ) : (
           snapshotUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={snapshotUrl}
               alt="Last frame"

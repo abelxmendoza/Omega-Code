@@ -27,7 +27,7 @@ export function generateConfigDiff(
     ...Object.keys(newConfig),
   ]);
 
-  for (const section of allSections) {
+  for (const section of Array.from(allSections)) {
     const oldSection = oldConfig[section] || {};
     const newSection = newConfig[section] || {};
 
@@ -37,7 +37,7 @@ export function generateConfigDiff(
       ...Object.keys(newSection),
     ]);
 
-    for (const key of allKeys) {
+    for (const key of Array.from(allKeys)) {
       const oldValue = oldSection[key];
       const newValue = newSection[key];
 

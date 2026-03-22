@@ -222,7 +222,7 @@ export const bundleOptimizer = {
   // Dynamic imports for code splitting
   loadComponent: async (componentPath: string) => {
     try {
-      const module = await import(componentPath);
+      const module = await import(/* webpackIgnore: true */ componentPath);
       return module.default;
     } catch (error) {
       console.error(`Failed to load component: ${componentPath}`, error);

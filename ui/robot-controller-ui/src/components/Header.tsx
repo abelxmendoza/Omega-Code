@@ -24,8 +24,8 @@ import { net } from '@/utils/netProfile';
 import { CapabilityInfoModal } from './capability/CapabilityInfoModal';
 
 const NetworkWizard = dynamic(
-  () => import('./NetworkWizard'),
-  { 
+  () => import('./network/OmegaNetworkWizard'),
+  {
     ssr: false,
     loading: () => <div className="text-white/50 p-2 text-xs">Loading Network Wizard...</div>
   }
@@ -598,6 +598,7 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false,
       <div className="max-w-[1600px] mx-auto flex flex-col gap-2 xl4:gap-4">
       <div className="flex justify-between items-center">
         <div className="text-lg xl4:text-2xl font-bold flex items-center gap-2 xl4:gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/image/README/omegatechlogopro-noBackground.png"
             alt="Omega Tech Logo"

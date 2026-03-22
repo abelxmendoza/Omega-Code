@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { buildGatewayUrl } from '@/utils/gateway';
+import { buildGatewayUrl } from '@/config/gateway';
 
 export interface ROS2Status {
   available: boolean;

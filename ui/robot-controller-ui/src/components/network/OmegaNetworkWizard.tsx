@@ -34,12 +34,7 @@ import { robotFetch } from '@/utils/network';
 interface NetworkStatus {
   ok: boolean;
   mode: string;
-  services: {
-    hostapd: string;
-    dnsmasq: string;
-    dhcpcd: string;
-    wpa_supplicant: string;
-  };
+  services: Record<string, string>;
   wlan0_ip?: string;
   ap_ssid?: string;
   ap_ip?: string;
@@ -127,6 +122,7 @@ export default function OmegaNetworkWizard() {
       const data = await response.json();
       if (data.ok !== false) {
         setStatus({
+          ok: true,
           mode: data.mode || 'unknown',
           wlan0_ip: data.ip,
           ap_ssid: data.ap_config?.ssid,

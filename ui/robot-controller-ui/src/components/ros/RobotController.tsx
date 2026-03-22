@@ -10,7 +10,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { buildGatewayUrl } from '@/utils/gateway';
+import { buildGatewayUrl } from '@/config/gateway';
 import { robotWS } from '@/utils/ws';
 import { useRobotOnline } from '@/hooks/useRobotOnline';
 
