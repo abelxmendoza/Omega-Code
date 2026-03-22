@@ -95,10 +95,11 @@ class Camera:
         with self._lock:
             return self._frame.copy() if self._frame is not None else None
 
-    def is_alive(self) -> bool:
+    def is_alive(self, stale_ms=None) -> bool:
         if self._last_frame_time == 0:
             return False
-        return (time.time() - self._last_frame_time) * 1000 < FRAME_STALE_MS
+        threshold = stale_ms if stale_ms is not None else FRAME_STALE_MS
+        return (time.time() - self._last_frame_time) * 1000 < threshold
 
     def stop(self):
         self._running = False
