@@ -154,7 +154,7 @@ mkdir -p /home/omega1/.config/omega1
 cat > /home/omega1/.config/omega1/camera.conf << EOF
 # Omega1 Camera Optimization Configuration
 [Camera]
-backend = picamera2
+backend = gstreamer
 width = 640
 height = 480
 fps = 30

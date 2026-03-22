@@ -76,7 +76,7 @@ case $DEVICE_TYPE in
         echo "Available commands:"
         echo "  ros2 topic list              # List all topics"
         echo "  ros2 node list               # List all nodes"
-        echo "  ros2 topic echo /omega/telemetry  # Monitor telemetry"
+        echo "  ros2 topic echo /omega/ultrasonic  # Monitor ultrasonic sensor"
         echo "  rviz2                        # Launch RViz"
         echo "  ros2 launch omega_robot multidevice_setup.launch.py  # Launch multi-device setup"
         echo ""
@@ -89,10 +89,11 @@ case $DEVICE_TYPE in
         echo "🍓 Pi 4B Mode - Hardware Controller"
         echo ""
         echo "Available commands:"
-        echo "  ros2 run omega_robot telemetry_publisher  # Publish telemetry"
-        echo "  ros2 topic list                           # List topics"
+        echo "  ros2 run omega_robot motor_controller  # Drive motors + publish /odom"
+        echo "  ros2 run omega_robot sensor_node       # Ultrasonic + line sensors"
+        echo "  ros2 topic list                        # List topics"
         echo ""
-        echo "Note: Run publisher on Pi, listener on laptop"
+        echo "Note: Or use Docker Compose: docker compose -f docker/ros2_robot/docker-compose.yml up -d"
         ;;
     
     orin)

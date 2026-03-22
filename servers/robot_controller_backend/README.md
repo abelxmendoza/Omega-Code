@@ -1,118 +1,65 @@
 # Robot Controller Backend
 
-This directory contains every service that runs on (or alongside) the robot: **high-performance** Go WebSocket servers, Python controllers with advanced caching and async processing, FastAPI/Flask gateways, ROS bootstrap hooks, a robust MJPEG video streamer, and comprehensive performance monitoring tools. The services are intentionally modular so you can run only the pieces you need while iterating on hardware or the UI.
-
-## 🚀 Performance Optimizations
-
-### Advanced Caching System
-- **Redis Integration**: High-performance caching with memory fallback
-- **Motor Telemetry Caching**: 1-second TTL reduces backend load by 80%
-- **Sensor Data Caching**: 500ms TTL for ultrasonic and line tracking data
-- **Cache Warming**: Proactive cache population for better performance
-- **Smart Invalidation**: Pattern-based cache invalidation
-
-### Async Processing
-- **Task Queues**: Priority-based task processing with retry logic
-- **Background Tasks**: Periodic and delayed task execution
-- **Non-blocking Operations**: Eliminates blocking I/O operations
-- **Resource Management**: Configurable worker pools and queue limits
-
-### WebSocket Optimizations
-- **Message Batching**: Groups multiple messages for 50% latency reduction
-- **Connection Pooling**: Efficient connection management with automatic cleanup
-- **Compression**: Automatic compression for large messages
-- **Health Monitoring**: Real-time connection health tracking
-
-### Hardware Performance Optimizations
-- **GPIO Optimization**: High-performance GPIO operations with <1ms response time
-- **Motor Control**: Smooth acceleration/deceleration with <10ms response time
-- **Camera Performance**: Optimized camera capture with 30+ FPS stable performance
-- **Sensor Reading**: Interrupt-driven sensor reading with <5ms response time
-- **Power Management**: Dynamic power scaling and temperature-based throttling
-- **Real-time Scheduling**: Real-time priority for critical hardware operations
-
-### Performance Monitoring
-- **Real-time Metrics**: CPU, memory, disk, and network monitoring
-- **Application Profiling**: Request timing and error tracking
-- **Performance Alerts**: Automatic alerts for performance thresholds
-- **Historical Data**: Trend analysis and performance tracking
+Python services that run on (or alongside) the robot: WebSocket servers, FastAPI/Flask gateways, a ROS2 bridge, a GStreamer MJPEG video streamer, and hardware controllers. Services are modular — run only what you need.
 
 ## What's in this directory?
 
 | Path / file | Purpose |
 | --- | --- |
-| `api/` | FastAPI routers (`lighting_routes.py`, `autonomy_routes.py`) composed into `main_api.py`. |
+| `api/` | FastAPI routers (`lighting_routes.py`, `autonomy_routes.py`, `ros_routes.py`, `sensor_bridge.py`) composed into `main_api.py`. |
 | `autonomy/` | Pluggable autonomy controller (`controller.py`, `base.py`) with async mode handlers under `modes/`. |
-| `commands/` | Go helpers for ROS startup, GPIO initialisation, and WebSocket command routing (`command_processor.go`, `ros_integration.go`). |
-| `common/`, `core/` | Legacy Go server core used by `main.go` / `main_combined.go` (still handy when testing the older stack). |
-| `controllers/` | Python + Go device drivers (servo, buzzer, lighting) invoked by WebSocket servers and FastAPI actions. |
+| `controllers/` | Python device drivers (servo, buzzer, lighting) invoked by WebSocket servers and FastAPI actions. |
 | `gpio/` | Hardware abstraction with mock interfaces for local development. |
-| `movement/` | Primary movement WebSocket server (`movement_ws_server.py`) plus Go experiments. |
-| `sensors/` | Ultrasonic Go server (`main_ultrasonic.go`), line-tracker WebSocket, ADC helpers, and sensor runners. |
+| `movement/` | Movement WebSocket server (`movement_ws_server.py`). |
+| `sensors/` | Ultrasonic and line-tracker WebSocket servers (`ultrasonic_ws_server.py`, `line_tracking_ws_server.py`), ADC helpers. |
 | `servers/` | Python gateways (`gateway_api.py`, `control_api.py`) that provide unified `/ws/*`, `/video_feed`, and network APIs. |
-| `video/` & `video_server.py` | Hardened Flask/OpenCV MJPEG server with watchdogs, motion detection hooks, and snapshot blueprint. |
-| `rust_integration/`, `rust_module/` | Experimental Rust bindings used for advanced camera/control integrations. |
+| `video/` | Hardened Flask/OpenCV MJPEG server with watchdogs, GStreamer/libcamera backend, motion detection, and snapshot blueprint. |
+| `hardware/` | Camera drivers (`camera_drivers.py`), GPIO optimisation, and hardware detection. |
+| `network/` | Network management (Tailscale, AP mode, mDNS). |
+| `omega_config/` | YAML config (`config.yaml`, `robot_profile.yaml`) and `config_manager.py`. |
 | `scripts/` | Local automation (`organize_tests.sh`, `update_test_imports.py`). |
 | `tests/` | Pytest suites (`unit/`, `integration/`, `e2e/`, `api/`) plus shared fixtures under `tests/utils`. |
-| `diagnostics.py` | Rich CLI diagnostics for the Pi 5 (GPIO, sensors, LEDs, buzzer, system info). |
-| `capture_image.py`, `video_server.py` | Convenience entry points for camera testing and re-exporting the video module. |
-| `requirements.txt`, `go.mod`, `package.json` | Dependency manifests for Python, Go, and (empty) npm tooling. |
+| `requirements.txt` | Python dependency manifest. |
 
 ## Services and entry points
 
-### Movement (`movement/movement_ws_server.py`) - **OPTIMIZED**
+### Movement (`movement/movement_ws_server.py`)
 
-- **High-performance** JSON WebSocket API with advanced caching and async processing
-- Handles motor commands (`move-up`, `move-left`, `stop`, timed moves), servo adjustments, buzzer toggles, and status queries
-- **Motor telemetry caching**: 1-second TTL reduces backend load by 80%
-- **WebSocket message batching**: 50% latency reduction through intelligent message grouping
-- **Async task processing**: Non-blocking operations with priority queues
-- **Performance monitoring**: Real-time system metrics and alerts
-- Integrates the autonomy controller so modes can take over motor control
+- JSON WebSocket API for motor commands (`move-up`, `move-left`, `stop`, timed moves), servo adjustments, buzzer, and status queries.
+- Integrates the autonomy controller so autonomous modes can take over motor control.
+- Optional Redis caching (`REDIS_URL`, `ENABLE_CACHING`) and performance monitoring (`ENABLE_PERFORMANCE_MONITORING`).
 - Environment variables:
   - `PORT_MOVEMENT` (default `8081`)
   - `MOVEMENT_PATH` (`/` by default)
-  - `ORIGIN_ALLOW` (comma separated allow-list)
+  - `ORIGIN_ALLOW` (comma-separated allow-list)
   - `ORIGIN_ALLOW_NO_HEADER` (allow CLI clients without an `Origin` header)
-  - `ROBOT_SIM=1` to run with NOOP motor/servo/buzzer drivers on a dev machine
-  - **NEW**: `REDIS_URL`, `ENABLE_CACHING`, `ENABLE_PERFORMANCE_MONITORING`
-
-Run it with:
+  - `ROBOT_SIM=1` — NOOP motor/servo/buzzer drivers for dev machines
 
 ```bash
-cd movement
-python movement_ws_server.py
+python movement/movement_ws_server.py
 ```
 
-### Performance API (`api/performance_api.py`) - **NEW**
+### Performance API (`api/performance_api.py`)
 
-- **Real-time performance monitoring** API for system and application metrics
-- Exposes REST endpoints for performance data, cache statistics, and system information
-- Integrates with optimization utilities for comprehensive monitoring
-- Endpoints:
-  - `GET /api/performance/metrics` - Current performance metrics
-  - `GET /api/performance/cache` - Cache statistics and hit rates
-  - `POST /api/performance/cache/clear` - Clear cache (admin endpoint)
-  - `GET /api/performance/system` - System information and uptime
+REST endpoints for live system metrics, cache stats, and uptime. Mounted into `main_api.py`.
 
-Run with:
-```bash
-cd api
-python performance_api.py
-```
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/performance/metrics` | CPU, memory, request timing |
+| `GET /api/performance/cache` | Cache hit rates |
+| `GET /api/performance/system` | System info and uptime |
 
-### Ultrasonic distance (`sensors/main_ultrasonic.go`) - **OPTIMIZED**
+### Ultrasonic distance (`sensors/ultrasonic_ws_server.py`)
 
-- Go WebSocket server that interfaces with the HC-SR04 via `periph.io`.
-- Emits JSON envelopes with distance in centimetres, metres, inches, and feet.
+- Python WebSocket server that interfaces with the HC-SR04.
+- Emits JSON envelopes with distance in centimetres.
 - Sends a welcome message and responds to `{ "type": "ping" }` with `{ "type": "pong" }`.
-- Key environment variables: `PORT_ULTRASONIC`, `ULTRA_PATH`, `ULTRA_MEASURE_INTERVAL`,
-  `ULTRA_WRITE_TIMEOUT`, `ULTRA_LOG_EVERY`, `ULTRA_LOG_DELTA_CM`, `ORIGIN_ALLOW`.
+- Key environment variables: `PORT_ULTRASONIC`, `ULTRA_PATH`, `ORIGIN_ALLOW`.
 
 Run:
 
 ```bash
-go run sensors/main_ultrasonic.go
+python sensors/ultrasonic_ws_server.py
 ```
 
 ### Line tracker (`sensors/line_tracking_ws_server.py`)
@@ -121,18 +68,13 @@ go run sensors/main_ultrasonic.go
 - Configurable via `LINE_TRACKER_HOST`, `LINE_TRACKER_PORT`, `LINE_TRACKER_PATH`,
   `RATE_HZ`, and per-sensor inversion flags. Set `FORCE_SIM=1` to run without GPIO.
 
-### Lighting (`controllers/lighting/main_lighting.go` + `controllers/lighting/led_control.py`)
+### Lighting (`controllers/lighting/led_control.py`)
 
-- WebSocket server written in Go that forwards lighting commands to the privileged
-  `run_led.sh` wrapper, which in turn executes the Python LED controller.
-- Supports colour hex strings or integers, brightness, and pattern/mode selection.
+- Python LED controller that supports colour hex strings, brightness, and pattern/mode selection.
 - Includes a music-reactive pattern (`pattern: "music"`) that samples the default
-  microphone when `sounddevice` is installed. The controller automatically falls back
-  to a synthetic beat when audio input is unavailable so the animation still runs in
-  development containers.
-- Responds to heartbeat `{ "type": "ping" }` frames with `{ "type": "pong" }`.
-- Ensure `RUN_LED` inside the Go file points at the correct absolute path and that the
-  wrapper can run with the required permissions (often via `sudo`).
+  microphone when `sounddevice` is installed. Falls back to a synthetic beat automatically.
+- Exposed through the FastAPI `/lighting` routes (no separate WebSocket server needed).
+- Ensure `run_led.sh` wrapper has the required permissions (often via `sudo`).
 
 ### Video streaming (`video/video_server.py`)
 
@@ -141,7 +83,7 @@ go run sensors/main_ultrasonic.go
   no camera is attached (`PLACEHOLDER_WHEN_NO_CAMERA=1`).
 - Reads configuration from `.env`:
   - `VIDEO_PORT`, `BIND_HOST`
-  - `CAMERA_BACKEND` (`auto`, `picamera2`, `v4l2`), `CAMERA_WIDTH`, `CAMERA_HEIGHT`
+  - `CAMERA_BACKEND` (`gstreamer`, `auto`, `v4l2`), `CAMERA_WIDTH`, `CAMERA_HEIGHT`, `CAMERA_FPS`
   - `STARTUP_RETRY_SEC`, `RESTART_ON_STALL`, `STALE_MS`, `WATCHDOG_PERIOD_MS`
   - `ORIGIN_ALLOW`, `PUBLIC_BASE_URL(_ALT)` for logging, `CERT_PATH`, `KEY_PATH`
   - `FACE_RECOGNITION`, `KNOWN_FACES_DIR`, `FACE_RECOGNITION_THRESHOLD`
@@ -183,13 +125,6 @@ Launch with:
 uvicorn servers.gateway_api:app --host 0.0.0.0 --port 7070
 ```
 
-### Combined server (`main_combined.go`)
-
-`go run main_combined.go` starts the Go server core, launches the Python video server,
-and kicks off ROS nodes through `commands.StartROSNodes()`. Update
-`commands/ros_integration.go` to point at your actual ROS package or use the
-`scripts/start_robot.sh` helper which performs a similar orchestration with SSH.
-
 ## Environment configuration
 
 Copy `.env.example` to `.env` and adjust to match your deployment:
@@ -213,31 +148,24 @@ Environment variables are loaded via `python-dotenv` where applicable, so editin
 
 ## Setup & dependencies
 
-1. Install Go modules:
-   ```bash
-   go mod download
-   ```
-2. Create/activate a Python virtual environment:
+1. Create/activate a Python virtual environment:
    ```bash
    python -m venv venv
    source venv/bin/activate
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
-3. **Install optimization dependencies**:
+2. Install system libraries on the Pi before running the video server:
    ```bash
-   pip install redis psutil aiohttp
+   sudo apt-get update
+   sudo apt-get install -y python3-libcamera rpicam-apps v4l-utils python3-lgpio \
+       gstreamer1.0-tools gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
+   # picamera2 as fallback: sudo apt install python3-picamera2
    ```
-4. **Install Redis** (optional, for advanced caching):
+3. **Install Redis** (optional, for advanced caching):
    ```bash
    sudo apt install redis-server
    sudo systemctl start redis-server
-   ```
-5. Install system libraries on the Pi before running the video server:
-   ```bash
-   sudo apt-get update
-   sudo apt-get install -y python3-picamera2 python3-libcamera rpicam-apps \
-       v4l-utils python3-lgpio
    ```
 
 The root `Makefile` exposes `make venv`, `make backend-install`, `make run-movement`,
@@ -246,33 +174,43 @@ profile-aware environment loading.
 
 ## Testing
 
-Activate your virtual environment when running Python tests.
+Activate your virtual environment before running tests.
 
 ```bash
-# Go unit tests
-go test ./...
-
-# Python unit tests
-pytest tests/unit
-
-# Integration / API / end-to-end suites
-pytest tests/integration
-pytest tests/api
-pytest tests/e2e
+pytest tests/unit          # Unit tests — hardware mocked, no network
+pytest tests/integration   # Integration — requires running services
+pytest tests/e2e           # End-to-end workflows
+pytest tests/system        # Full system smoke tests
+pytest tests/security      # API input validation and auth
+pytest tests/performance   # Latency and load benchmarks
+pytest tests/regression    # Regression suite
+pytest tests/hybrid        # Mode-switching and hybrid stack tests
+pytest tests/faults        # Fault injection and recovery
 ```
 
-The `tests/utils` package contains reusable fixtures and helpers. Use
-`update_test_imports.py` or `organize_tests.sh` if you restructure test packages to
-keep imports tidy.
+| Suite | Files | What it covers |
+|-------|-------|----------------|
+| `unit/` | 25 | Autonomy modes, LED control, video, servo, omega_config, movement |
+| `integration/` | 8+ | API endpoints, video server, movement WebSocket smoke test |
+| `e2e/` | 5 | Full workflow: ROS2 navigation, line follow, system modes |
+| `system/` | 2 | OmegaOS system-level checks |
+| `security/` | 2 | API auth, input validation |
+| `performance/` | 3 | Latency, load, profiling |
+| `regression/` | 2 | OmegaOS regression |
+| `hybrid/` | 3 | Mode switching, WebSocket state, thermal transitions |
+| `faults/` | 4 | Frame drop recovery, Pi/Orin failures, ROS bridge delay |
+
+`tests/conftest.py` mocks all Pi hardware (`rpi_ws281x`, `PCA9685`, `lgpio`) so every
+suite runs on a dev machine without GPIO. `tests/utils/` holds shared fixtures.
+
+Use `scripts/organize_tests.sh` or `scripts/update_test_imports.py` if you restructure packages.
 
 ## Diagnostics & field tools
 
-- `diagnostics.py` exercises GPIO peripherals (ultrasonic, IR tracker, buzzer, LEDs)
-  and captures system info. Run it with `python diagnostics.py --log` to save a report.
-- `scripts/check_endpoints.sh` lives at the repo root and reads this directory's `.env`
-  to validate movement, lighting, ultrasonic, and video endpoints for the active profile.
-- `scripts/start_robot.sh` orchestrates ROS launch + backend services based on
-  environment variables from `.env`.
+- `tools/diagnostics.py` — rich CLI diagnostics for GPIO peripherals (ultrasonic, IR tracker, buzzer, LEDs). Run with `python tools/diagnostics.py --log` to save a report.
+- `tools/websocket_test_client.py` — interactive WebSocket REPL for testing any endpoint.
+- `scripts/check_endpoints.sh` — reads this directory's `.env` and validates movement, lighting, ultrasonic, and video endpoints.
+- `scripts/start_robot.sh` — orchestrates ROS2 launch + backend services from `.env`.
 
 ## Hardware notes
 

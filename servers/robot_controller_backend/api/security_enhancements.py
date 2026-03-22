@@ -224,8 +224,9 @@ class EnhancedSecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = csp
         
         # Remove server header
-        response.headers.pop("server", None)
-        response.headers.pop("X-Powered-By", None)
+        for _h in ("server", "X-Powered-By"):
+            if _h in response.headers:
+                del response.headers[_h]
         
         return response
 

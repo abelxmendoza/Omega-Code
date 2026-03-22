@@ -6,12 +6,12 @@ Each server runs independently — no main backend required. The UI connects dir
 
 | Server | Port | Language | Entry Point | Purpose |
 |--------|------|----------|-------------|---------|
-| Ultrasonic | 8080 | Go | `sensors/main_ultrasonic.go` | HC-SR04 distance sensor |
-| Movement | 8081 | Python/Go | `movement/movement_ws_server.py` | Robot movement control |
-| Lighting | 8082 | Go | `controllers/lighting/main_lighting.go` | LED strip control |
+| Ultrasonic | 8080 | Python | `sensors/ultrasonic_ws_server.py` | HC-SR04 distance sensor |
+| Movement | 8081 | Python | `movement/movement_ws_server.py` | Robot movement control |
+| Lighting | via API | Python | `controllers/lighting/led_control.py` | LED strip control (FastAPI) |
 | Line Tracker | 8090 | Python | `sensors/line_tracking_ws_server.py` | Line following sensors |
 | Video | 5000 | Python | `video/video_server.py` | MJPEG camera stream |
-| Main API | 8000 | Python | `main_api.py` | REST API gateway (optional) |
+| Main API | 8000 | Python | `main_api.py` | REST API gateway (preferred) |
 
 All commands run from `servers/robot_controller_backend/`.
 
@@ -19,7 +19,7 @@ All commands run from `servers/robot_controller_backend/`.
 
 ## Ultrasonic Sensor (HC-SR04)
 
-**Server:** `sensors/main_ultrasonic.go`
+**Server:** `sensors/ultrasonic_ws_server.py`
 **Protocol:** WebSocket at `ws://<host>:8080/ultrasonic`
 **GPIO:** Trigger = GPIO27 (Pin 13), Echo = GPIO22 (Pin 15)
 
@@ -27,7 +27,7 @@ All commands run from `servers/robot_controller_backend/`.
 
 ```bash
 cd servers/robot_controller_backend/sensors
-go run main_ultrasonic.go
+python3 ultrasonic_ws_server.py
 ```
 
 ### Environment variables
@@ -221,6 +221,15 @@ FORCE_SIM=0    # 1 = simulation mode
 
 **Server:** `video/video_server.py`
 **Protocol:** HTTP MJPEG at `http://<host>:5000/video_feed`
+**Camera backend:** GStreamer/OpenCV via `libcamerasrc` pipeline (replaces picamera2)
+
+### Setup (Pi)
+
+```bash
+# Automated — installs GStreamer, libcamera, OpenCV, builds libcamera Python bindings
+chmod +x scripts/setup_pi_camera.sh
+./scripts/setup_pi_camera.sh
+```
 
 ### Run
 
@@ -229,13 +238,30 @@ cd servers/robot_controller_backend/video
 python3 video_server.py
 ```
 
+The UI proxies the stream through FastAPI at `/api/video-proxy` so the browser
+never hits port 5000 directly. The `<img>` tag (not Next.js `Image`) is used in
+`CameraFrame.tsx` — required for MJPEG multipart streams.
+
 ### Environment variables
 
 ```bash
 VIDEO_PORT=5000
 BIND_HOST=0.0.0.0
 PLACEHOLDER_WHEN_NO_CAMERA=1    # Show placeholder if no camera
+CAMERA_WIDTH=640
+CAMERA_HEIGHT=480
+CAMERA_FPS=10
+FRAME_STALE_MS=2500             # Mark frame stale after this many ms
 ```
+
+### GStreamer pipeline
+
+`camera.py` builds the pipeline automatically:
+```
+libcamerasrc → video/x-raw → queue leaky=downstream → videoconvert → BGR
+```
+Binary `.so` IPA files are excluded from git — build from source via `setup_pi_camera.sh`.
+Tuning JSONs for all supported sensors live in `video/libcamera-staged/share/`.
 
 ---
 
@@ -317,4 +343,113 @@ export ORIGIN_ALLOW=http://localhost:3000,http://192.168.1.100:3000
 ```bash
 ROBOT_SIM=1 python3 movement_ws_server.py   # simulation mode
 FORCE_SIM=1 python3 line_tracking_ws_server.py
+```
+
+---
+
+## Pi Performance Optimization
+
+Run `scripts/optimize_hardware.sh` to apply all of the following automatically, or apply manually.
+
+### CPU governor
+
+```bash
+echo 'performance' | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+echo 'GOVERNOR=performance' | sudo tee -a /etc/default/cpufrequtils
+```
+
+### GPU memory split
+
+```bash
+sudo raspi-config nonint do_memory_split 128
+```
+
+### Network (add to `/etc/sysctl.conf`)
+
+```
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 65536 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_fastopen = 3
+```
+
+### Camera env vars
+
+```bash
+CAMERA_BACKEND=gstreamer   # primary — libcamerasrc pipeline
+CAMERA_WIDTH=640
+CAMERA_HEIGHT=480
+CAMERA_FPS=30
+FRAME_STALE_MS=1500
+```
+
+### Boot config (`/boot/config.txt`)
+
+```
+start_x=1
+camera_auto_detect=1
+disable_camera_led=1
+gpu_mem=128
+arm_freq=1500
+```
+
+### GPIO / sensors
+
+```bash
+RATE_HZ=20              # line tracker poll rate (default 10)
+GPIO_DEBOUNCE_MS=5
+MOTOR_PWM_FREQUENCY=1000
+```
+
+### Real-time scheduling (add to `/etc/sysctl.conf`)
+
+```
+kernel.sched_rt_runtime_us = -1
+kernel.sched_rt_period_us = 1000000
+```
+
+### Systemd service example
+
+```ini
+# /etc/systemd/system/omega1-robot.service
+[Unit]
+Description=Omega1 Robot Services
+After=network.target
+
+[Service]
+Type=simple
+User=omega1
+WorkingDirectory=/home/omega1/Omega-Code/servers/robot_controller_backend
+ExecStart=/bin/bash -c 'python3 sensors/line_tracking_ws_server.py & python3 sensors/ultrasonic_ws_server.py & python3 video/video_server.py'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### WiFi power saving
+
+```bash
+# /etc/network/interfaces.d/omega1-wifi
+auto wlan0
+iface wlan0 inet dhcp
+    wireless-power off
+```
+
+### Tailscale (mobile hotspot)
+
+```bash
+tailscale set --accept-routes=false --accept-dns=false
+```
+
+### Verify
+
+```bash
+vcgencmd measure_temp
+vcgencmd get_mem gpu
+cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+tailscale status
 ```

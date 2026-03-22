@@ -1,4 +1,5 @@
 # api/ros_native_bridge.py
+from __future__ import annotations
 """
 Native ROS2 Bridge Service
 
@@ -7,7 +8,7 @@ Works from laptop or Pi, connects to ROS2 topics directly.
 
 Usage:
     Set ROS_NATIVE_MODE=true in environment
-    Ensure ROS2 is sourced: source /opt/ros/rolling/setup.bash
+    Ensure ROS2 is sourced: source /opt/ros/humble/setup.bash
 """
 
 import os
@@ -32,7 +33,7 @@ try:
     _rclpy_available = True
 except ImportError as e:
     log.warning(f"rclpy not available: {e}. Native ROS2 features disabled.")
-    log.warning("Install with: sudo apt install ros-rolling-rclpy")
+    log.warning("Install with: sudo apt install ros-humble-rclpy")
     rclpy = None
     Node = None
     String = None

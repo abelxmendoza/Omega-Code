@@ -113,7 +113,7 @@ def generate_launch_description():
     # Always run camera publisher (all profiles)
     ld.add_action(Node(
         package="omega_robot",
-        executable="camera_publisher",
+        executable="camera_publisher_node",
         name="camera_publisher",
         parameters=[{
             "width": LaunchConfiguration("width"),
@@ -135,15 +135,7 @@ def generate_launch_description():
     elif profile_mode == "lenovo":
         ld.add_action(LogInfo(msg="   Mode: DEV - SLAM and navigation enabled"))
         
-        # SLAM node (if available)
-        if profile.get("slam_capable", False):
-            ld.add_action(Node(
-                package="omega_robot",
-                executable="odometry_publisher",
-                name="odometry_publisher",
-                output="screen",
-                condition=IfCondition("true")  # Placeholder for actual SLAM node
-            ))
+        # Odometry is published by motor_controller_node — no separate node needed
         
         # ArUco pose estimation (enhanced)
         if profile.get("aruco", True):

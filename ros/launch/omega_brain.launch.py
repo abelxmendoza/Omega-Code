@@ -66,13 +66,7 @@ def generate_launch_description():
             output="screen"
         ))
         
-        # Odometry publisher
-        ld.add_action(Node(
-            package="omega_robot",
-            executable="odometry_publisher",
-            name="odometry_publisher",
-            output="screen"
-        ))
+        # Odometry is published by motor_controller_node — no separate node needed
     
     # Action servers (all modes except light)
     ld.add_action(Node(

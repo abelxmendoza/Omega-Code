@@ -17,7 +17,7 @@ profiles:
       max_fps: 30
       gpu_acceleration: false
     recommended_settings:
-      camera_backend: "picamera2"
+      camera_backend: "gstreamer"
       camera_width: 640
       camera_height: 480
       camera_fps: 30

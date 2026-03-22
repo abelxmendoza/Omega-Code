@@ -3,46 +3,50 @@
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                 Omega Robot ROS2 Ecosystem                   │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  Dev Machine (MacBook/Laptop)    Raspberry Pi 4B             │
-│  ┌──────────────────────┐        ┌─────────────────────┐     │
-│  │ Web UI (Next.js)     │        │ Docker: ROS2 Humble  │     │
-│  │ Backend (FastAPI)    │        │ sensor_data_publisher│     │
-│  │ ROS2-Web Bridge      │        │ robot_controller     │     │
-│  └──────────┬───────────┘        │ enhanced_telemetry   │     │
-│             │                    └──────────┬────────────┘    │
-│             └────────────────────────────── ┘                │
-│                    ROS2 DDS (CycloneDDS)                     │
-│                    Domain ID: 0                              │
-└──────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                     Omega Robot ROS2 Ecosystem                       │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Dev Machine (Mac/Lenovo/Jetson)    Raspberry Pi 4B                  │
+│  ┌───────────────────────────┐      ┌──────────────────────────┐     │
+│  │ Web UI (Next.js)          │      │ Docker: ROS2 Humble       │     │
+│  │ Backend (FastAPI)         │      │  motor_controller_node    │     │
+│  │ ROS2-Web Bridge           │      │  sensor_node              │     │
+│  │ Action servers            │      │  camera_publisher_node    │     │
+│  └──────────────┬────────────┘      └──────────────┬───────────┘     │
+│                 └──────────────────────────────────┘                 │
+│                        ROS2 DDS (CycloneDDS)                         │
+│                        Domain ID: 0                                  │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Node Graph
 
-| Node | Publishes | Subscribes |
-|------|-----------|------------|
-| `sensor_data_publisher` | `/omega/sensors/ultrasonic`, `/omega/sensors/line_tracking`, `/omega/sensors/battery` | — |
-| `robot_controller` | `/omega/motors/left`, `/omega/motors/right` | `/cmd_vel` |
-| `enhanced_telemetry` | `/omega/telemetry` | `/omega/sensors/*` |
-| `camera_publisher` | `/camera/image_raw`, `/camera/image_raw/compressed` | — |
-| Web Bridge (backend) | `/cmd_vel` | `/omega/sensors/*`, `/omega/telemetry` |
+| Node | Device | Publishes | Subscribes |
+|------|--------|-----------|------------|
+| `motor_controller_node` | Pi | `/odom` | `/cmd_vel` |
+| `sensor_node` | Pi | `/omega/ultrasonic`, `/omega/line_tracking/state` | — |
+| `camera_publisher_node` | Pi | `/camera/image_raw`, `/camera/image_raw/compressed` | — |
+| `xbox_teleop_node` | Pi/Lenovo | `/cmd_vel` | — |
+| `navigate_to_goal_action_server` | Laptop/Jetson | — | `/odom`, `/omega/ultrasonic` |
+| `follow_line_action_server` | Laptop/Jetson | `/cmd_vel` | `/omega/line_tracking/state` |
+| `obstacle_avoidance_action_server` | Laptop/Jetson | `/cmd_vel` | `/omega/ultrasonic` |
+| `path_planner` | Laptop/Jetson | `/path` | `/odom`, `/map` |
+| `vision_processor` | Jetson | `/omega/detections` | `/camera/image_raw` |
+| Web Bridge (backend) | Laptop | `/cmd_vel` | `/omega/ultrasonic`, `/omega/line_tracking/state` |
 
 ### Topics Reference
 
-| Topic | Type | Description |
-|-------|------|-------------|
-| `/omega/sensors/ultrasonic` | Float32 | Distance in cm |
-| `/omega/sensors/line_tracking` | Int32MultiArray | `[left, center, right]` sensor states |
-| `/omega/sensors/battery` | BatteryState | Voltage and percentage |
-| `/omega/motors/left` | Float32 | Left motor speed (-1.0 to 1.0) |
-| `/omega/motors/right` | Float32 | Right motor speed (-1.0 to 1.0) |
-| `/omega/telemetry` | String | JSON telemetry blob |
-| `/cmd_vel` | Twist | Velocity commands from web app |
-| `/camera/image_raw` | Image | Raw camera frames |
-| `/camera/image_raw/compressed` | CompressedImage | Compressed camera frames |
+| Topic | Type | Publisher | Description |
+|-------|------|-----------|-------------|
+| `/omega/ultrasonic` | `sensor_msgs/Range` | `sensor_node` | Distance in metres |
+| `/omega/line_tracking/state` | `std_msgs/String` (JSON) | `sensor_node` | `{left, center, right}` |
+| `/odom` | `nav_msgs/Odometry` | `motor_controller_node` | Wheel odometry |
+| `/cmd_vel` | `geometry_msgs/Twist` | UI / teleop | Velocity commands |
+| `/camera/image_raw` | `sensor_msgs/Image` | `camera_publisher_node` | Raw frames |
+| `/camera/image_raw/compressed` | `sensor_msgs/CompressedImage` | `camera_publisher_node` | Compressed frames |
+| `/omega/detections` | `std_msgs/String` (JSON) | `vision_processor` | YOLO/ML detections (Jetson) |
+| `/path` | `nav_msgs/Path` | `path_planner` | Planned path |
 
 ---
 
@@ -60,15 +64,20 @@ source install/setup.bash
 ### Run nodes
 
 ```bash
-# Terminal 1: Sensor data
-ros2 run omega_robot sensor_data_publisher
+# On the Pi — hardware IO
+ros2 run omega_robot motor_controller
+ros2 run omega_robot sensor_node
+ros2 run omega_robot camera_publisher_node
 
-# Terminal 2: Robot controller
-ros2 run omega_robot robot_controller
+# On Laptop/Jetson — planning and action servers
+ros2 run omega_robot path_planner
+ros2 run omega_robot navigate_to_goal_action_server
+ros2 run omega_robot follow_line_action_server
+ros2 run omega_robot obstacle_avoidance_action_server
 
-# Terminal 3: Monitor topics
+# Monitor topics
 ros2 topic list
-ros2 topic echo /omega/sensors/ultrasonic
+ros2 topic echo /omega/ultrasonic
 
 # Or launch everything at once
 ros2 launch omega_robot robot_full.launch.py
@@ -78,10 +87,12 @@ ros2 launch omega_robot robot_full.launch.py
 
 | File | Purpose |
 |------|---------|
-| `pi_only.launch.py` | Pi-only sensor + motor nodes |
-| `pi_orin_hybrid.launch.py` | Pi hardware + Orin AI brain |
-| `omega_full.launch.py` | Full stack including camera + autonomy |
-| `omega_camera.launch.py` | Camera nodes only |
+| `pi_only.launch.py` | Pi hardware IO — motor_controller + sensor_node |
+| `pi_orin_hybrid.launch.py` | Pi hardware + Jetson Orin AI nodes |
+| `robot_full.launch.py` | Full stack — all nodes |
+| `omega_camera.launch.py` | Camera + capability detection |
+| `omega_brain.launch.py` | Autonomy stack — action servers + path planner |
+| `multidevice_setup.launch.py` | Reference — laptop action servers + Pi/Orin node comments |
 
 ---
 
@@ -118,8 +129,8 @@ UI (ros.tsx) → /api/ros/* → gateway_api.py (7070) → ros_routes.py (8000)
 ### Docker containers
 
 Defined in `docker/ros2_robot/docker-compose.yml`:
-- `telemetry_publisher` — publishes sensor data
-- `telemetry_listener` — receives and logs telemetry
+- `motor_controller` — drives PCA9685, publishes `/odom`, subscribes `/cmd_vel`
+- `sensor_node` — reads HC-SR04 + line sensors, publishes `/omega/ultrasonic` + `/omega/line_tracking/state`
 
 ### ROS2 modes
 
@@ -131,7 +142,7 @@ The backend supports two modes:
 
 ```bash
 export ROS_NATIVE_MODE=true
-source /opt/ros/rolling/setup.bash
+source /opt/ros/humble/setup.bash
 source ~/omega_ws/install/setup.bash
 cd servers/robot_controller_backend
 python main_api.py
@@ -172,10 +183,62 @@ ws.onmessage = (event) => {
 };
 ```
 
+### Sensor WebSocket Bridge
+
+`api/sensor_bridge.py` subscribes to ROS2 sensor topics in a daemon thread and fans
+data into asyncio queues that WebSocket handlers drain — no blocking of the FastAPI event loop.
+
+**Topics subscribed:**
+
+| Topic | Type | Rate |
+|-------|------|------|
+| `/omega/ultrasonic` | `sensor_msgs/Range` | ~10 Hz |
+| `/omega/line_tracking/state` | `std_msgs/String` (JSON) | ~20 Hz |
+
+**WebSocket endpoints** (same FastAPI server, port 8000):
+
+| Endpoint | Purpose |
+|----------|---------|
+| `/ws/ultrasonic` | Streams ultrasonic range data; any message = server alive |
+| `/ws/line` | Streams line tracking state; ping/pong latency check |
+| `/ws/lighting` | Accepts lighting commands, publishes via ROS bridge |
+
+**Protocol:**
+```json
+// Server → Client on connect
+{ "type": "welcome", "service": "<name>", "status": "connected" }
+
+// Client → Server heartbeat
+{ "type": "ping", "ts": 1234567890 }
+
+// Server → Client heartbeat
+{ "type": "pong", "ts": 1234567890 }
+
+// Server → Client sensor data
+{ "type": "ultrasonic", "range_m": 0.42, "stamp": 1234567890.1 }
+{ "type": "line_tracking", "left": 1, "center": 0, "right": 1 }
+```
+
+Falls back gracefully — if ROS2 is unavailable, bridge is a no-op and endpoints stay open.
+
 ### UI Components
 
-- `CameraViewer.tsx` — displays ROS2 camera topic as a live feed
+- `CameraFrame.tsx` — MJPEG stream via plain `<img>` (Next.js `Image` breaks multipart)
+- `XboxControllerStatus.tsx` — shows connected/paused state, axis/button indicators, pause toggle
+- `useGamepad.ts` — browser Gamepad API hook, GTA-style trigger/stick mapping, pause support
 - ROS dashboard page (`ros.tsx`) — start/stop containers, view telemetry, monitor topics
+
+### Xbox Teleop
+
+The UI's `XboxControllerStatus` component polls the browser Gamepad API via `useGamepad`.
+On the Pi, `xbox_teleop_node.py` reads evdev and publishes to `/cmd_vel`:
+
+```bash
+ros2 run omega_robot xbox_teleop
+```
+
+Wire both together: UI sends `/cmd_vel` over the ROS web bridge; the Pi node also publishes
+directly — whichever is active wins at the `motor_controller_node`.
 
 ---
 
@@ -230,10 +293,10 @@ Falls back to simple logging modes if ROS2 is unavailable.
 
 ## Camera Integration
 
-**Camera publisher:** `ros/src/omega_robot/omega_robot/camera_publisher.py`
+**Camera publisher:** `ros/src/omega_robot/omega_robot/camera_publisher_node.py`
 
 ```bash
-ros2 run omega_robot camera_publisher
+ros2 run omega_robot camera_publisher_node
 ```
 
 **Parameters:**
@@ -242,7 +305,9 @@ ros2 run omega_robot camera_publisher
 - `fps` (default: 30)
 - `publish_compressed` (default: true)
 
-**Supports:** Picamera2 (Pi), OpenCV/V4L2, placeholder frames when no camera is available.
+**Camera backend:** GStreamer/OpenCV via `libcamerasrc` (see [HARDWARE.md](HARDWARE.md#video-server)).
+The standalone `video/video_server.py` (port 5000) serves MJPEG directly;
+the UI consumes it via `/api/video-proxy`. Use `setup_pi_camera.sh` for Pi setup.
 
 **Web bridge** (`api/ros_web_bridge.py`) handles `Image` and `CompressedImage` types, encoding frames to base64 JPEG for WebSocket transmission.
 
@@ -296,7 +361,7 @@ echo $ROS_DOMAIN_ID  # verify matches across devices
 ```bash
 # Verify ROS2 is available in native mode
 export ROS_NATIVE_MODE=true
-source ~/.ros2_rolling_setup.bash
+source ~/.ros2_humble_setup.bash
 # Check backend logs for "ROS2-Web bridge initialized"
 ```
 
@@ -349,7 +414,7 @@ export ROS_DOCKER_COMPOSE_PATH=/home/pi/Omega-Code/docker/ros2_robot/docker-comp
 python main_api.py
 
 # Pi or Lenovo with native ROS
-source /opt/ros/rolling/setup.bash
+source /opt/ros/humble/setup.bash
 source ~/omega_ws/install/setup.bash
 export ROS_ENABLED=true
 export ROS_NATIVE_MODE=true

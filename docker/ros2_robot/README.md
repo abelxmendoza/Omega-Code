@@ -7,7 +7,7 @@ This directory contains Docker configuration for running ROS 2 Humble nodes in a
 The Docker setup includes:
 - **Dockerfile**: Builds ROS 2 Humble image with CycloneDDS support
 - **entrypoint.sh**: Sets up ROS 2 environment and sources workspace
-- **docker-compose.yml**: Orchestrates telemetry publisher and listener nodes
+- **docker-compose.yml**: Orchestrates Pi hardware IO nodes (motor_controller, sensor_node)
 - **config/cyclonedds.xml**: CycloneDDS configuration for peer discovery
 
 ## Quick Start
@@ -29,19 +29,19 @@ sudo docker-compose up -d
 ### Run Individual Nodes
 
 ```bash
-# Publisher
-sudo docker run -it --rm --network host \
+# Motor controller (drives PCA9685, publishes /odom)
+sudo docker run -it --rm --network host --privileged \
   -e ROS_DOMAIN_ID=0 \
   -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
   omega_robot:latest \
-  ros2 run omega_robot telemetry_publisher
+  ros2 run omega_robot motor_controller
 
-# Listener (in another terminal)
-sudo docker run -it --rm --network host \
+# Sensor node (HC-SR04 + line sensors)
+sudo docker run -it --rm --network host --privileged \
   -e ROS_DOMAIN_ID=0 \
   -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
   omega_robot:latest \
-  ros2 run omega_robot telemetry_listener
+  ros2 run omega_robot sensor_node
 ```
 
 ## Testing
@@ -62,8 +62,9 @@ source /root/omega_ws/install/setup.bash
 # List topics
 ros2 topic list
 
-# Echo telemetry
-ros2 topic echo /omega/telemetry
+# Echo sensor data
+ros2 topic echo /omega/ultrasonic
+ros2 topic echo /omega/line_tracking/state
 ```
 
 ### Test Networking
@@ -104,7 +105,7 @@ To mount local workspace for live editing, add to `docker-compose.yml`:
 
 ```yaml
 services:
-  telemetry_publisher:
+  motor_controller:
     volumes:
       - ../../ros/src:/root/omega_ws/src
 ```
@@ -127,8 +128,15 @@ The `omega_robot` package is located at `ros/src/omega_robot/`:
 ros/src/omega_robot/
 ├── omega_robot/
 │   ├── __init__.py
-│   ├── telemetry_publisher.py
-│   └── telemetry_listener.py
+│   ├── motor_controller_node.py   # PCA9685 driver, /odom publisher
+│   ├── sensor_node.py             # HC-SR04 + line tracking
+│   ├── camera_publisher_node.py   # GStreamer/OpenCV camera
+│   ├── xbox_teleop_node.py        # evdev controller → /cmd_vel
+│   ├── navigate_to_goal_action.py
+│   ├── follow_line_action.py
+│   ├── obstacle_avoidance_action.py
+│   ├── path_planner.py
+│   └── vision_processor.py        # Jetson GPU inference
 ├── package.xml
 ├── setup.py
 └── resource/

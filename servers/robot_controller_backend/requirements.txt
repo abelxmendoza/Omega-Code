@@ -1,60 +1,59 @@
-# Core dependencies
+# Core
 websockets>=11.0.3
-asyncio-mqtt>=0.13.0
-PyYAML>=6.0  # Configuration file parsing
+PyYAML>=6.0
 
-# API Framework (for gateway_api.py)
+# API
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 httpx>=0.25.0
-psutil>=5.9.0  # System metrics for performance endpoints
+psutil>=5.9.0
 
-# Hardware control libraries
+# Hardware (Pi)
 RPi.GPIO>=0.7.1
-rpi-ws281x>=5.0.0  # NeoPixel/WS2812 LED strip control
+smbus2>=0.4.0
+rpi-ws281x>=5.0.0
 adafruit-circuitpython-neopixel>=6.4.1
 adafruit-circuitpython-dht>=3.4.0
 adafruit-circuitpython-hcsr04>=3.3.0
 adafruit-circuitpython-tsl2561>=3.2.0
 
-# Camera libraries
+# Camera / vision
+# Primary backend: GStreamer via libcamerasrc — install with scripts/setup_pi_camera.sh
+# picamera2 is a legacy fallback: sudo apt install python3-picamera2
 opencv-python>=4.8.0
 opencv-contrib-python>=4.8.0
-picamera2>=0.3.12
 Pillow>=10.0.0
 
-# ROS2 Python bindings (for native ROS2 integration)
-# Note: rclpy is typically installed with ROS2, but we list it here for reference
-# Install via: sudo apt install ros-rolling-rclpy
+# ROS2 — installed with ROS2, not via pip
+# sudo apt install ros-humble-rclpy ros-humble-sensor-msgs ros-humble-std-msgs
 
-# Sensor libraries
+# Sensors
 w1thermsensor>=2.0.0
 adafruit-circuitpython-mpu6050>=3.2.0
 adafruit-circuitpython-bno055>=3.2.0
 
-# Serial communication
+# Serial
 pyserial>=3.5
 
 # Data processing
 numpy>=1.24.0
 scipy>=1.11.0
 
-# Machine Learning libraries
-scikit-learn>=1.3.0
-tensorflow>=2.13.0
-torch>=2.0.0
-torchvision>=0.15.0
-opencv-contrib-python>=4.8.0
-
-# AI and Computer Vision
+# Computer Vision (face detection, tracking)
 face-recognition>=1.3.0
 dlib>=19.24.0
 imutils>=0.5.4
 
-# Logging and monitoring
+# ML inference — Jetson only, install separately with CUDA-compatible wheels
+# See docs/JETSON_PYTORCH.md for install instructions
+# tensorflow>=2.13.0
+# torch>=2.0.0
+# torchvision>=0.15.0
+
+# Logging
 structlog>=23.1.0
 
-# Development dependencies
+# Development
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
 black>=23.7.0

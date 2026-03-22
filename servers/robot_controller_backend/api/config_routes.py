@@ -72,85 +72,6 @@ async def get_config() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{section}")
-async def get_config_section(section: str) -> Dict[str, Any]:
-    """
-    Get a specific configuration section.
-    
-    Args:
-        section: Section name (robot, network, services, camera, movement, lighting, logging, security, telemetry)
-    
-    Returns:
-        Configuration section data
-    """
-    # Validate section name to prevent path traversal
-    from api.input_validators import validate_path_traversal
-    try:
-        section = validate_path_traversal(section)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    """
-    try:
-        manager = get_manager()
-        section_data = manager.get_section(section)
-        
-        if section_data is None:
-            raise HTTPException(status_code=404, detail=f"Section '{section}' not found")
-        
-        return {
-            "ok": True,
-            "section": section,
-            "data": section_data
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        log.error(f"Failed to get config section {section}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/{section}")
-async def update_config_section(
-    section: str,
-    data: Dict[str, Any] = Body(..., description="Configuration data to update")
-) -> Dict[str, Any]:
-    """
-    Update a configuration section.
-    
-    Args:
-        section: Section name
-        data: Configuration data to update
-    
-    Returns:
-        Updated configuration section
-    """
-    try:
-        manager = get_manager()
-        success = manager.update_section(section, data)
-        
-        if not success:
-            raise HTTPException(status_code=500, detail=f"Failed to update section '{section}'")
-        
-        # Validate after update
-        valid, errors = manager.validate_config()
-        if not valid:
-            log.warning(f"Config validation errors after update: {errors}")
-        
-        updated_section = manager.get_section(section)
-        
-        return {
-            "ok": True,
-            "message": f"Section '{section}' updated successfully",
-            "section": section,
-            "data": updated_section,
-            "validation_errors": errors if not valid else []
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        log.error(f"Failed to update config section {section}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.get("/profile/{profile_name}")
 async def get_profile(profile_name: Optional[str] = None) -> Dict[str, Any]:
@@ -369,5 +290,86 @@ async def validate_config() -> Dict[str, Any]:
         }
     except Exception as e:
         log.error(f"Failed to validate config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Wildcard section routes — must be LAST so they don't shadow static routes
+# ---------------------------------------------------------------------------
+
+@router.get("/{section}")
+async def get_config_section(section: str) -> Dict[str, Any]:
+    """
+    Get a specific configuration section.
+
+    Args:
+        section: Section name (robot, network, services, camera, movement, lighting, logging, security, telemetry)
+
+    Returns:
+        Configuration section data
+    """
+    from api.input_validators import validate_path_traversal
+    try:
+        section = validate_path_traversal(section)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        manager = get_manager()
+        section_data = manager.get_section(section)
+
+        if section_data is None:
+            raise HTTPException(status_code=404, detail=f"Section '{section}' not found")
+
+        return {
+            "ok": True,
+            "section": section,
+            "data": section_data
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"Failed to get config section {section}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{section}")
+async def update_config_section(
+    section: str,
+    data: Dict[str, Any] = Body(..., description="Configuration data to update")
+) -> Dict[str, Any]:
+    """
+    Update a configuration section.
+
+    Args:
+        section: Section name
+        data: Configuration data to update
+
+    Returns:
+        Updated configuration section
+    """
+    try:
+        manager = get_manager()
+        success = manager.update_section(section, data)
+
+        if not success:
+            raise HTTPException(status_code=500, detail=f"Failed to update section '{section}'")
+
+        valid, errors = manager.validate_config()
+        if not valid:
+            log.warning(f"Config validation errors after update: {errors}")
+
+        updated_section = manager.get_section(section)
+
+        return {
+            "ok": True,
+            "message": f"Section '{section}' updated successfully",
+            "section": section,
+            "data": updated_section,
+            "validation_errors": errors if not valid else []
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"Failed to update config section {section}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

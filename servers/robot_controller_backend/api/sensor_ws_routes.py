@@ -27,7 +27,7 @@ from __future__ import annotations
 import asyncio
 import time
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -70,14 +70,14 @@ async def _ws_race(websocket: WebSocket, q: asyncio.Queue) -> tuple[dict | None,
 # ---------------------------------------------------------------------------
 
 @router.websocket('/ws/ultrasonic')
-async def ws_ultrasonic(websocket: WebSocket, request: Request):
+async def ws_ultrasonic(websocket: WebSocket):
     """
     Streams /omega/ultrasonic (sensor_msgs/Range) to the UI.
     Header uses treatAnyMessageAsAlive=true -- every sensor push keeps the
     pill green.  Still responds to pings so latency display works too.
     """
     await websocket.accept()
-    sensor_bridge = getattr(request.app.state, 'sensor_bridge', None)
+    sensor_bridge = getattr(websocket.app.state, 'sensor_bridge', None)
     log.info('ws_ultrasonic: client connected, bridge active=%s',
              sensor_bridge.is_active if sensor_bridge else False)
 
@@ -114,13 +114,13 @@ async def ws_ultrasonic(websocket: WebSocket, request: Request):
 # ---------------------------------------------------------------------------
 
 @router.websocket('/ws/line')
-async def ws_line(websocket: WebSocket, request: Request):
+async def ws_line(websocket: WebSocket):
     """
     Streams /omega/line_tracking/state (JSON String) to the UI.
     Responds to ping with pong for latency measurement.
     """
     await websocket.accept()
-    sensor_bridge = getattr(request.app.state, 'sensor_bridge', None)
+    sensor_bridge = getattr(websocket.app.state, 'sensor_bridge', None)
     log.info('ws_line: client connected, bridge active=%s',
              sensor_bridge.is_active if sensor_bridge else False)
 
@@ -157,7 +157,7 @@ async def ws_line(websocket: WebSocket, request: Request):
 # ---------------------------------------------------------------------------
 
 @router.websocket('/ws/lighting')
-async def ws_lighting(websocket: WebSocket, request: Request):
+async def ws_lighting(websocket: WebSocket):
     """
     Accepts lighting commands from the UI and publishes them via the ROS bridge.
     Also responds to ping/pong so the Header pill shows live latency.
@@ -168,7 +168,7 @@ async def ws_lighting(websocket: WebSocket, request: Request):
         brightness: 0.0-1.0 }             # optional
     """
     await websocket.accept()
-    ros_bridge = getattr(request.app.state, 'ros_bridge', None)
+    ros_bridge = getattr(websocket.app.state, 'ros_bridge', None)
     log.info('ws_lighting: client connected, bridge active=%s',
              ros_bridge.is_active if ros_bridge else False)
 

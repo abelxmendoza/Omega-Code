@@ -1,123 +1,86 @@
 #!/usr/bin/env python3
 """
-Pi + Orin Hybrid Launch File for Omega Vision System
+Pi + Orin Hybrid Launch File
 
-Launches both Pi sensor hub nodes and Orin AI brain nodes for hybrid operation.
-This mode is activated when Orin is available (NVMe installed).
+Pi 4B handles hardware IO; Jetson Orin Nano handles AI compute.
+Each device should launch its own nodes — this file is the
+reference configuration showing the full node graph.
+
+Pi (run directly on Pi):
+  ros2 launch omega_robot pi_only.launch.py
+
+Orin (run directly on Orin):
+  ros2 run omega_robot vision_processor
+  ros2 run omega_robot orin_ai_brain
+
+Or launch everything from this file (requires DDS cross-device config):
+  ros2 launch omega_robot pi_orin_hybrid.launch.py
 """
 
+import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo
-from launch.substitutions import LaunchConfiguration, EnvironmentVariable
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-import os
 
 
 def generate_launch_description():
-    """Generate launch description for Pi+Orin hybrid mode."""
-    
-    # Get device IPs from environment
     pi_ip = os.getenv('PI_IP', '192.168.1.107')
-    orin_ip = os.getenv('ORIN_IP', '192.168.1.200')
+    orin_ip = os.getenv('ORIN_IP', '100.107.112.110')
     ros_domain_id = os.getenv('ROS_DOMAIN_ID', '0')
-    
+
     return LaunchDescription([
-        # Launch arguments
-        DeclareLaunchArgument(
-            'ros_domain_id',
-            default_value=ros_domain_id,
-            description='ROS2 domain ID for multi-device communication'
-        ),
-        DeclareLaunchArgument(
-            'pi_ip',
-            default_value=pi_ip,
-            description='Raspberry Pi IP address'
-        ),
-        DeclareLaunchArgument(
-            'orin_ip',
-            default_value=orin_ip,
-            description='Jetson Orin Nano IP address'
-        ),
-        
-        # Log configuration
+        DeclareLaunchArgument('ros_domain_id', default_value=ros_domain_id),
+        DeclareLaunchArgument('pi_ip', default_value=pi_ip),
+        DeclareLaunchArgument('orin_ip', default_value=orin_ip),
+
         LogInfo(msg=[
-            'Pi + Orin Hybrid Mode:',
-            '  Pi IP: ', LaunchConfiguration('pi_ip'),
-            '  Orin IP: ', LaunchConfiguration('orin_ip'),
-            '  Domain ID: ', LaunchConfiguration('ros_domain_id')
+            'Pi + Orin Hybrid | Pi: ', LaunchConfiguration('pi_ip'),
+            ' | Orin: ', LaunchConfiguration('orin_ip'),
+            ' | Domain: ', LaunchConfiguration('ros_domain_id'),
         ]),
-        
-        # ============================================
-        # PI SENSOR HUB NODES (run on Pi via SSH)
-        # ============================================
-        # Note: These nodes should be launched on Pi via SSH
-        # This is a reference configuration
-        
-        # Pi Sensor Hub (runs on Pi)
-        # Note: This is typically started by video_server.py
+
+        # ── Pi 4B nodes (hardware IO) ─────────────────────────────────
         Node(
             package='omega_robot',
-            executable='telemetry_publisher',
-            name='pi_telemetry_publisher',
+            executable='motor_controller',
+            name='motor_controller',
             output='screen',
-            parameters=[{
-                'device_type': 'raspberry_pi',
-                'device_name': 'pi_sensor_hub'
-            }]
+            parameters=[{'use_sim_time': False}]
         ),
-        
-        # Sensor data publisher (runs on Pi)
         Node(
             package='omega_robot',
-            executable='sensor_data_publisher',
-            name='pi_sensor_data_publisher',
+            executable='sensor_node',
+            name='sensor_node',
             output='screen',
-            parameters=[{
-                'device_type': 'raspberry_pi'
-            }]
+            parameters=[{'use_sim_time': False}]
         ),
-        
-        # Enhanced telemetry (runs on Pi)
         Node(
             package='omega_robot',
-            executable='enhanced_telemetry',
-            name='pi_enhanced_telemetry',
+            executable='camera_publisher_node',
+            name='camera_publisher',
             output='screen',
-            parameters=[{
-                'device_type': 'raspberry_pi'
-            }]
+            parameters=[{'use_sim_time': False, 'width': 640, 'height': 480, 'fps': 30}]
         ),
-        
-        # ============================================
-        # ORIN AI BRAIN NODES (run on Orin via SSH)
-        # ============================================
-        # Note: These nodes should be launched on Orin via SSH
-        # This is a reference configuration
-        
-        # Orin AI Brain (runs on Orin)
+
+        # ── Jetson Orin Nano nodes (AI compute) ───────────────────────
+        Node(
+            package='omega_robot',
+            executable='vision_processor',
+            name='orin_vision_processor',
+            output='screen',
+            parameters=[{'use_sim_time': False}]
+        ),
         Node(
             package='omega_robot',
             executable='orin_ai_brain',
             name='orin_ai_brain',
             output='screen',
             parameters=[{
-                'device_type': 'jetson_orin_nano',
-                'device_name': 'orin_ai_brain',
+                'use_sim_time': False,
                 'tensorrt_enabled': True,
                 'yolo_enabled': True,
-                'tracking_enabled': True
-            }]
-        ),
-        
-        # Vision processor (runs on Orin)
-        Node(
-            package='omega_robot',
-            executable='vision_processor',
-            name='orin_vision_processor',
-            output='screen',
-            parameters=[{
-                'device_type': 'jetson_orin_nano'
+                'tracking_enabled': True,
             }]
         ),
     ])
-

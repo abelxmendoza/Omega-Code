@@ -5,7 +5,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+BACKEND_DIR="$(cd "$SCRIPT_DIR/../servers/robot_controller_backend" && pwd)"
+cd "$BACKEND_DIR"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -34,37 +35,32 @@ print_usage() {
 }
 
 run_ultrasonic() {
-    echo -e "${GREEN}Starting Ultrasonic Server (port 8080)...${NC}"
-    cd sensors
-    go run main_ultrasonic.go
+    echo -e "${GREEN}Starting Ultrasonic WebSocket Server (port 8080)...${NC}"
+    cd "$BACKEND_DIR/sensors"
+    python3 ultrasonic_ws_server.py
 }
 
 run_movement() {
-    echo -e "${GREEN}Starting Movement Server (port 8081)...${NC}"
-    cd movement
-    if command -v python3 &> /dev/null; then
-        python3 movement_ws_server.py
-    else
-        echo -e "${YELLOW}Python not found, trying Go version...${NC}"
-        go run movement.go
-    fi
+    echo -e "${GREEN}Starting Movement WebSocket Server (port 8081)...${NC}"
+    cd "$BACKEND_DIR/movement"
+    python3 movement_ws_server.py
 }
 
 run_lighting() {
-    echo -e "${GREEN}Starting Lighting Server (port 8082)...${NC}"
-    cd controllers/lighting
-    go run main_lighting.go
+    echo -e "${GREEN}Lighting is handled by the main FastAPI backend.${NC}"
+    echo -e "${YELLOW}Start the full backend with: python main_api.py${NC}"
+    exit 1
 }
 
 run_line() {
-    echo -e "${GREEN}Starting Line Tracker Server (port 8090)...${NC}"
-    cd sensors
+    echo -e "${GREEN}Starting Line Tracker WebSocket Server (port 8090)...${NC}"
+    cd "$BACKEND_DIR/sensors"
     python3 line_tracking_ws_server.py
 }
 
 run_video() {
     echo -e "${GREEN}Starting Video Server (port 5000)...${NC}"
-    cd video
+    cd "$BACKEND_DIR/video"
     python3 video_server.py
 }
 

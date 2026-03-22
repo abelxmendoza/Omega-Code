@@ -16,7 +16,7 @@ Protocol summary:
 
 import time
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -45,9 +45,9 @@ _BASE_MOVEMENT_V2 = {
 
 
 @router.websocket('/ws/movement')
-async def ws_movement(websocket: WebSocket, request: Request):
+async def ws_movement(websocket: WebSocket):
     await websocket.accept()
-    bridge = getattr(request.app.state, 'ros_bridge', None)
+    bridge = getattr(websocket.app.state, 'ros_bridge', None)
     log.info('ws_movement: client connected, bridge active=%s',
              bridge.is_active if bridge else False)
 

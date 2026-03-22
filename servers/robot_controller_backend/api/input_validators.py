@@ -98,13 +98,13 @@ def validate_ip_address(ip: str) -> str:
     if len(parts) != 4:
         raise ValueError("Invalid IP address format")
     
-    try:
-        for part in parts:
+    for part in parts:
+        try:
             num = int(part)
-            if num < 0 or num > 255:
-                raise ValueError("Invalid IP address: octet out of range")
-    except ValueError:
-        raise ValueError("Invalid IP address: non-numeric octet")
+        except ValueError:
+            raise ValueError("Invalid IP address: non-numeric octet")
+        if num < 0 or num > 255:
+            raise ValueError("Invalid IP address: octet out of range")
     
     return ip
 

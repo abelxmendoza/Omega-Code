@@ -2,10 +2,15 @@
 """
 Full Robot Launch File
 
-Launches all ROS2 nodes for Omega robot:
-- Sensor data publisher
-- Robot controller
-- Enhanced telemetry
+Launches all ROS2 nodes for Omega robot (Pi hardware layer):
+- Motor controller (cmd_vel → PCA9685, publishes /odom)
+- Sensor node (HC-SR04, line tracking, battery)
+- Camera publisher
+- Action servers (navigate_to_goal, follow_line, obstacle_avoidance)
+- Path planner
+
+Run on Pi:
+  ros2 launch omega_robot robot_full.launch.py
 """
 
 from launch import LaunchDescription
@@ -14,43 +19,28 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     return LaunchDescription([
-        # Sensor Data Publisher
+        # Motor controller — cmd_vel → PCA9685 PWM + odometry
         Node(
             package='omega_robot',
-            executable='sensor_data_publisher',
-            name='sensor_data_publisher',
+            executable='motor_controller',
+            name='motor_controller',
             output='screen',
-            parameters=[{
-                'use_sim_time': False
-            }]
+            parameters=[{'use_sim_time': False}]
         ),
-        
-        # Robot Controller
+
+        # Sensor node — HC-SR04, line tracking, battery
         Node(
             package='omega_robot',
-            executable='robot_controller',
-            name='robot_controller',
+            executable='sensor_node',
+            name='sensor_node',
             output='screen',
-            parameters=[{
-                'use_sim_time': False
-            }]
+            parameters=[{'use_sim_time': False}]
         ),
-        
-        # Enhanced Telemetry
+
+        # Camera publisher
         Node(
             package='omega_robot',
-            executable='enhanced_telemetry',
-            name='enhanced_telemetry',
-            output='screen',
-            parameters=[{
-                'use_sim_time': False
-            }]
-        ),
-        
-        # Camera Publisher
-        Node(
-            package='omega_robot',
-            executable='camera_publisher',
+            executable='camera_publisher_node',
             name='camera_publisher',
             output='screen',
             parameters=[{
@@ -58,55 +48,34 @@ def generate_launch_description():
                 'width': 640,
                 'height': 480,
                 'fps': 30,
-                'publish_compressed': True
+                'publish_compressed': True,
             }]
         ),
-        
-        # Action Servers
+
+        # Action servers
         Node(
             package='omega_robot',
             executable='navigate_to_goal_action_server',
             name='navigate_to_goal_action_server',
             output='screen',
-            parameters=[{
-                'use_sim_time': False
-            }]
+            parameters=[{'use_sim_time': False}]
         ),
-        
         Node(
             package='omega_robot',
             executable='follow_line_action_server',
             name='follow_line_action_server',
             output='screen',
-            parameters=[{
-                'use_sim_time': False
-            }]
+            parameters=[{'use_sim_time': False}]
         ),
-        
         Node(
             package='omega_robot',
             executable='obstacle_avoidance_action_server',
             name='obstacle_avoidance_action_server',
             output='screen',
-            parameters=[{
-                'use_sim_time': False
-            }]
+            parameters=[{'use_sim_time': False}]
         ),
-        
-        # Navigation Nodes
-        Node(
-            package='omega_robot',
-            executable='odometry_publisher',
-            name='odometry_publisher',
-            output='screen',
-            parameters=[{
-                'use_sim_time': False,
-                'wheel_radius': 0.05,
-                'wheel_base': 0.20,
-                'ticks_per_revolution': 360
-            }]
-        ),
-        
+
+        # Path planner (runs on laptop or Orin when available)
         Node(
             package='omega_robot',
             executable='path_planner',
@@ -114,8 +83,7 @@ def generate_launch_description():
             output='screen',
             parameters=[{
                 'use_sim_time': False,
-                'algorithm': 'astar'
+                'algorithm': 'astar',
             }]
         ),
     ])
-

@@ -25,8 +25,8 @@ services:
     profiles:
       - laptop
 
-  # Laptop: Telemetry listener (monitors all devices)
-  laptop_listener:
+  # Laptop: action server monitor
+  laptop_topic_monitor:
     build:
       context: ../..
       dockerfile: docker/ros2_robot/Dockerfile
@@ -36,24 +36,45 @@ services:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
       - CYCLONEDDS_URI=file:///root/omega_ws/config/cyclonedds.xml
-    command: ros2 run omega_robot telemetry_listener
+    command: ros2 topic list
     restart: unless-stopped
     profiles:
       - laptop
 
   # Pi 4B: Hardware IO nodes (run on Pi, not laptop)
   # These are examples - actual deployment should be on Pi via SSH
-  pi_telemetry_publisher:
+  pi_motor_controller:
     build:
       context: ../..
       dockerfile: docker/ros2_robot/Dockerfile
     image: omega_robot:latest
     network_mode: host
+    privileged: true
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
       - CYCLONEDDS_URI=file:///root/omega_ws/config/cyclonedds.xml
-    command: ros2 run omega_robot telemetry_publisher
+    command: ros2 run omega_robot motor_controller
+    restart: unless-stopped
+    profiles:
+      - pi
+    deploy:
+      placement:
+        constraints:
+          - node.hostname == pi4b
+
+  pi_sensor_node:
+    build:
+      context: ../..
+      dockerfile: docker/ros2_robot/Dockerfile
+    image: omega_robot:latest
+    network_mode: host
+    privileged: true
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///root/omega_ws/config/cyclonedds.xml
+    command: ros2 run omega_robot sensor_node
     restart: unless-stopped
     profiles:
       - pi

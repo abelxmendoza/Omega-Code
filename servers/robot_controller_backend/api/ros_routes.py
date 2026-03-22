@@ -101,7 +101,7 @@ def get_container_status(service_name: str) -> Dict[str, any]:
 # Models
 class ContainerAction(BaseModel):
     action: str  # "start", "stop", "restart"
-    service: Optional[str] = None  # "telemetry_publisher", "telemetry_listener", or None for all
+    service: Optional[str] = None  # "motor_controller", "sensor_node", or None for all
 
 # Routes
 @router.get("/status")
@@ -137,27 +137,27 @@ def get_ros_status():
         # Fallback: check individual containers (try both naming patterns)
         if not containers:
             # Try exact container names from docker-compose.yml
-            publisher = get_container_status("ros2_robot_telemetry_publisher")
-            listener = get_container_status("ros2_robot_telemetry_listener")
-            
+            motor = get_container_status("ros2_robot_motor_controller")
+            sensor = get_container_status("ros2_robot_sensor_node")
+
             # If not found, try with prefix pattern
-            if not publisher["running"]:
-                publisher = get_container_status(f"{CONTAINER_PREFIX}_telemetry_publisher")
-            if not listener["running"]:
-                listener = get_container_status(f"{CONTAINER_PREFIX}_telemetry_listener")
-            
+            if not motor["running"]:
+                motor = get_container_status(f"{CONTAINER_PREFIX}_motor_controller")
+            if not sensor["running"]:
+                sensor = get_container_status(f"{CONTAINER_PREFIX}_sensor_node")
+
             containers = [
-                {"Name": publisher["name"], "State": "running" if publisher["running"] else "stopped", "Status": publisher["status"]},
-                {"Name": listener["name"], "State": "running" if listener["running"] else "stopped", "Status": listener["status"]}
+                {"Name": motor["name"], "State": "running" if motor["running"] else "stopped", "Status": motor["status"]},
+                {"Name": sensor["name"], "State": "running" if sensor["running"] else "stopped", "Status": sensor["status"]}
             ]
         
         # Check ROS topics (if any container is running)
         topics = []
         # Try different container name patterns
         container_names = [
-            f"ros2_robot_telemetry_publisher",  # Exact name from compose
-            f"{CONTAINER_PREFIX}_telemetry_publisher_1",  # Project prefix pattern
-            f"{CONTAINER_PREFIX}_telemetry_publisher"  # Without suffix
+            f"ros2_robot_motor_controller",  # Exact name from compose
+            f"{CONTAINER_PREFIX}_motor_controller_1",  # Project prefix pattern
+            f"{CONTAINER_PREFIX}_motor_controller"  # Without suffix
         ]
         
         for container_name in container_names:
@@ -275,7 +275,7 @@ def list_ros_topics():
     
     try:
         # Try to exec into any running container
-        containers = ["telemetry_publisher", "telemetry_listener"]
+        containers = ["motor_controller", "sensor_node"]
         container_name_patterns = [
             lambda s: f"ros2_robot_{s}",  # Exact name from compose
             lambda s: f"{CONTAINER_PREFIX}_{s}_1",  # Project prefix with suffix
@@ -319,7 +319,7 @@ async def ros_telemetry_websocket(websocket: WebSocket):
             lambda s: f"{CONTAINER_PREFIX}_{s}"  # Project prefix without suffix
         ]
         
-        for service in ["telemetry_publisher", "telemetry_listener"]:
+        for service in ["motor_controller", "sensor_node"]:
             for pattern_func in container_patterns:
                 pattern_name = pattern_func(service)
                 result = run_command([

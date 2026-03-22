@@ -48,17 +48,17 @@ logging:
     max_size_mb: 100
     backup_count: 5
 security:
-  api_auth_enabled: false
-  api_key: ''
+  api_auth_enabled: false  # Set to true in production
+  api_key: ''  # Set via API_KEY environment variable (never commit!)
   allowed_origins:
   - http://localhost:3000
   - http://omega1.local:3000
   - https://your-vercel-app.vercel.app
   rate_limit_enabled: true
   requests_per_minute: 60
-  csrf_enabled: false
-  request_size_limit_mb: 10
-  audit_logging: true
+  csrf_enabled: false  # Set to true for CSRF protection
+  request_size_limit_mb: 10  # Maximum request body size in MB
+  audit_logging: true  # Log security events
 telemetry:
   enabled: true
   update_interval_ms: 1000

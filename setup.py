@@ -48,7 +48,10 @@ setup(
         'smbus2',
     ],
     extras_require={
-        'pi': ['lgpio', 'picamera2'],
-        'ros': ['opencv-python'],
+        # Pi hardware: lgpio for GPIO, opencv for GStreamer camera capture
+        # GStreamer itself is installed via apt (scripts/setup_pi_camera.sh)
+        # picamera2 is a legacy fallback: sudo apt install python3-picamera2
+        'pi': ['lgpio', 'opencv-python'],
+        'ros': ['rclpy'],
     },
 )

@@ -230,7 +230,8 @@ The velocity commands are already in ROS2 `cmd_vel` format:
 ```
 
 This matches the format expected by:
-- `ros/src/omega_robot/omega_robot/robot_controller.py` (ROS2 node)
+- `ros/src/omega_robot/omega_robot/motor_controller_node.py` (subscribes `/cmd_vel`)
+- `ros/src/omega_robot/omega_robot/xbox_teleop_node.py` (publishes `/cmd_vel` from evdev)
 - `servers/robot_controller_backend/api/ros_web_bridge.py` (WebSocket bridge)
 
 ## Files Modified/Added
