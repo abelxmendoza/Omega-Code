@@ -38,3 +38,7 @@ servers/robot-controller-backend/robot-controller
 *.dylib
 servers/robot_controller_backend/venv_new/
 omega_backend.egg-info/
+build/
+install/
+log/
+servers/robot_controller_backend/video/libcamera/
