@@ -536,27 +536,41 @@ def _create_camera(device: Optional[str] = None) -> bool:
         except Exception:
             pass
         
-        # Allow mock camera fallback on any platform (Pi hard-fail removed)
-        if "Picamera2" in str(e) or "picamera2" in str(e).lower() or "ImportError" in str(type(e).__name__) or is_pi:
-            logging.warning(f"Camera backend unavailable ({e}). Trying mock camera fallback...")
-            if MockCamera is not None:
-                try:
-                    camera = MockCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
-                    camera.start()
+        if is_pi:
+            # GStreamer/OpenCV backend in use — not a fatal error
+            logging.warning(f"Camera init note (Pi): {e} — retrying with GStreamer backend")
+            try:
+                camera = Camera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
+                motion_detector = MotionDetector()
+                tracker = ObjectTracker()
+                logging.info(f"Camera initialization successful (Backend: {camera.backend}).")
+                return True
+            except Exception as e2:
+                logging.error(f"GStreamer camera also failed: {e2}")
+                camera = None
+                return False
+        else:
+            # Not on Pi - allow mock camera as fallback only if Picamera2 import failed
+            if "Picamera2" in str(e) or "picamera2" in str(e).lower() or "ImportError" in str(type(e).__name__):
+                logging.warning(f"Picamera2 not available ({e}). Trying mock camera fallback...")
+                if MockCamera is not None:
                     try:
-                        motion_detector = MotionDetector()
-                    except Exception as md_e:
-                        logging.warning(f"Motion detector initialization failed: {md_e}")
-                        motion_detector = None
-                    try:
-                        tracker = ObjectTracker()
-                    except Exception as tr_e:
-                        logging.warning(f"Object tracker initialization failed: {tr_e}")
-                        tracker = None
-                    logging.info("Mock camera fallback successful.")
-                    return True
-                except Exception as mock_e:
-                    logging.warning(f"Mock camera fallback also failed ({mock_e}). Running without camera.")
+                        camera = MockCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
+                        camera.start()
+                        try:
+                            motion_detector = MotionDetector()
+                        except Exception as md_e:
+                            logging.warning(f"Motion detector initialization failed: {md_e}")
+                            motion_detector = None
+                        try:
+                            tracker = ObjectTracker()
+                        except Exception as tr_e:
+                            logging.warning(f"Object tracker initialization failed: {tr_e}")
+                            tracker = None
+                        logging.info("Mock camera fallback successful (non-Pi system).")
+                        return True
+                    except Exception as mock_e:
+                        logging.warning(f"Mock camera fallback also failed ({mock_e}). Running without camera.")
         
         camera = None
         return False
@@ -606,7 +620,7 @@ def generate_frames():
     If no camera yet, yields placeholder frames (when enabled).
     """
     global tracking_enabled, camera
-    _last_frame_time = 0.0  # local to generator; persists across yields
+    _last_frame_time = 0.0
 
     while True:
         try:
@@ -658,7 +672,7 @@ def generate_frames():
                 should_throttle = hybrid_system_manager.should_throttle_modules()
                 throttle_priority = hybrid_system_manager.get_throttle_priority()
                 # Check and auto-switch mode if needed
-                # hybrid_system_manager.check_and_auto_switch_mode()  # stubbed
+                # hybrid_system_manager.check_and_auto_switch_mode()  # stubbed — method not implemented
             
             # Motion overlay (with error handling, hardware-aware)
             motion_detected = False
