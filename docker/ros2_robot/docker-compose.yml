@@ -5,31 +5,33 @@ version: "3.8"
 name: ros2_robot
 
 services:
-  telemetry_publisher:
+  motor_controller:
     build:
       context: ../..
       dockerfile: docker/ros2_robot/Dockerfile
     image: omega_robot:latest
-    container_name: ros2_robot_telemetry_publisher
+    container_name: ros2_robot_motor_controller
     network_mode: host
+    privileged: true
     environment:
       - ROS_DOMAIN_ID=0
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
       - CYCLONEDDS_URI=file:///root/omega_ws/config/cyclonedds.xml
-    command: ros2 run omega_robot telemetry_publisher
+    command: ros2 run omega_robot motor_controller
     restart: unless-stopped
 
-  telemetry_listener:
+  sensor_node:
     build:
       context: ../..
       dockerfile: docker/ros2_robot/Dockerfile
     image: omega_robot:latest
-    container_name: ros2_robot_telemetry_listener
+    container_name: ros2_robot_sensor_node
     network_mode: host
+    privileged: true
     environment:
       - ROS_DOMAIN_ID=0
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
       - CYCLONEDDS_URI=file:///root/omega_ws/config/cyclonedds.xml
-    command: ros2 run omega_robot telemetry_listener
+    command: ros2 run omega_robot sensor_node
     restart: unless-stopped
 

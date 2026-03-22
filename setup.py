@@ -12,18 +12,26 @@ inside colcon-built ROS nodes.
 """
 from setuptools import setup, find_packages
 
-# Explicitly list packages to avoid pulling in .direnv site-packages
+# Explicitly list packages to avoid pulling in .direnv / venv / libcamera site-packages
 PACKAGES = [
     'servers',
     'servers.robot_controller_backend',
     'servers.robot_controller_backend.api',
+    'servers.robot_controller_backend.autonomy',
     'servers.robot_controller_backend.controllers',
+    'servers.robot_controller_backend.controllers.lighting',
     'servers.robot_controller_backend.movement',
     'servers.robot_controller_backend.movement.hardware',
     'servers.robot_controller_backend.network',
+    'servers.robot_controller_backend.network.api',
+    'servers.robot_controller_backend.network.cli',
+    'servers.robot_controller_backend.network.diagnostics',
+    'servers.robot_controller_backend.network.vpn',
+    'servers.robot_controller_backend.network.wifi',
+    'servers.robot_controller_backend.network.wizard',
     'servers.robot_controller_backend.omega_config',
     'servers.robot_controller_backend.omega_services',
-    'servers.robot_controller_backend.sensors',
+    'servers.robot_controller_backend.utils',
     'servers.robot_controller_backend.video',
 ]
 

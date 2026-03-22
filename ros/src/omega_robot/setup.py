@@ -28,17 +28,11 @@ setup(
             'xbox_teleop      = omega_robot.xbox_teleop_node:main',
             'servo_controller = omega_robot.servo_controller_node:main',
             'camera_debug     = omega_robot.camera_debug_node:main',
-            # --- Legacy nodes (kept for compatibility) ---
-            'telemetry_publisher = omega_robot.telemetry_publisher:main',
-            'telemetry_listener = omega_robot.telemetry_listener:main',
-            'sensor_data_publisher = omega_robot.sensor_data_publisher:main',
-            'robot_controller = omega_robot.robot_controller:main',
-            'enhanced_telemetry = omega_robot.enhanced_telemetry:main',
-            'camera_publisher = omega_robot.camera_publisher:main',
+            # --- Action servers ---
             'navigate_to_goal_action_server = omega_robot.navigate_to_goal_action:main',
             'follow_line_action_server = omega_robot.follow_line_action:main',
             'obstacle_avoidance_action_server = omega_robot.obstacle_avoidance_action:main',
-            'odometry_publisher = omega_robot.odometry_publisher:main',
+            # --- AI / planning nodes (Jetson) ---
             'path_planner = omega_robot.path_planner:main',
             'vision_processor = omega_robot.vision_processor:main',
             'system_capabilities = omega_robot.system_capabilities:main',
