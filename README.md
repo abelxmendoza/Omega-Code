@@ -18,13 +18,25 @@ integration, servo pan-tilt, and autonomous operation.
 ```
 [Next.js UI]  http/ws
      |
+     |--/api/video-proxy --> MJPEG stream (same-origin proxy, avoids CORS)
+     |
 [FastAPI]  port 8000    <-- OmegaRosBridge embeds rclpy node here
-     |  /cmd_vel (Twist)
+     |  publishes /cmd_vel_in (Twist)
      |  ROS2 DDS (CycloneDDS)
      |
 +----+----------------------------------------------+
 |               Raspberry Pi 4B                     |
 |   ROS2 Node Graph (omega_hybrid.launch.py)        |
+|                                                    |
+|   xbox_teleop          --> /cmd_vel_in             |
+|   (evdev, daemon thread)--> /omega/servo_increment |
+|                                                    |
+|   FastAPI ROS bridge   --> /cmd_vel_in             |
+|                                                    |
+|   obstacle_avoidance_node <-- /cmd_vel_in          |
+|   (ultrasonic mux)        <-- /omega/ultrasonic    |
+|        PASS_THROUGH / WARN / PIVOTING state machine|
+|                           --> /cmd_vel             |
 |                                                    |
 |   motor_controller   <-- /cmd_vel                 |
 |         |                --> /odom                 |
@@ -42,13 +54,15 @@ integration, servo pan-tilt, and autonomous operation.
 |         v                                          |
 |      PCA9685 ch8/ch9  (pan-tilt gimbal)           |
 |                                                    |
-|   omega_camera/camera_node                        |
+|   video/video_server.py   (Flask, port 5000)      |
+|   GStreamer libcamerasrc pipeline                  |
+|   CSI OV5647            --> MJPEG /video_feed     |
+|                          --> /health               |
+|                                                    |
+|   omega_camera/camera_node  (ROS2)                |
 |   (libcamerasrc GStreamer pipeline)               |
 |   CSI OV5647                --> /omega/camera/image_raw       |
 |                             --> /omega/camera/image_raw/compressed|
-|                                                    |
-|   xbox_teleop             --> /cmd_vel             |
-|   (evdev, daemon thread)  --> /omega/servo_increment|
 |                                                    |
 |   system_capabilities     --> /omega/capabilities  |
 |   static_tf               --> base_link->camera_link|
@@ -66,9 +80,9 @@ integration, servo pan-tilt, and autonomous operation.
 +---------------------------------------------------+
 
 Non-ROS (managed separately by OmegaOS / systemd):
-  FastAPI REST/WS       http://pi:8000
-  Go lighting server    ws://pi:8082
-  MJPEG video stream    http://pi:5000
+  FastAPI REST/WS       http://omegaone:8000
+  Go lighting server    ws://omegaone:8082
+  MJPEG video stream    http://omegaone:5000   (proxied via /api/video-proxy)
 
 Multi-machine DDS (CycloneDDS):
   Pi (omegaOne) <--> Laptop <--> Jetson Orin (Tailscale)
@@ -87,12 +101,14 @@ odom
 
 | Topic | Type | Hz | Producer |
 |---|---|---|---|
-| `/cmd_vel` | `geometry_msgs/Twist` | on-demand | FastAPI bridge / xbox_teleop |
+| `/cmd_vel_in` | `geometry_msgs/Twist` | on-demand | FastAPI bridge, xbox_teleop |
+| `/cmd_vel` | `geometry_msgs/Twist` | on-demand | obstacle_avoidance_node (mux) |
 | `/odom` | `nav_msgs/Odometry` | 50 | motor_controller_node |
 | `/omega/motor_state` | `omega_interfaces/MotorState` | 10 | motor_controller_node |
 | `/omega/ultrasonic` | `sensor_msgs/Range` | 10 | sensor_node |
 | `/omega/line_tracking/center` | `std_msgs/Bool` | 20 | sensor_node |
 | `/omega/battery` | `sensor_msgs/BatteryState` | 1 | sensor_node |
+| `/omega/obstacle_avoidance/state` | `std_msgs/String` (JSON) | 20 | obstacle_avoidance_node |
 | `/omega/camera/image_raw` | `sensor_msgs/Image` (bgr8) | 10 | omega_camera/camera_node |
 | `/omega/camera/image_raw/compressed` | `sensor_msgs/CompressedImage` | 10 | omega_camera/camera_node |
 | `/omega/servo_increment` | `geometry_msgs/Vector3` | on-demand | xbox_teleop / web UI |
@@ -114,7 +130,8 @@ Omega-Code/
 │       │       ├── motor_controller_node.py
 │       │       ├── sensor_node.py
 │       │       ├── servo_controller_node.py
-│       │       ├── xbox_teleop_node.py
+│       │       ├── xbox_teleop_node.py      # publishes /cmd_vel_in
+│       │       ├── ultrasonic_avoidance_node.py  # cmd_vel mux
 │       │       ├── camera_debug_node.py
 │       │       ├── system_capabilities.py
 │       │       └── ... (action servers, path planner, orin_ai_brain)
@@ -139,9 +156,17 @@ Omega-Code/
     └── robot_controller_backend/
         ├── movement/               # Motor HAL: PCA9685, ramp, PID, odometry
         ├── sensors/                # HC-SR04, IR, ADC
-        ├── video/                  # MJPEG camera pipeline (port 5000)
-        ├── api/ros_bridge.py       # FastAPI <-> ROS2 bridge
+        ├── video/
+        │   ├── video_server.py     # Flask MJPEG server (port 5000)
+        │   └── camera.py           # GStreamer/libcamerasrc Camera class
+        ├── api/
+        │   ├── ros_bridge.py       # FastAPI <-> ROS2 bridge (publishes /cmd_vel_in)
+        │   ├── sensor_bridge.py    # ROS subscriber → WebSocket fan-out
+        │   └── sensor_ws_routes.py # /ws/ultrasonic, /ws/line, /ws/battery
         └── main_api.py             # FastAPI entry point
+
+scripts/
+└── setup_pi_camera.sh              # One-shot Pi camera stack bootstrap
 ```
 
 ---
@@ -204,8 +229,26 @@ STOP = set both channels of a wheel to 4095.
 
 ## Camera Setup
 
-The CSI OV5647 requires libcamera with a GStreamer plugin. The Ubuntu apt package is
-incomplete on ARM64 — libcamera must be built from source.
+The CSI OV5647 requires libcamera 0.7.0 with a GStreamer plugin. The Ubuntu apt package is
+incomplete on ARM64 — libcamera must be built from source and installed to system paths.
+
+### Automated setup (recommended)
+
+```bash
+# Run once on a fresh Pi — handles all system-level changes:
+chmod +x scripts/setup_pi_camera.sh
+./scripts/setup_pi_camera.sh
+source ~/.bashrc
+```
+
+The script covers:
+1. `apt install python3-opencv` (replaces pip opencv-python which lacks GStreamer support)
+2. `pip3 install "numpy<2"` (cv_bridge compiled against NumPy 1.x)
+3. Blacklists `bcm2835_v4l2` kernel module (conflicts with libcamera at boot)
+4. Installs libcamera `.so` files, GStreamer plugin, IPA modules, tuning JSONs to `/usr/local/`
+5. Creates shared-library symlinks in `/usr/local/lib/` (ldconfig requires these)
+6. Writes `/etc/ld.so.conf.d/libcamera-local.conf` and runs `ldconfig`
+7. Appends env vars to `~/.bashrc` (idempotent)
 
 ### Build libcamera from source (Pi only, one-time)
 
@@ -217,7 +260,7 @@ sudo apt install meson ninja-build python3-jinja2 python3-ply \
 
 # Clone and build
 git clone https://git.libcamera.org/libcamera/libcamera.git ~/libcamera
-cd ~/libcamera
+cd ~/libcamera && git checkout v0.7.0
 meson setup build \
   -Dpipelines=rpi/vc4 \
   -Dipas=rpi/vc4 \
@@ -226,24 +269,48 @@ meson setup build \
   -Ddocumentation=disabled
 ninja -C build
 
-# Verify GStreamer plugin loaded
-export LD_LIBRARY_PATH=$HOME/libcamera/build/src/libcamera:$LD_LIBRARY_PATH
-export GST_PLUGIN_PATH=$HOME/libcamera/build/src/gstreamer:$GST_PLUGIN_PATH
-gst-inspect-1.0 libcamerasrc   # must succeed before running the camera node
+# Install to /usr/local/ (setup_pi_camera.sh automates this)
+sudo cp build/src/libcamera/libcamera*.so* /usr/local/lib/
+sudo cp build/src/libcamera/libcamera*.so* /usr/local/lib/
+sudo cp build/src/gstreamer/libgstlibcamera.so /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/
+sudo ldconfig
 ```
 
 ### Required environment variables (add to `~/.bashrc` on Pi)
 
 ```bash
-export LD_LIBRARY_PATH=$HOME/libcamera/build/src/libcamera:$LD_LIBRARY_PATH
-export GST_PLUGIN_PATH=$HOME/libcamera/build/src/gstreamer:$GST_PLUGIN_PATH
+export LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}
+export GST_PLUGIN_PATH=/usr/local/lib/aarch64-linux-gnu/gstreamer-1.0:${GST_PLUGIN_PATH:-}
+export LIBCAMERA_IPA_MODULE_PATH=/usr/local/lib/aarch64-linux-gnu/libcamera/ipa
+export PYTHONPATH=/usr/local/lib/python3/dist-packages:${PYTHONPATH:-}
 ```
 
-These must be set in every shell that runs the camera node — including the terminal
-that runs `ros2 launch`. The libcamera log line `"libcamera is not installed"` is
-expected and harmless; it means the local build is in use.
+These must be set in every shell that runs the camera node or video server.
+The libcamera log line `"libcamera is not installed"` is expected and harmless; it means
+the local build is in use rather than a system install.
 
-### Camera node
+### MJPEG video server (UI camera feed)
+
+The web UI streams live video via a Flask server at port 5000. This is separate from the
+ROS2 camera node and is the primary feed displayed in the dashboard.
+
+```bash
+# Start the video server on the Pi
+cd ~/Desktop/Omega-Code/servers/robot_controller_backend/video
+python3 video_server.py
+# Stream available at http://omegaone:5000/video_feed
+# Health endpoint:   http://omegaone:5000/health
+```
+
+The Next.js UI proxies the stream through `/api/video-proxy` to avoid CORS/mixed-content.
+`CameraFrame.tsx` renders it as a plain `<img>` tag (Next.js `<Image>` breaks MJPEG streams).
+
+Configure the Pi's video URL in `ui/robot-controller-ui/.env.local`:
+```
+NEXT_PUBLIC_VIDEO_STREAM_URL_LAN=http://omegaone:5000/video_feed
+```
+
+### Camera node (ROS2)
 
 ```bash
 # Run standalone (outside the main launch)
@@ -358,20 +425,67 @@ Update peer IPs in the CycloneDDS XML files to match your network.
 
 ---
 
+## Obstacle Avoidance
+
+The `obstacle_avoidance_node` acts as a `cmd_vel` mux — all velocity commands from the
+web UI and Xbox controller flow through it before reaching the motor controller.
+
+```
+FastAPI bridge  ──┐
+xbox_teleop     ──┤──> /cmd_vel_in ──> obstacle_avoidance_node ──> /cmd_vel ──> motor_controller
+                   │                        ^
+                   │              /omega/ultrasonic (HC-SR04)
+```
+
+**States:**
+
+| State | Condition | Behaviour |
+|---|---|---|
+| `PASS_THROUGH` | dist > warn_m (0.50 m) | Commands pass through unchanged |
+| `WARN` | stop_m < dist ≤ warn_m | Forward speed scaled down proportionally; reverse always passes |
+| `PIVOTING` | dist ≤ stop_m (0.25 m) | Stops forward motion, pivots in place; direction alternates each burst |
+
+```bash
+# Monitor avoidance state
+ros2 topic echo /omega/obstacle_avoidance/state
+
+# Enable / disable at runtime
+ros2 topic pub --once /omega/obstacle_avoidance/enable std_msgs/Bool '{data: false}'
+```
+
+**Launch overrides:**
+```bash
+# Disable avoidance (pass-through only)
+ros2 launch omega_bringup omega_hybrid.launch.py launch_avoidance:=false
+
+# Tune distances and pivot behaviour
+ros2 launch omega_bringup omega_hybrid.launch.py \
+  warn_distance_m:=0.60 \
+  stop_distance_m:=0.30 \
+  pivot_speed:=0.80 \
+  pivot_duration_s:=1.0
+```
+
+---
+
 ## Running the Robot
 
 ### Full hybrid stack (Pi, hardware mode)
 
 ```bash
-# Terminal 1 — ROS2 nodes (motor, sensors, servo, TF)
+# Terminal 1 — ROS2 nodes (motor, sensors, obstacle avoidance, servo, TF)
 ros2 launch omega_bringup omega_hybrid.launch.py
 
-# Terminal 2 — Camera node (requires libcamera env vars)
-ros2 run omega_camera camera_node
+# Terminal 2 — MJPEG video server (camera feed for web UI)
+cd ~/Desktop/Omega-Code/servers/robot_controller_backend/video
+python3 video_server.py
 
-# Terminal 3 — FastAPI backend
+# Terminal 3 — FastAPI backend (movement WS, sensor WS, ROS bridge)
 cd ~/Desktop/Omega-Code/servers/robot_controller_backend
 python3 main_api.py
+
+# Terminal 4 — ROS2 camera node (optional — for ROS topic subscribers)
+ros2 run omega_camera camera_node
 ```
 
 ### Launch overrides
@@ -379,6 +493,9 @@ python3 main_api.py
 ```bash
 # Skip servo gimbal
 ros2 launch omega_bringup omega_hybrid.launch.py launch_servo:=false
+
+# Disable obstacle avoidance (raw pass-through)
+ros2 launch omega_bringup omega_hybrid.launch.py launch_avoidance:=false
 
 # Simulation mode (no hardware I/O)
 ros2 launch omega_bringup omega_hybrid.launch.py sim_mode:=true
@@ -509,12 +626,32 @@ Do NOT use `/dev/videoX` directly — V4L2 does not work with this CSI camera.
 3. Peer IPs in `cyclonedds_*.xml` must match actual addresses
 4. `<AllowMulticast>false</AllowMulticast>` in CycloneDDS config if on a hotspot
 
+### Camera feed not appearing in UI
+
+```bash
+# 1. Verify video server is running on Pi
+curl http://omegaone:5000/health   # should return 200
+
+# 2. Verify the proxy URL resolves from your dev machine
+curl -I http://localhost:3002/api/video-proxy   # should start streaming
+
+# 3. Check .env.local has correct URL
+cat ui/robot-controller-ui/.env.local | grep VIDEO_STREAM
+
+# 4. Restart Next.js dev server after .env.local changes
+# (env changes are NOT hot-reloaded)
+```
+
 ### Motors not responding
 
 ```bash
 ros2 topic echo /omega/motor_state
 # watchdog: true → no /cmd_vel in 500 ms
-ros2 topic pub --once /cmd_vel geometry_msgs/Twist '{}'
+
+# If avoidance node is running, check it's passing commands through:
+ros2 topic echo /omega/obstacle_avoidance/state
+
+ros2 topic pub --once /cmd_vel_in geometry_msgs/Twist '{}'
 ```
 
 ### I2C / PCA9685 not found
@@ -579,7 +716,12 @@ pip install -e ~/Desktop/Omega-Code/
 | Decision | Rationale |
 |---|---|
 | libcamerasrc over V4L2 | V4L2 fails on this Pi's CSI OV5647 — select() timeouts, format errors |
-| libcamera built from source | Ubuntu apt package is incomplete on ARM64 |
+| libcamera built from source, installed to /usr/local | Ubuntu apt package is incomplete on ARM64; build artifacts installed to system paths for systemd service compatibility |
+| bcm2835_v4l2 blacklisted | Kernel module grabs camera device at boot and conflicts with libcamera |
+| numpy<2 pinned | System apt OpenCV 4.5.4 and cv_bridge (ROS Humble) compiled against NumPy 1.x; NumPy 2.x breaks the C API |
+| Flask MJPEG server (video_server.py) for UI feed | ROS camera node targets topic subscribers; Flask directly serves the browser without a bridge; lower latency, simpler |
+| plain `<img>` not `next/image` in CameraFrame | Next.js Image component intercepts src → /_next/image optimizer, breaking multipart/x-mixed-replace MJPEG streams |
+| /cmd_vel_in → avoidance_node → /cmd_vel mux | All teleop sources (web UI + Xbox) publish /cmd_vel_in; the avoidance node is the single arbiter of /cmd_vel to motor_controller, no changes needed to motor node |
 | Camera node separate from main launch | libcamera requires env vars set before launch; isolating avoids polluting the main launch environment |
 | omega_camera as its own package | Keeps camera pipeline self-contained; easier to iterate without rebuilding all of omega_robot |
 | Detection on Jetson, not Pi | Pi 4B is CPU-only; YOLOv8n = ~2 FPS on Pi vs 40+ FPS on Jetson with TensorRT |

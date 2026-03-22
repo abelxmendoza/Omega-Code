@@ -601,9 +601,8 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false,
           <img
             src="/image/README/omegatechlogopro-noBackground.png"
             alt="Omega Tech Logo"
-            width="40"
-            height="40"
             className="h-10 xl4:h-14 w-auto object-contain"
+            style={{ filter: 'brightness(1.8) drop-shadow(0 0 6px rgba(139,92,246,0.85))' }}
           />
           Robot Controller
           {/* Profile + MOCK badges (no hostnames = no leaks) */}
