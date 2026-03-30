@@ -84,6 +84,10 @@ create_security_middleware_stack(
 # Include your modular routes
 app.include_router(api_router)
 
+@app.get("/health")
+async def health():
+    return "ok"
+
 # Add global exception handlers for secure error handling
 from api.error_handlers import global_exception_handler, http_exception_handler
 app.add_exception_handler(Exception, global_exception_handler)
