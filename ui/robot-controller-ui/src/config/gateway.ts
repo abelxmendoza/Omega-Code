@@ -67,7 +67,7 @@ function getGatewayConfig(): GatewayConfig {
   
   // Fallback to generic gateway host
   host = host || process.env.NEXT_PUBLIC_GATEWAY_HOST || 'localhost';
-  port = port || process.env.NEXT_PUBLIC_GATEWAY_PORT || '7070';
+  port = port || process.env.NEXT_PUBLIC_GATEWAY_PORT || '8000';
   scheme = (scheme || process.env.NEXT_PUBLIC_GATEWAY_SCHEME || 'http').toLowerCase();
   
   // If host includes scheme, extract it
@@ -122,7 +122,7 @@ function getGatewayConfigForProfile(profile: NetProfile): GatewayConfig {
   }
   
   host = host || process.env.NEXT_PUBLIC_GATEWAY_HOST || 'localhost';
-  port = port || process.env.NEXT_PUBLIC_GATEWAY_PORT || '7070';
+  port = port || process.env.NEXT_PUBLIC_GATEWAY_PORT || '8000';
   scheme = (scheme || process.env.NEXT_PUBLIC_GATEWAY_SCHEME || 'http').toLowerCase();
   
   if (/^https?:\/\//i.test(host)) {
