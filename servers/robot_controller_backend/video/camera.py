@@ -63,7 +63,7 @@ class Camera:
         self._cap = cv2.VideoCapture(GSTREAMER_PIPELINE, cv2.CAP_GSTREAMER)
         if not self._cap.isOpened():
             log.warning("GStreamer pipeline failed — falling back to V4L2 (/dev/video0)")
-            self._cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+            self._cap = cv2.VideoCapture("/dev/video0", cv2.CAP_V4L2)
             if self._cap.isOpened():
                 self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
                 self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
