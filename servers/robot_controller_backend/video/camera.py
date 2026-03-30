@@ -31,6 +31,14 @@ GSTREAMER_PIPELINE = (
     f"appsink max-buffers=1 drop=true sync=false"
 )
 
+V4L2_PIPELINE = (
+    f"v4l2src device=/dev/video0 ! "
+    f"video/x-raw,width={CAMERA_WIDTH},height={CAMERA_HEIGHT},"
+    f"framerate={CAMERA_FPS}/1 ! "
+    f"videoconvert ! video/x-raw,format=BGR ! "
+    f"appsink max-buffers=1 drop=true sync=false"
+)
+
 
 class Camera:
     def __init__(self, width=None, height=None, fps=None, **kwargs):
@@ -62,17 +70,13 @@ class Camera:
         log.info("Opening GStreamer pipeline: %s", GSTREAMER_PIPELINE)
         self._cap = cv2.VideoCapture(GSTREAMER_PIPELINE, cv2.CAP_GSTREAMER)
         if not self._cap.isOpened():
-            log.warning("GStreamer pipeline failed — falling back to V4L2 (/dev/video0)")
-            self._cap = cv2.VideoCapture("/dev/video0", cv2.CAP_V4L2)
+            log.warning("libcamerasrc failed — trying v4l2src GStreamer pipeline")
+            self._cap = cv2.VideoCapture(V4L2_PIPELINE, cv2.CAP_GSTREAMER)
             if self._cap.isOpened():
-                self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
-                self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
-                self._cap.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
                 self.backend = "v4l2"
-                log.info("V4L2 backend opened: %dx%d @ %d fps",
-                         CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS)
+                log.info("v4l2src GStreamer pipeline opened")
             else:
-                log.error("Failed to open camera (tried GStreamer and V4L2)")
+                log.error("Failed to open camera (tried libcamerasrc and v4l2src)")
                 self._running = False
                 return
 
