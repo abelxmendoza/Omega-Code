@@ -13,9 +13,9 @@
 
 'use client';
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, User, QrCode, Users, Package, Move, Palette, Network, Activity, Layers, Code, CheckCircle2, Lock, Clock, History, AlertTriangle, CheckCircle, XCircle, TrendingUp, Server, Database, FileText, UserCheck } from 'lucide-react';
+import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, Package, Network, Activity, Layers, Code, CheckCircle2, Lock, Clock, AlertTriangle, CheckCircle, UserCheck } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -221,9 +221,29 @@ export default function AutonomyModal({
 
   // UI
   const [busy, setBusy] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showNavAdv, setShowNavAdv] = useState(false);
+  const [showSafetyAdv, setShowSafetyAdv] = useState(false);
+  const [showSysAdv, setShowSysAdv] = useState(false);
   const [configHistory, setConfigHistory] = useState<Array<{version: string, timestamp: number, user: string}>>([]);
+  const [visionModeLabel, setVisionModeLabel] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Fetch current vision mode label for status row
+  useEffect(() => {
+    if (!open) return;
+    fetch('/api/system/mode/status')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return;
+        const LABELS: Record<number, string> = {
+          0: 'Raw Stream', 1: 'Motion Detection', 2: 'Object Tracking',
+          3: 'Face Detection', 4: 'ArUco Markers', 5: 'Pi Record',
+          6: 'YOLOv8', 7: 'Full Autonomy',
+        };
+        setVisionModeLabel(d.mode != null ? (LABELS[d.mode] ?? `Mode ${d.mode}`) : null);
+      })
+      .catch(() => {});
+  }, [open]);
 
   // Enterprise: Role-based permissions
   const isAdmin = userRole === 'admin';
@@ -564,10 +584,30 @@ export default function AutonomyModal({
                             <div className="text-xs text-neutral-400">Navigate to specific locations</div>
                           </div>
                         </SelectItem>
-                        <SelectItem value="line_track">Line Track (Legacy)</SelectItem>
-                        <SelectItem value="follow">Follow</SelectItem>
-                        <SelectItem value="color_track">Color Track</SelectItem>
-                        <SelectItem value="dock">Dock</SelectItem>
+                        <SelectItem value="color_track">
+                          <div>
+                            <div className="font-medium">Color Track</div>
+                            <div className="text-xs text-neutral-400">Follow objects by HSV color</div>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="aruco">
+                          <div>
+                            <div className="font-medium">ArUco Track</div>
+                            <div className="text-xs text-neutral-400">Navigate to ArUco markers</div>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="person_follow">
+                          <div>
+                            <div className="font-medium">Person Follow</div>
+                            <div className="text-xs text-neutral-400">Detect and follow people</div>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="dock">
+                          <div>
+                            <div className="font-medium">Dock</div>
+                            <div className="text-xs text-neutral-400">Return to charging station</div>
+                          </div>
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -796,47 +836,6 @@ export default function AutonomyModal({
                     </div>
                   )}
 
-                  {/* Computer Vision Algorithms */}
-                  {params.cvEnabled && (
-                    <>
-                      {(params.cvDetectFaces || params.cvDetectPeople || params.cvDetectObjects) && (
-                        <div className="flex items-center justify-between rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-2">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-blue-400" />
-                            <span className="text-xs font-medium text-neutral-200">
-                              Object Detection: <span className="text-blue-300">
-                                {params.cvDetectFaces && 'Faces '}
-                                {params.cvDetectPeople && 'People '}
-                                {params.cvDetectObjects && 'Objects'}
-                              </span>
-                            </span>
-                          </div>
-                          <Badge variant="outline" className="text-[10px] border-blue-500/50 text-blue-300">
-                            CV
-                          </Badge>
-                        </div>
-                      )}
-
-                      {(params.cvDetectAruco || params.cvTrackColor) && (
-                        <div className="flex items-center justify-between rounded-lg border border-purple-500/30 bg-purple-500/10 px-2.5 py-2">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-purple-400" />
-                            <span className="text-xs font-medium text-neutral-200">
-                              Tracking: <span className="text-purple-300">
-                                {params.cvDetectAruco && 'ArUco '}
-                                {params.cvTrackColor && 'Color '}
-                                {params.cvDetectMotion && 'Motion'}
-                              </span>
-                            </span>
-                          </div>
-                          <Badge variant="outline" className="text-[10px] border-purple-500/50 text-purple-300">
-                            Tracking
-                          </Badge>
-                        </div>
-                      )}
-                    </>
-                  )}
-
                   {/* Line Following */}
                   {(mode === 'line_follow' || mode === 'line_track') && params.laneKeeping && (
                     <div className="flex items-center justify-between rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-2">
@@ -853,8 +852,8 @@ export default function AutonomyModal({
                   )}
 
                   {/* No algorithms active */}
-                  {!params.rosNodePathPlanning && !params.rosNodeSlam && !params.rosNodeSensorFusion && 
-                   !params.obstacleAvoidance && !params.cvEnabled && 
+                  {!params.rosNodePathPlanning && !params.rosNodeSlam && !params.rosNodeSensorFusion &&
+                   !params.obstacleAvoidance &&
                    (mode !== 'line_follow' && mode !== 'line_track') && (
                     <div className="text-xs text-neutral-500 italic text-center py-2">
                       No algorithms active. Enable features above to see active algorithms.
@@ -864,400 +863,21 @@ export default function AutonomyModal({
               </CardContent>
             </Card>
 
-            {/* Computer Vision Section */}
+            {/* Vision Mode Status */}
             <Card className="bg-neutral-900/80 border-neutral-800">
-              <CardContent className="p-3 grid gap-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
-                  <Eye className="h-4 w-4 text-cyan-400" /> Computer Vision
-                </div>
-                <p className="text-xs text-neutral-400">
-                  Enable camera-based detection and tracking. The robot uses its camera to find and follow objects, faces, or markers.
-                </p>
-
-                <ToggleRow
-                  icon={<Eye className="h-4 w-4 text-cyan-400" />}
-                  label="Enable Computer Vision"
-                  description="Turn on camera-based detection. When ON: camera analyzes frames. When OFF: camera disabled (saves CPU)."
-                  checked={params.cvEnabled}
-                  onCheckedChange={(v) => {
-                    setParam('cvEnabled', v);
-                    // If disabling CV, also disable all detection features
-                    if (!v) {
-                      setParam('cvDetectFaces', false);
-                      setParam('cvDetectPeople', false);
-                      setParam('cvDetectObjects', false);
-                      setParam('cvDetectAruco', false);
-                      setParam('cvDetectMotion', false);
-                      setParam('cvTrackColor', false);
-                    }
-                  }}
-                />
-
-                {params.cvEnabled && (
-                  <>
-                    <div>
-                      <div className="flex items-center gap-1 mb-1">
-                        <label className="text-xs text-neutral-200 font-medium">Vision Mode</label>
-                        <div className="group relative">
-                          <HelpCircle className="h-3 w-3 text-neutral-400 cursor-help" />
-                          <div className="absolute left-0 top-4 w-64 bg-neutral-900 border border-neutral-700 rounded-md p-2 text-xs text-neutral-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-lg">
-                            <strong>Vision Modes:</strong><br/>
-                            • <strong>Color Track:</strong> Follow objects by color<br/>
-                            • <strong>Face Follow:</strong> Track and follow faces<br/>
-                            • <strong>Person Follow:</strong> Detect and follow people<br/>
-                            • <strong>ArUco Track:</strong> Follow ArUco marker tags<br/>
-                            • <strong>Motion Detect:</strong> React to movement<br/>
-                            • <strong>Object Detect:</strong> Detect any objects
-                          </div>
-                        </div>
-                      </div>
-                      <Select 
-                        value={params.cvMode} 
-                        onValueChange={(v) => setParam('cvMode', v as AutonomyParams['cvMode'])}
-                      >
-                        <SelectTrigger className="mt-1 bg-neutral-950 border-neutral-800 text-neutral-100">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-neutral-950 border-neutral-800 text-neutral-100">
-                          <SelectItem value="color_track">
-                            <div>
-                              <div className="font-medium">Color Track</div>
-                              <div className="text-xs text-neutral-400">Follow colored objects</div>
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="face_follow">
-                            <div>
-                              <div className="font-medium">Face Follow</div>
-                              <div className="text-xs text-neutral-400">Track and follow faces</div>
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="person_follow">
-                            <div>
-                              <div className="font-medium">Person Follow</div>
-                              <div className="text-xs text-neutral-400">Detect and follow people</div>
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="aruco_track">
-                            <div>
-                              <div className="font-medium">ArUco Track</div>
-                              <div className="text-xs text-neutral-400">Follow ArUco markers</div>
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="motion_detect">
-                            <div>
-                              <div className="font-medium">Motion Detect</div>
-                              <div className="text-xs text-neutral-400">React to movement</div>
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="object_detect">
-                            <div>
-                              <div className="font-medium">Object Detect</div>
-                              <div className="text-xs text-neutral-400">Detect any objects</div>
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+              <CardContent className="p-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-violet-400 flex-shrink-0" />
+                  <div>
+                    <div className="text-xs font-semibold text-neutral-100">Vision Mode</div>
+                    <div className="text-[11px] text-neutral-400 mt-0.5">
+                      {visionModeLabel
+                        ? <span className="text-violet-300 font-medium">{visionModeLabel}</span>
+                        : <span className="italic">Offline / not set</span>}
+                      {' — configure in the Vision Mode panel on the main page'}
                     </div>
-
-                    <div className="space-y-3 pt-2 border-t border-neutral-800/50">
-                      <div>
-                        <div className="flex items-center gap-1 mb-2">
-                          <span className="text-xs font-medium text-neutral-200">Detection Features</span>
-                          <div className="group relative">
-                            <HelpCircle className="h-3 w-3 text-neutral-400 cursor-help" />
-                            <div className="absolute left-0 top-4 w-64 bg-neutral-900 border border-neutral-700 rounded-md p-2 text-xs text-neutral-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-lg">
-                              Select which detection features to enable. Only enabled features will run, reducing CPU usage. Enable only what you need for better performance.
-                            </div>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <ToggleRow
-                            icon={<User className="h-3.5 w-3.5 text-blue-400" />}
-                            label="Faces"
-                            description="ON: Detect faces in camera. OFF: Skip face detection."
-                            checked={params.cvDetectFaces}
-                            onCheckedChange={(v) => setParam('cvDetectFaces', v)}
-                          />
-                          <ToggleRow
-                            icon={<Users className="h-3.5 w-3.5 text-green-400" />}
-                            label="People"
-                            description="ON: Detect people. OFF: Skip person detection."
-                            checked={params.cvDetectPeople}
-                            onCheckedChange={(v) => setParam('cvDetectPeople', v)}
-                          />
-                          <ToggleRow
-                            icon={<Package className="h-3.5 w-3.5 text-orange-400" />}
-                            label="Objects"
-                            description="ON: Detect objects. OFF: Skip object detection."
-                            checked={params.cvDetectObjects}
-                            onCheckedChange={(v) => setParam('cvDetectObjects', v)}
-                          />
-                          <ToggleRow
-                            icon={<QrCode className="h-3.5 w-3.5 text-purple-400" />}
-                            label="ArUco"
-                            description="ON: Track ArUco markers. OFF: Skip marker tracking."
-                            checked={params.cvDetectAruco}
-                            onCheckedChange={(v) => setParam('cvDetectAruco', v)}
-                          />
-                          <ToggleRow
-                            icon={<Move className="h-3.5 w-3.5 text-yellow-400" />}
-                            label="Motion"
-                            description="ON: Detect movement. OFF: Skip motion detection."
-                            checked={params.cvDetectMotion}
-                            onCheckedChange={(v) => setParam('cvDetectMotion', v)}
-                          />
-                          <ToggleRow
-                            icon={<Palette className="h-3.5 w-3.5 text-pink-400" />}
-                            label="Color"
-                            description="ON: Track by color. OFF: Skip color tracking."
-                            checked={params.cvTrackColor}
-                            onCheckedChange={(v) => setParam('cvTrackColor', v)}
-                          />
-                        </div>
-                        {!params.cvDetectFaces && !params.cvDetectPeople && !params.cvDetectObjects && 
-                         !params.cvDetectAruco && !params.cvDetectMotion && !params.cvTrackColor && (
-                          <div className="text-[11px] text-amber-300 flex items-center gap-1 mt-2">
-                            <Info className="h-3 w-3" /> Enable at least one detection feature to use Computer Vision.
-                          </div>
-                        )}
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs font-medium text-neutral-200">Confidence Threshold</span>
-                            <div className="group relative">
-                              <HelpCircle className="h-3 w-3 text-neutral-400 cursor-help" />
-                              <div className="absolute left-0 top-4 w-56 bg-neutral-900 border border-neutral-700 rounded-md p-2 text-xs text-neutral-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-lg">
-                                How certain the detection must be (%). Higher = more accurate but fewer detections. Start with 70%.
-                              </div>
-                            </div>
-                          </div>
-                          <span className="text-xs font-bold text-neutral-100">{params.cvConfidenceThreshold}%</span>
-                        </div>
-                        <Slider
-                          value={[params.cvConfidenceThreshold]}
-                          onValueChange={(v: number[]) => setParam('cvConfidenceThreshold', v[0] ?? 0)}
-                          min={50}
-                          max={95}
-                          step={5}
-                          className="mt-2"
-                          aria-label="Confidence Threshold"
-                        />
-                        <div className="flex justify-between text-[10px] text-neutral-500 mt-1">
-                          <span>More Detections</span>
-                          <span>More Accurate</span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <NumberField 
-                          label="Max Detections" 
-                          value={params.cvMaxDetections} 
-                          min={1} 
-                          max={10} 
-                          step={1}
-                          onChange={(n) => setParam('cvMaxDetections', n)} 
-                        />
-                        <div className="grid gap-1">
-                          <label className="text-xs text-neutral-300">Tracker Type</label>
-                          <Select 
-                            value={params.cvTrackerType} 
-                            onValueChange={(v) => setParam('cvTrackerType', v as AutonomyParams['cvTrackerType'])}
-                          >
-                            <SelectTrigger className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="bg-neutral-950 border-neutral-800 text-neutral-100">
-                              <SelectItem value="CSRT">CSRT (Best Accuracy)</SelectItem>
-                              <SelectItem value="KCF">KCF (Fast)</SelectItem>
-                              <SelectItem value="MIL">MIL (Balance)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2 pt-2 border-t border-neutral-800/50">
-                        <ToggleRow
-                          icon={<span className="inline-block h-4 w-4 rounded-sm bg-cyan-400/70" />}
-                          label="Show Bounding Boxes"
-                          description="Display detection boxes on camera feed"
-                          checked={params.cvShowBoundingBoxes}
-                          onCheckedChange={(v) => setParam('cvShowBoundingBoxes', v)}
-                        />
-                        <ToggleRow
-                          icon={<Crosshair className="h-4 w-4 text-purple-400" />}
-                          label="Object Tracking"
-                          description="Smoothly track objects across frames"
-                          checked={params.cvTrackObjects}
-                          onCheckedChange={(v) => setParam('cvTrackObjects', v)}
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* ROS Integration Settings */}
-            <Card className="bg-neutral-900/80 border-neutral-800">
-              <CardContent className="p-3 grid gap-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
-                    <Network className="h-4 w-4 text-amber-400" /> ROS Integration Settings
                   </div>
-                  <Link 
-                    href="/ros" 
-                    className="text-xs text-amber-400 hover:text-amber-300 underline flex items-center gap-1"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Manage ROS Infrastructure →
-                  </Link>
                 </div>
-                <p className="text-xs text-neutral-400">
-                  Configure which ROS features to use during autonomy. For Docker container management, topics, and logs, visit the <Link href="/ros" className="text-amber-400 hover:text-amber-300 underline">ROS Dashboard</Link>.
-                </p>
-
-                <ToggleRow
-                  icon={<Network className="h-4 w-4 text-amber-400" />}
-                  label="Enable ROS Integration"
-                  description="ON: Use ROS features for autonomy (requires ROS containers running). OFF: Disable ROS features (saves resources). Note: Start ROS containers via ROS Dashboard first."
-                  checked={params.rosEnabled}
-                  onCheckedChange={(v) => setParam('rosEnabled', v)}
-                />
-
-                {params.rosEnabled && (
-                  <>
-                    <div>
-                      <label className="text-xs font-medium text-neutral-200 mb-1 block">ROS Master URI</label>
-                      <Input
-                        value={params.rosMasterUri}
-                        onChange={(e) => setParam('rosMasterUri', e.target.value)}
-                        placeholder="http://localhost:11311"
-                        className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs"
-                      />
-                      <div className="text-[10px] text-neutral-500 mt-1">
-                        Default: http://localhost:11311 (local ROS master)
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 pt-2 border-t border-neutral-800/50">
-                      <div className="text-xs font-medium text-neutral-300 mb-1">Data Publishing</div>
-                      <ToggleRow
-                        icon={<Activity className="h-3.5 w-3.5 text-blue-400" />}
-                        label="Publish Sensors"
-                        description="ON: Send sensor data to ROS. OFF: Stop publishing sensor data."
-                        checked={params.rosPublishSensors}
-                        onCheckedChange={(v) => setParam('rosPublishSensors', v)}
-                      />
-                      <ToggleRow
-                        icon={<Bot className="h-3.5 w-3.5 text-green-400" />}
-                        label="Publish Movement"
-                        description="ON: Send movement commands to ROS. OFF: Stop publishing movement."
-                        checked={params.rosPublishMovement}
-                        onCheckedChange={(v) => setParam('rosPublishMovement', v)}
-                      />
-                      <ToggleRow
-                        icon={<Eye className="h-3.5 w-3.5 text-cyan-400" />}
-                        label="Publish Camera"
-                        description="ON: Send camera feed to ROS. OFF: Stop publishing video."
-                        checked={params.rosPublishCamera}
-                        onCheckedChange={(v) => setParam('rosPublishCamera', v)}
-                      />
-                      <ToggleRow
-                        icon={<Flag className="h-3.5 w-3.5 text-purple-400" />}
-                        label="Subscribe Commands"
-                        description="ON: Receive commands from ROS. OFF: Ignore ROS commands."
-                        checked={params.rosSubscribeCommands}
-                        onCheckedChange={(v) => setParam('rosSubscribeCommands', v)}
-                      />
-                    </div>
-
-                    <div className="space-y-2 pt-2 border-t border-neutral-800/50">
-                      <div className="text-xs font-medium text-neutral-300 mb-1">ROS Nodes</div>
-                      <ToggleRow
-                        icon={<Layers className="h-3.5 w-3.5 text-yellow-400" />}
-                        label="SLAM (Mapping)"
-                        description="ON: Build map while exploring. OFF: Disable mapping node."
-                        checked={params.rosNodeSlam}
-                        onCheckedChange={(v) => setParam('rosNodeSlam', v)}
-                      />
-                      <ToggleRow
-                        icon={<Package className="h-3.5 w-3.5 text-orange-400" />}
-                        label="Sensor Fusion"
-                        description="ON: Combine sensor data. OFF: Disable fusion node."
-                        checked={params.rosNodeSensorFusion}
-                        onCheckedChange={(v) => setParam('rosNodeSensorFusion', v)}
-                      />
-                      <ToggleRow
-                        icon={<Crosshair className="h-3.5 w-3.5 text-red-400" />}
-                        label="Path Planning"
-                        description="ON: Run pathfinding algorithm. OFF: Disable path planning."
-                        checked={params.rosNodePathPlanning}
-                        onCheckedChange={(v) => setParam('rosNodePathPlanning', v)}
-                      />
-                      {params.rosNodePathPlanning && (
-                        <div className="ml-6">
-                          <label className="text-xs text-neutral-300 mb-1 block">Algorithm</label>
-                          <Select 
-                            value={params.pathPlanningAlgorithm} 
-                            onValueChange={(v) => setParam('pathPlanningAlgorithm', v as AutonomyParams['pathPlanningAlgorithm'])}
-                          >
-                            <SelectTrigger className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs h-8">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="bg-neutral-950 border-neutral-800 text-neutral-100">
-                              <SelectItem value="a_star">
-                                <div>
-                                  <div className="font-medium">A*</div>
-                                  <div className="text-[10px] text-neutral-400">Heuristic search, optimal paths</div>
-                                </div>
-                              </SelectItem>
-                              <SelectItem value="d_star_lite">
-                                <div>
-                                  <div className="font-medium">D* Lite</div>
-                                  <div className="text-[10px] text-neutral-400">Dynamic replanning, handles changes</div>
-                                </div>
-                              </SelectItem>
-                              <SelectItem value="rrt">
-                                <div>
-                                  <div className="font-medium">RRT</div>
-                                  <div className="text-[10px] text-neutral-400">Rapidly-exploring random trees</div>
-                                </div>
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-                      <ToggleRow
-                        icon={<Play className="h-3.5 w-3.5 text-emerald-400" />}
-                        label="Autonomous Driving"
-                        description="ON: Enable ROS navigation. OFF: Disable autonomous node."
-                        checked={params.rosNodeAutonomousDriving}
-                        onCheckedChange={(v) => setParam('rosNodeAutonomousDriving', v)}
-                      />
-                    </div>
-
-                    <div className="space-y-2 pt-2 border-t border-neutral-800/50">
-                      <div className="text-xs font-medium text-neutral-300 mb-1">Advanced Features</div>
-                      <ToggleRow
-                        icon={<Network className="h-3.5 w-3.5 text-pink-400" />}
-                        label="ROS Bridge"
-                        description="ON: Convert WebSocket ↔ ROS. OFF: Disable bridge."
-                        checked={params.rosBridgeEnabled}
-                        onCheckedChange={(v) => setParam('rosBridgeEnabled', v)}
-                      />
-                      <ToggleRow
-                        icon={<Settings2 className="h-3.5 w-3.5 text-sky-400" />}
-                        label="TF (Transforms)"
-                        description="ON: Enable coordinate transforms. OFF: Disable TF system."
-                        checked={params.rosTfEnabled}
-                        onCheckedChange={(v) => setParam('rosTfEnabled', v)}
-                      />
-                    </div>
-                  </>
-                )}
               </CardContent>
             </Card>
 
@@ -1276,24 +896,22 @@ export default function AutonomyModal({
               </CardContent>
             </Card>
 
-            {/* ADVANCED toggle */}
+            {/* ── Advanced: Navigation ───────────────────────────────── */}
             <button
               type="button"
-              onClick={() => setShowAdvanced(v => !v)}
+              onClick={() => setShowNavAdv(v => !v)}
               className="text-left w-full rounded-md border border-neutral-800 bg-neutral-900/80 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-900 flex items-center justify-between transition-colors"
-              aria-expanded={showAdvanced}
+              aria-expanded={showNavAdv}
             >
               <div className="flex items-center gap-2">
-                <Settings2 className="h-4 w-4 text-neutral-400" />
-                <span>Advanced Settings</span>
+                <Crosshair className="h-4 w-4 text-teal-400" />
+                <span>Navigation &amp; Tuning</span>
               </div>
-              <span className="text-neutral-400 text-xs">{showAdvanced ? 'Hide' : 'Show'} Expert Options</span>
+              <span className="text-neutral-400 text-xs">{showNavAdv ? 'Hide' : 'Show'}</span>
             </button>
 
-            {/* ADVANCED content */}
-            {showAdvanced && (
-              <div className="grid grid-cols-1 gap-3">
-                {/* Navigation tuning */}
+            {showNavAdv && (
+              <div className="grid grid-cols-1 gap-3 pl-3 border-l-2 border-neutral-800">
                 <Card className="bg-neutral-900/80 border-neutral-800">
                   <CardContent className="p-3 grid gap-3">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1313,7 +931,6 @@ export default function AutonomyModal({
                   </CardContent>
                 </Card>
 
-                {/* Vision */}
                 <Card className="bg-neutral-900/80 border-neutral-800">
                   <CardContent className="p-3 grid gap-3">
                     <p className="text-xs text-neutral-300">
@@ -1338,23 +955,39 @@ export default function AutonomyModal({
                       </div>
                     </div>
                     <div className="text-[11px] text-neutral-400">
-                      For ArUco/AprilTag/Face modes, backend should publish <code>{'{ id, dist, bearing }'}</code> or a face box; UI only sends <code>{'mode'}</code> + params.
+                      For ArUco/face modes the backend publishes <code>{'{ id, dist, bearing }'}</code>; UI sends <code>mode</code> + params.
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* Behavior priorities */}
                 <Card className="bg-neutral-900/80 border-neutral-800">
                   <CardContent className="p-3 grid gap-3">
-                    <p className="text-xs text-neutral-300">Priority (top preempts lower). Use arrows to reorder.</p>
+                    <p className="text-xs text-neutral-300">Behavior priority (top preempts lower). Use arrows to reorder.</p>
                     <PriorityEditor
                       items={params.priorities}
                       onChange={(items) => setParam('priorities', items)}
                     />
                   </CardContent>
                 </Card>
+              </div>
+            )}
 
-                {/* Mapping + Safety */}
+            {/* ── Advanced: Safety ───────────────────────────────────── */}
+            <button
+              type="button"
+              onClick={() => setShowSafetyAdv(v => !v)}
+              className="text-left w-full rounded-md border border-neutral-800 bg-neutral-900/80 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-900 flex items-center justify-between transition-colors"
+              aria-expanded={showSafetyAdv}
+            >
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-emerald-400" />
+                <span>Safety &amp; Mapping</span>
+              </div>
+              <span className="text-neutral-400 text-xs">{showSafetyAdv ? 'Hide' : 'Show'}</span>
+            </button>
+
+            {showSafetyAdv && (
+              <div className="grid grid-cols-1 gap-3 pl-3 border-l-2 border-neutral-800">
                 <Card className="bg-neutral-900/80 border-neutral-800">
                   <CardContent className="p-3 grid gap-3">
                     <ToggleRow
@@ -1372,25 +1005,250 @@ export default function AutonomyModal({
                         onChange={(n)=> setParam('batteryMinPct', n)} />
                     </div>
                     <div className="text-[11px] text-neutral-400">
-                      Safety overrides always win. Backend must stop if battery below floor, cliff detected, or ultrasonic &lt; stop distance.
+                      Safety overrides always win. Backend stops if battery below floor, cliff detected, or ultrasonic &lt; stop distance.
                     </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-neutral-900/80 border-neutral-800">
+                  <CardContent className="p-3 grid gap-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-neutral-200">
+                      <Shield className="h-3.5 w-3.5 text-emerald-400" /> Safety Checks
+                    </div>
+                    <div className="space-y-1.5">
+                      {!params.obstacleAvoidance && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-amber-300">
+                          <AlertTriangle className="h-3 w-3" />
+                          <span>Warning: Obstacle avoidance is disabled</span>
+                        </div>
+                      )}
+                      {batteryPct < params.batteryMinPct && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-red-300">
+                          <AlertTriangle className="h-3 w-3" />
+                          <span>Low battery ({batteryPct}% &lt; {params.batteryMinPct}%)</span>
+                        </div>
+                      )}
+                      {params.speedPct > 80 && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-yellow-300">
+                          <AlertTriangle className="h-3 w-3" />
+                          <span>High speed ({params.speedPct}%) — consider lowering for safety</span>
+                        </div>
+                      )}
+                      {params.obstacleAvoidance && batteryPct >= params.batteryMinPct && params.speedPct <= 80 && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-emerald-300">
+                          <CheckCircle className="h-3 w-3" />
+                          <span>All safety checks passed</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* ── Advanced: System ───────────────────────────────────── */}
+            <button
+              type="button"
+              onClick={() => setShowSysAdv(v => !v)}
+              className="text-left w-full rounded-md border border-neutral-800 bg-neutral-900/80 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-900 flex items-center justify-between transition-colors"
+              aria-expanded={showSysAdv}
+            >
+              <div className="flex items-center gap-2">
+                <Network className="h-4 w-4 text-amber-400" />
+                <span>System &amp; Integration</span>
+              </div>
+              <span className="text-neutral-400 text-xs">{showSysAdv ? 'Hide' : 'Show'}</span>
+            </button>
+
+            {showSysAdv && (
+              <div className="grid grid-cols-1 gap-3 pl-3 border-l-2 border-neutral-800">
+                {/* ROS Integration */}
+                <Card className="bg-neutral-900/80 border-neutral-800">
+                  <CardContent className="p-3 grid gap-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
+                        <Network className="h-4 w-4 text-amber-400" /> ROS Integration
+                      </div>
+                      <Link
+                        href="/ros"
+                        className="text-xs text-amber-400 hover:text-amber-300 underline flex items-center gap-1"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Manage ROS →
+                      </Link>
+                    </div>
+                    <p className="text-xs text-neutral-400">
+                      Configure which ROS features to use during autonomy. Manage containers and topics via the{' '}
+                      <Link href="/ros" className="text-amber-400 hover:text-amber-300 underline">ROS Dashboard</Link>.
+                    </p>
+
+                    <ToggleRow
+                      icon={<Network className="h-4 w-4 text-amber-400" />}
+                      label="Enable ROS Integration"
+                      description="ON: Use ROS for autonomy (requires containers running). OFF: Saves resources."
+                      checked={params.rosEnabled}
+                      onCheckedChange={(v) => setParam('rosEnabled', v)}
+                    />
+
+                    {params.rosEnabled && (
+                      <>
+                        <div>
+                          <label className="text-xs font-medium text-neutral-200 mb-1 block">ROS Master URI</label>
+                          <Input
+                            value={params.rosMasterUri}
+                            onChange={(e) => setParam('rosMasterUri', e.target.value)}
+                            placeholder="http://localhost:11311"
+                            className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs"
+                          />
+                          <div className="text-[10px] text-neutral-500 mt-1">
+                            Default: http://localhost:11311
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 pt-2 border-t border-neutral-800/50">
+                          <div className="text-xs font-medium text-neutral-300 mb-1">Data Publishing</div>
+                          <ToggleRow
+                            icon={<Activity className="h-3.5 w-3.5 text-blue-400" />}
+                            label="Publish Sensors"
+                            description="ON: Send sensor data to ROS."
+                            checked={params.rosPublishSensors}
+                            onCheckedChange={(v) => setParam('rosPublishSensors', v)}
+                          />
+                          <ToggleRow
+                            icon={<Bot className="h-3.5 w-3.5 text-green-400" />}
+                            label="Publish Movement"
+                            description="ON: Send movement commands to ROS."
+                            checked={params.rosPublishMovement}
+                            onCheckedChange={(v) => setParam('rosPublishMovement', v)}
+                          />
+                          <ToggleRow
+                            icon={<Eye className="h-3.5 w-3.5 text-cyan-400" />}
+                            label="Publish Camera"
+                            description="ON: Send camera feed to ROS."
+                            checked={params.rosPublishCamera}
+                            onCheckedChange={(v) => setParam('rosPublishCamera', v)}
+                          />
+                          <ToggleRow
+                            icon={<Flag className="h-3.5 w-3.5 text-purple-400" />}
+                            label="Subscribe Commands"
+                            description="ON: Receive commands from ROS."
+                            checked={params.rosSubscribeCommands}
+                            onCheckedChange={(v) => setParam('rosSubscribeCommands', v)}
+                          />
+                        </div>
+
+                        <div className="space-y-2 pt-2 border-t border-neutral-800/50">
+                          <div className="text-xs font-medium text-neutral-300 mb-1">ROS Nodes</div>
+                          <ToggleRow
+                            icon={<Layers className="h-3.5 w-3.5 text-yellow-400" />}
+                            label="SLAM (Mapping)"
+                            description="ON: Build map while exploring."
+                            checked={params.rosNodeSlam}
+                            onCheckedChange={(v) => setParam('rosNodeSlam', v)}
+                          />
+                          <ToggleRow
+                            icon={<Package className="h-3.5 w-3.5 text-orange-400" />}
+                            label="Sensor Fusion"
+                            description="ON: Combine sensor data."
+                            checked={params.rosNodeSensorFusion}
+                            onCheckedChange={(v) => setParam('rosNodeSensorFusion', v)}
+                          />
+                          <ToggleRow
+                            icon={<Crosshair className="h-3.5 w-3.5 text-red-400" />}
+                            label="Path Planning"
+                            description="ON: Run pathfinding algorithm."
+                            checked={params.rosNodePathPlanning}
+                            onCheckedChange={(v) => setParam('rosNodePathPlanning', v)}
+                          />
+                          {params.rosNodePathPlanning && (
+                            <div className="ml-6">
+                              <label className="text-xs text-neutral-300 mb-1 block">Algorithm</label>
+                              <Select
+                                value={params.pathPlanningAlgorithm}
+                                onValueChange={(v) => setParam('pathPlanningAlgorithm', v as AutonomyParams['pathPlanningAlgorithm'])}
+                              >
+                                <SelectTrigger className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs h-8">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="bg-neutral-950 border-neutral-800 text-neutral-100">
+                                  <SelectItem value="a_star">
+                                    <div><div className="font-medium">A*</div><div className="text-[10px] text-neutral-400">Heuristic search, optimal paths</div></div>
+                                  </SelectItem>
+                                  <SelectItem value="d_star_lite">
+                                    <div><div className="font-medium">D* Lite</div><div className="text-[10px] text-neutral-400">Dynamic replanning</div></div>
+                                  </SelectItem>
+                                  <SelectItem value="rrt">
+                                    <div><div className="font-medium">RRT</div><div className="text-[10px] text-neutral-400">Rapidly-exploring random trees</div></div>
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                          <ToggleRow
+                            icon={<Play className="h-3.5 w-3.5 text-emerald-400" />}
+                            label="Autonomous Driving"
+                            description="ON: Enable ROS navigation node."
+                            checked={params.rosNodeAutonomousDriving}
+                            onCheckedChange={(v) => setParam('rosNodeAutonomousDriving', v)}
+                          />
+                        </div>
+
+                        <div className="space-y-2 pt-2 border-t border-neutral-800/50">
+                          <div className="text-xs font-medium text-neutral-300 mb-1">Bridge &amp; Transforms</div>
+                          <ToggleRow
+                            icon={<Network className="h-3.5 w-3.5 text-pink-400" />}
+                            label="ROS Bridge"
+                            description="ON: Convert WebSocket ↔ ROS."
+                            checked={params.rosBridgeEnabled}
+                            onCheckedChange={(v) => setParam('rosBridgeEnabled', v)}
+                          />
+                          <ToggleRow
+                            icon={<Settings2 className="h-3.5 w-3.5 text-sky-400" />}
+                            label="TF (Transforms)"
+                            description="ON: Enable coordinate transforms."
+                            checked={params.rosTfEnabled}
+                            onCheckedChange={(v) => setParam('rosTfEnabled', v)}
+                          />
+                        </div>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
                 {/* Presets */}
                 <Card className="bg-neutral-900/80 border-neutral-800">
                   <CardContent className="p-3 grid gap-2">
+                    <div className="text-xs font-semibold text-neutral-200">Configuration Presets</div>
                     <div className="flex flex-wrap gap-2">
-                      <Button variant="secondary" className="gap-2" onClick={downloadPresets}>
+                      <Button
+                        variant="secondary"
+                        className="gap-2"
+                        onClick={downloadPresets}
+                        disabled={isViewer}
+                        title={isViewer ? 'Viewer role cannot export' : undefined}
+                      >
                         <Save className="h-4 w-4" /> Export JSON
                       </Button>
-                      <Button variant="secondary" className="gap-2" onClick={openFileDialog}>
+                      <Button
+                        variant="secondary"
+                        className="gap-2"
+                        onClick={openFileDialog}
+                        disabled={isViewer}
+                        title={isViewer ? 'Viewer role cannot import' : undefined}
+                      >
                         <Upload className="h-4 w-4" /> Import JSON
                       </Button>
                       <input ref={fileRef} type="file" accept="application/json" className="hidden" onChange={onFileSelected} />
                     </div>
+                    {params.configVersion && (
+                      <div className="text-[10px] text-neutral-500 flex items-center gap-2">
+                        <Clock className="h-3 w-3" />
+                        <span>v{params.configVersion} • {params.lastModified ? new Date(params.lastModified).toLocaleString() : 'Never modified'}</span>
+                      </div>
+                    )}
                     <div className="text-[11px] text-neutral-400">
-                      Exports include mode, params, and waypoints (client-side preview). Import merges into current config.
+                      Exports include mode, params, and waypoints. Import merges into current config.
                     </div>
                   </CardContent>
                 </Card>
@@ -1402,137 +1260,6 @@ export default function AutonomyModal({
                 </div>
               </div>
             )}
-
-            {/* Enterprise Features */}
-            <div className="grid grid-cols-1 gap-3 pt-2">
-              {/* Configuration Management */}
-              <Card className="bg-neutral-900/80 border-neutral-800">
-                <CardContent className="p-3 grid gap-3">
-                  <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
-                    <FileText className="h-4 w-4 text-blue-400" /> Configuration Management
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button 
-                      variant="secondary" 
-                      className="gap-2 text-xs h-8" 
-                      onClick={downloadPresets}
-                      disabled={isViewer}
-                      title={isViewer ? 'Viewer role cannot export configs' : 'Export current configuration'}
-                    >
-                      <Save className="h-3 w-3" /> Save Config
-                    </Button>
-                    <Button 
-                      variant="secondary" 
-                      className="gap-2 text-xs h-8" 
-                      onClick={openFileDialog}
-                      disabled={isViewer}
-                      title={isViewer ? 'Viewer role cannot import configs' : 'Import saved configuration'}
-                    >
-                      <Upload className="h-3 w-3" /> Load Config
-                    </Button>
-                  </div>
-                  {params.configVersion && (
-                    <div className="text-[10px] text-neutral-500 flex items-center gap-2">
-                      <Clock className="h-3 w-3" />
-                      <span>v{params.configVersion} • {params.lastModified ? new Date(params.lastModified).toLocaleString() : 'Never modified'}</span>
-                      {params.modifiedBy && (
-                        <span className="ml-2 flex items-center gap-1">
-                          <UserCheck className="h-2.5 w-2.5" /> {params.modifiedBy}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {isAdmin && (
-                    <div className="pt-2 border-t border-neutral-800/50">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="gap-2 text-xs h-7 w-full"
-                        onClick={() => {
-                          // TODO: Show configuration history modal
-                          console.log('[Enterprise] View config history');
-                        }}
-                      >
-                        <History className="h-3 w-3" /> View History
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* System Health */}
-              <Card className="bg-neutral-900/80 border-neutral-800">
-                <CardContent className="p-3 grid gap-2">
-                  <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
-                    <Activity className="h-4 w-4 text-emerald-400" /> System Health
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="flex items-center gap-1.5">
-                      {connected ? (
-                        <CheckCircle className="h-3 w-3 text-emerald-400" />
-                      ) : (
-                        <XCircle className="h-3 w-3 text-red-400" />
-                      )}
-                      <span className={connected ? 'text-emerald-300' : 'text-red-300'}>
-                        Connection: {connected ? 'Active' : 'Offline'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Gauge className="h-3 w-3 text-yellow-400" />
-                      <span>Battery: {batteryPct}%</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {autonomyActive ? (
-                        <CheckCircle className="h-3 w-3 text-emerald-400" />
-                      ) : (
-                        <Square className="h-3 w-3 text-neutral-500" />
-                      )}
-                      <span>Autonomy: {autonomyActive ? 'Running' : 'Stopped'}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Server className="h-3 w-3 text-cyan-400" />
-                      <span>Services: {connected ? 'Online' : 'Offline'}</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Safety Validation */}
-              <Card className="bg-neutral-900/80 border-neutral-800">
-                <CardContent className="p-3 grid gap-2">
-                  <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
-                    <Shield className="h-4 w-4 text-emerald-400" /> Safety Validation
-                  </div>
-                  <div className="space-y-1.5">
-                    {!params.obstacleAvoidance && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-amber-300">
-                        <AlertTriangle className="h-3 w-3" />
-                        <span>Warning: Obstacle avoidance is disabled</span>
-                      </div>
-                    )}
-                    {batteryPct < params.batteryMinPct && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-red-300">
-                        <AlertTriangle className="h-3 w-3" />
-                        <span>Low battery ({batteryPct}% &lt; {params.batteryMinPct}%)</span>
-                      </div>
-                    )}
-                    {params.speedPct > 80 && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-yellow-300">
-                        <AlertTriangle className="h-3 w-3" />
-                        <span>High speed ({params.speedPct}%) - consider lowering for safety</span>
-                      </div>
-                    )}
-                    {params.obstacleAvoidance && batteryPct >= params.batteryMinPct && params.speedPct <= 80 && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-emerald-300">
-                        <CheckCircle className="h-3 w-3" />
-                        <span>All safety checks passed</span>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
             {/* Footer tip */}
             <div className="text-[11px] text-neutral-300 flex items-start gap-2 flex-shrink-0">
               <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-neutral-500/70" />

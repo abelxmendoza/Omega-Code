@@ -25,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(200).json(data);
     
   } catch (error) {
-    console.error('[system-mode-proxy] Error fetching mode status:', error);
+    console.warn('[system-mode-proxy] Error fetching mode status:', error instanceof Error ? error.message : String(error));
     res.status(503).json({ 
       error: 'System mode API unavailable',
       message: error instanceof Error ? error.message : 'Unknown error'

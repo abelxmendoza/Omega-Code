@@ -33,6 +33,7 @@ import PerformanceDashboard from '../components/PerformanceDashboard';
 import EnhancedServoTelemetryPanel from '../components/control/EnhancedServoTelemetryPanel';
 import AutonomyPanel from '../components/control/AutonomyModal';
 import SystemModeDashboard from '../components/SystemModeDashboard';
+import VisionModePanel from '../components/VisionModePanel';
 import LatencyDashboard from '../components/LatencyDashboard';
 import { useCommand } from '../context/CommandContext';
 import { COMMAND } from '../control_definitions';
@@ -117,7 +118,7 @@ const coerceWsScheme = (rawUrl: string): string => {
 };
 
 /** Exponential backoff helper (ms). */
-const nextBackoff = (prev: number) => Math.min(10_000, Math.max(500, Math.floor(prev * 1.6)));
+const nextBackoff = (prev: number) => Math.min(30_000, Math.max(500, Math.floor(prev * 1.6)));
 
 /* ---------------------- resolved endpoints (by profile) ---------------------- */
 
@@ -159,11 +160,16 @@ export default function Home() {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backoffRef = useRef<number>(800);
   const closingRef = useRef<boolean>(false);
+  const wsConnectedOnce = useRef<boolean>(false);
+  const wsUrlMissingLogged = useRef<boolean>(false);
 
   const connectWebSocket = useCallback(() => {
     const rawUrl = movementWsResolved;
     if (!rawUrl) {
-      addCommand('WS URL missing: set NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_* in your .env.local');
+      if (!wsUrlMissingLogged.current) {
+        wsUrlMissingLogged.current = true;
+        addCommand('WS URL missing: set NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT_* in your .env.local');
+      }
       return;
     }
     const url = coerceWsScheme(rawUrl);
@@ -178,6 +184,7 @@ export default function Home() {
       }
 
       ws.current.onopen = () => {
+        wsConnectedOnce.current = true;
         addCommand('WebSocket connection established');
         if (DEBUG) console.log('[WS] open');
         backoffRef.current = 800;
@@ -199,9 +206,13 @@ export default function Home() {
         if (keepAliveTimer.current) { clearInterval(keepAliveTimer.current); keepAliveTimer.current = null; }
         if (closingRef.current) return; // user-initiated close during unmount
 
-        addCommand('WebSocket connection closed. Reconnecting…');
+        // Only surface a log entry when we had a real connection; silent retries otherwise
+        if (wsConnectedOnce.current) {
+          wsConnectedOnce.current = false;
+          addCommand('WebSocket connection lost. Reconnecting…');
+        }
         if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null; }
-        const delay = Math.min(backoffRef.current, 10000); // Cap at 10s for mobile hotspots
+        const delay = Math.min(backoffRef.current, 30000);
         reconnectTimer.current = setTimeout(() => {
           backoffRef.current = nextBackoff(backoffRef.current);
           connectWebSocket();
@@ -210,8 +221,7 @@ export default function Home() {
 
       ws.current.onerror = (error) => {
         if (DEBUG) console.warn('[WS] error', error);
-        addCommand('WebSocket error (see console)');
-        // onclose handler will schedule reconnect if needed
+        // onclose handler will schedule reconnect
       };
 
       ws.current.onmessage = (event) => {
@@ -223,7 +233,7 @@ export default function Home() {
         }
       };
     } catch (err) {
-      addCommand(`WebSocket connect failed: ${String(err)}`);
+      if (DEBUG) console.warn('[WS] connect exception:', String(err));
       const delay = backoffRef.current;
       reconnectTimer.current = setTimeout(() => {
         backoffRef.current = nextBackoff(backoffRef.current);
@@ -407,6 +417,7 @@ export default function Home() {
                 title="Front Camera"
                 className="w-full"
               />
+              <VisionModePanel />
             </div>
 
             <div className="shrink-0">

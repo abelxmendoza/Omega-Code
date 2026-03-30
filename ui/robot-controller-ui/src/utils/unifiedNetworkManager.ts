@@ -261,7 +261,7 @@ class UnifiedNetworkManager {
     const startTime = Date.now();
     
     try {
-      console.log(`[UnifiedNetworkManager] Testing profile: ${profile.name} (${profile.httpEndpoints.performance})`);
+      // logDebug: profile test logging suppressed to reduce noise when robot is offline
       
       // Test HTTP connectivity first
       const response = await fetch(profile.httpEndpoints.performance, {
@@ -292,7 +292,7 @@ class UnifiedNetworkManager {
       };
 
     } catch (error) {
-      console.warn(`[UnifiedNetworkManager] Profile ${profile.name} test failed:`, error);
+      console.warn(`[UnifiedNetworkManager] Profile ${profile.name} test failed:`, error instanceof Error ? error.message : String(error));
       return {
         profile,
         success: false,

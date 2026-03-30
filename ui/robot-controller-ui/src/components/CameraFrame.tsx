@@ -21,6 +21,11 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Play, Pause, Maximize2, Minimize2, RotateCw, FlipHorizontal2,
+  FlipVertical, SlidersHorizontal, Camera, Download, Video, Square,
+  Expand, Shrink,
+} from 'lucide-react';
 import { cameraStatusBus } from '@/utils/cameraStatusBus';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'no_camera';
@@ -59,13 +64,19 @@ const StatusDot: React.FC<{ status: ServerStatus; title?: string }> = ({ status,
 };
 
 const IconBtn: React.FC<
-  React.PropsWithChildren<{ onClick?: () => void; title?: string; disabled?: boolean; active?: boolean }>
-> = ({ children, onClick, title, disabled, active }) => (
+  React.PropsWithChildren<{ onClick?: () => void; title?: string; disabled?: boolean; active?: boolean; danger?: boolean }>
+> = ({ children, onClick, title, disabled, active, danger }) => (
   <button
     type="button"
-    className={`px-2 py-1 rounded bg-black/40 hover:bg-black/55 text-white text-xs backdrop-blur
-                border ${active ? 'border-white/50' : 'border-white/15'} transition
-                disabled:opacity-40 disabled:cursor-not-allowed`}
+    className={[
+      'flex items-center justify-center w-7 h-7 rounded transition',
+      'backdrop-blur border disabled:opacity-40 disabled:cursor-not-allowed',
+      danger && active
+        ? 'bg-rose-600/80 border-rose-400/60 text-white hover:bg-rose-500/90'
+        : active
+          ? 'bg-white/15 border-white/40 text-white'
+          : 'bg-black/40 border-white/15 text-white/75 hover:bg-black/55 hover:text-white',
+    ].join(' ')}
     onClick={onClick}
     title={title}
     aria-label={title}
@@ -485,41 +496,101 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 bg-black/40 backdrop-blur border-b border-white/10">
-        <div className="flex items-center gap-2 text-white/90">
+        {/* Left: status + title + stats */}
+        <div className="flex items-center gap-2 min-w-0">
           <StatusDot status={status} title={titleText} />
-          <span className="text-sm font-semibold">{title}</span>
-          <span className="text-xs text-white/70 ml-2">
-            {pingMs != null ? `${pingMs} ms` : '— ms'} • {fps} fps
+          <span className="text-sm font-semibold text-white truncate">{title}</span>
+          <span className="text-xs text-white/50 tabular-nums shrink-0">
+            {pingMs != null ? `${pingMs}ms` : '—'} {fps > 0 ? `• ${fps}fps` : ''}
           </span>
         </div>
-        <div className="flex items-center gap-1">
-          <IconBtn onClick={handleTogglePlay} title={playing ? 'Pause' : 'Play'}>
-            {playing ? '⏸' : '▶️'}
+
+        {/* Right: controls */}
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Playback */}
+          <IconBtn onClick={handleTogglePlay} title={playing ? 'Pause stream' : 'Resume stream'}>
+            {playing ? <Pause size={13} /> : <Play size={13} />}
           </IconBtn>
-          <IconBtn onClick={() => setFitMode(fitMode === 'cover' ? 'contain' : 'cover')} title={`Fit: ${fitMode}`}>
-            {fitMode === 'cover' ? '◱' : '◰'}
-          </IconBtn>
-          <IconBtn onClick={() => setRotate((r) => ((r + 90) % 360) as 0 | 90 | 180 | 270)} title="Rotate 90°">↻</IconBtn>
-          <IconBtn onClick={() => setFlipH(v => !v)} title="Flip H" active={flipH}>⇆</IconBtn>
-          <IconBtn onClick={() => setFlipV(v => !v)} title="Flip V" active={flipV}>⥯</IconBtn>
-          <IconBtn onClick={() => setFilter(f =>
-            f === 'none' ? 'mono' : f === 'mono' ? 'contrast' : f === 'contrast' ? 'night' : 'none'
-          )} title={`Filter: ${filter}`}>🎛️</IconBtn>
-          <IconBtn onClick={handleSnapshotDownload} title="Snapshot PNG" disabled={!(status === 'connected' && playing)}>📸</IconBtn>
+
+          {/* Divider */}
+          <span className="w-px h-4 bg-white/10 mx-0.5" />
+
+          {/* View transforms */}
           <IconBtn
-            onClick={recording ? stopRecording : startRecording}
-            title={recording ? 'Stop recording' : 'Start recording'}
-            active={recording}
-            disabled={!recording && !(status === 'connected' && playing)}
+            onClick={() => setFitMode(fitMode === 'cover' ? 'contain' : 'cover')}
+            title={fitMode === 'cover' ? 'Switch to contain' : 'Switch to cover'}
+            active={fitMode === 'contain'}
           >
-            {recording ? '⏺︎⏹' : '⏺'}
+            {fitMode === 'cover' ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
           </IconBtn>
-          <IconBtn onClick={() => {
-            const el = containerRef.current;
-            if (!el) return;
-            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-            else el.requestFullscreen?.().catch(()=>{});
-          }} title="Fullscreen">⛶</IconBtn>
+          <IconBtn
+            onClick={() => setRotate(r => ((r + 90) % 360) as 0 | 90 | 180 | 270)}
+            title="Rotate 90°"
+          >
+            <RotateCw size={13} />
+          </IconBtn>
+          <IconBtn onClick={() => setFlipH(v => !v)} title="Flip horizontal" active={flipH}>
+            <FlipHorizontal2 size={13} />
+          </IconBtn>
+          <IconBtn onClick={() => setFlipV(v => !v)} title="Flip vertical" active={flipV}>
+            <FlipVertical size={13} />
+          </IconBtn>
+          <IconBtn
+            onClick={() => setFilter(f =>
+              f === 'none' ? 'mono' : f === 'mono' ? 'contrast' : f === 'contrast' ? 'night' : 'none'
+            )}
+            title={`Filter: ${filter} (click to cycle)`}
+            active={filter !== 'none'}
+          >
+            <SlidersHorizontal size={13} />
+          </IconBtn>
+
+          {/* Divider */}
+          <span className="w-px h-4 bg-white/10 mx-0.5" />
+
+          {/* Capture */}
+          <IconBtn
+            onClick={handleSnapshotDownload}
+            title="Save snapshot (PNG)"
+            disabled={!(status === 'connected' && playing)}
+          >
+            <Camera size={13} />
+          </IconBtn>
+
+          {/* Local clip — browser-side WebM download */}
+          <div className="relative flex items-center">
+            <IconBtn
+              onClick={recording ? stopRecording : startRecording}
+              title={recording ? 'Stop local clip recording' : 'Record local clip (saves to your device as .webm)'}
+              active={recording}
+              danger={recording}
+              disabled={!recording && !(status === 'connected' && playing)}
+            >
+              {recording ? <Square size={13} /> : <Video size={13} />}
+            </IconBtn>
+            {recording && (
+              <span className="absolute -top-1.5 -right-1.5 w-2 h-2 rounded-full bg-rose-500 animate-pulse shadow-[0_0_5px_rgba(244,63,94,0.8)]" />
+            )}
+          </div>
+          <span className="text-[9px] text-white/30 font-medium -ml-0.5 select-none hidden sm:inline">
+            {recording ? 'REC' : 'Clip'}
+          </span>
+
+          {/* Divider */}
+          <span className="w-px h-4 bg-white/10 mx-0.5" />
+
+          {/* Fullscreen */}
+          <IconBtn
+            onClick={() => {
+              const el = containerRef.current;
+              if (!el) return;
+              if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+              else el.requestFullscreen?.().catch(() => {});
+            }}
+            title="Toggle fullscreen"
+          >
+            <Expand size={13} />
+          </IconBtn>
         </div>
       </div>
 
