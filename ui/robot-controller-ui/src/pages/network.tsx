@@ -1,193 +1,280 @@
+'use client';
+
 /**
- * Network Management Page
- * 
- * Provides comprehensive network management interface for
- * WiFi, Tailscale, and mobile hotspot connections.
+ * Network Management — single source of truth for all network features.
+ *
+ * Tabs:
+ *  Live    — real-time status, mode switch, Wi-Fi scan/connect, hotspot, Tailscale
+ *  Config  — persistent startup config (AP SSID/password/IP/DHCP + client prefs)
+ *  Profiles — UI-side connection profile manager
+ *  Test    — connection quality / latency testing
  */
 
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import dynamic from 'next/dynamic';
+import {
+  Wifi, ArrowLeft, Radio, SlidersHorizontal, FlaskConical,
+  Users, RefreshCw, Loader2, Monitor,
+} from 'lucide-react';
+import { NetworkConfigEditor } from '@/components/settings/NetworkConfigEditor';
 import NetworkProfileSelector from '@/components/NetworkProfileSelector';
 import MobileConnectionTest from '@/components/MobileConnectionTest';
+import { robotFetch } from '@/utils/network';
+
+/* ------------------------------------------------------------------ */
+/* Dynamic import — OmegaNetworkWizard is large, skip SSR             */
+/* ------------------------------------------------------------------ */
 
 const OmegaNetworkWizard = dynamic(
   () => import('@/components/network/OmegaNetworkWizard'),
-  { ssr: false }
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center gap-2 text-white/50 text-sm p-6">
+        <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+      </div>
+    ),
+  }
 );
 
+/* ------------------------------------------------------------------ */
+/* AP Connected Clients panel (new)                                    */
+/* ------------------------------------------------------------------ */
+
+interface ApClient {
+  mac: string;
+  ip?: string;
+  hostname?: string;
+  signal?: number;
+  connected_since?: string;
+}
+
+function ApClientsPanel() {
+  const [clients, setClients] = useState<ApClient[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  const [lastFetched, setLastFetched] = useState<Date | null>(null);
+
+  const fetchClients = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await robotFetch('/api/network/ap/clients');
+      if ((res as any).offline) { setUnavailable(true); return; }
+      if (!res.ok) { setUnavailable(true); return; }
+      const data = await res.json();
+      if (data.ok === false) { setUnavailable(true); return; }
+      setClients(data.clients ?? []);
+      setUnavailable(false);
+      setLastFetched(new Date());
+    } catch {
+      setUnavailable(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchClients();
+    const t = setInterval(fetchClients, 10_000);
+    return () => clearInterval(t);
+  }, [fetchClients]);
+
+  return (
+    <div className="bg-gray-800 border border-white/10 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-purple-400" />
+          <span className="text-sm font-semibold text-white">Connected Clients</span>
+          {!unavailable && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-white/10 text-white/60">
+              {clients.length}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={fetchClients}
+          disabled={loading}
+          className="p-1.5 rounded hover:bg-white/10 text-white/60 hover:text-white transition-colors disabled:opacity-40"
+          title="Refresh client list"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      <div className="p-4">
+        {unavailable ? (
+          <p className="text-xs text-white/40 italic">
+            Client list not available — robot may not support this endpoint, or AP mode is not active.
+          </p>
+        ) : clients.length === 0 ? (
+          <p className="text-xs text-white/40 italic">
+            {loading ? 'Fetching…' : 'No clients connected.'}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {clients.map((c) => (
+              <div
+                key={c.mac}
+                className="flex items-center justify-between rounded-lg bg-gray-900/60 border border-white/10 px-3 py-2 text-sm"
+              >
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-white font-mono text-xs">{c.mac}</span>
+                  {c.hostname && (
+                    <span className="text-white/70 text-xs">{c.hostname}</span>
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-0.5 text-right">
+                  {c.ip && (
+                    <span className="text-white/70 font-mono text-xs">{c.ip}</span>
+                  )}
+                  {c.signal !== undefined && (
+                    <span className="text-white/40 text-[10px]">{c.signal} dBm</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {lastFetched && (
+          <p className="text-[10px] text-white/25 mt-3">
+            Updated {lastFetched.toLocaleTimeString()}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Tabs                                                                */
+/* ------------------------------------------------------------------ */
+
+const TABS = [
+  { id: 'live',     label: 'Live',     icon: Monitor },
+  { id: 'ap',       label: 'Access Point', icon: Radio },
+  { id: 'config',   label: 'Config',   icon: SlidersHorizontal },
+  { id: 'profiles', label: 'Profiles', icon: Wifi },
+  { id: 'test',     label: 'Test',     icon: FlaskConical },
+] as const;
+
+type TabId = typeof TABS[number]['id'];
+
+/* ------------------------------------------------------------------ */
+/* Page                                                                */
+/* ------------------------------------------------------------------ */
+
 export default function NetworkPage() {
+  const [tab, setTab] = useState<TabId>('live');
+
   return (
     <>
       <Head>
-        <title>Network Management - Robot Controller</title>
-        <meta name="description" content="Manage network connections and optimize performance" />
+        <title>Network Management — Robot Controller</title>
+        <meta name="description" content="Manage all network connections for Omega-1" />
       </Head>
 
-      <div className="min-h-screen bg-gray-50 p-4">
-        <div className="max-w-6xl mx-auto space-y-6">
-          {/* Header */}
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Network Management</h1>
-                <p className="text-gray-600 mt-1">
-                  Manage network profiles and optimize connection performance
-                </p>
-              </div>
-              <div className="text-sm text-gray-500">
-                Last updated: {new Date().toLocaleTimeString()}
-              </div>
+      <div className="min-h-screen bg-gray-900 text-white p-4">
+        <div className="max-w-4xl mx-auto space-y-5">
+
+          {/* ── Page header ───────────────────────────────────── */}
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Back
+            </Link>
+            <div className="w-px h-4 bg-white/15" />
+            <Wifi className="w-6 h-6 text-blue-400" />
+            <div>
+              <h1 className="text-2xl font-bold text-white">Network Management</h1>
+              <p className="text-sm text-white/50 mt-0.5">
+                All network configuration in one place
+              </p>
             </div>
           </div>
 
-          {/* Omega Network Wizard */}
-          <OmegaNetworkWizard />
+          {/* ── Tab bar ──────────────────────────────────────── */}
+          <div className="flex gap-1 bg-gray-800 border border-white/10 rounded-lg p-1 overflow-x-auto">
+            {TABS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                className={[
+                  'flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors flex-1 justify-center',
+                  tab === id
+                    ? 'bg-blue-600/80 text-white shadow-sm'
+                    : 'text-white/60 hover:text-white hover:bg-white/10',
+                ].join(' ')}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
 
-          {/* Network Profile Selector */}
-          <NetworkProfileSelector 
-            className="bg-white"
-            onProfileChange={(profile) => {
-              console.log('[NetworkPage] Profile changed:', profile.name);
-            }}
-          />
+          {/* ── Tab content ──────────────────────────────────── */}
 
-          {/* Connection Testing */}
-          <MobileConnectionTest 
-            className="bg-white"
-            onTestComplete={(result) => {
-              console.log('[NetworkPage] Test completed:', result);
-            }}
-          />
+          {tab === 'live' && (
+            <div className="space-y-4">
+              <OmegaNetworkWizard />
+            </div>
+          )}
 
-          {/* Network Information */}
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Network Information</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Connection Types */}
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Supported Connection Types</h3>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-lg">🔒</span>
-                    <span className="text-gray-900">Tailscale VPN</span>
-                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Recommended</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-lg">📶</span>
-                    <span className="text-gray-900">WiFi Network</span>
-                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Fast</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-lg">📱</span>
-                    <span className="text-gray-900">Mobile Hotspot</span>
-                    <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">Optimized</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-lg">🔗</span>
-                    <span className="text-gray-900">Direct Connection</span>
-                    <span className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">Fallback</span>
-                  </div>
+          {tab === 'ap' && (
+            <div className="space-y-4">
+              <div className="text-xs text-white/50 px-1">
+                Manage the robot&apos;s built-in Wi-Fi Access Point — configure its SSID, password, and IP range, and see which devices are connected.
+              </div>
+              {/* AP config (persistent settings saved to robot) */}
+              <div className="bg-gray-800 border border-white/10 rounded-lg p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Radio className="w-4 h-4 text-purple-400" />
+                  <h2 className="text-sm font-semibold text-white">Access Point Configuration</h2>
                 </div>
+                <NetworkConfigEditor />
               </div>
+              {/* Connected clients */}
+              <ApClientsPanel />
+            </div>
+          )}
 
-              {/* Optimization Features */}
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Optimization Features</h3>
-                <div className="space-y-2 text-sm text-gray-600">
-                  <div className="flex items-center gap-2">
-                    <span className="text-green-500">✓</span>
-                    <span>Automatic profile selection</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-green-500">✓</span>
-                    <span>Connection quality monitoring</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-green-500">✓</span>
-                    <span>Automatic fallback</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-green-500">✓</span>
-                    <span>Mobile hotspot optimization</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-green-500">✓</span>
-                    <span>Bandwidth-aware video streaming</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-green-500">✓</span>
-                    <span>Real-time performance metrics</span>
-                  </div>
+          {tab === 'config' && (
+            <div className="space-y-4">
+              <div className="text-xs text-white/50 px-1">
+                Persistent startup configuration — these settings take effect on next reboot or when you apply them from the robot backend.
+              </div>
+              <div className="bg-gray-800 border border-white/10 rounded-lg p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <SlidersHorizontal className="w-4 h-4 text-yellow-400" />
+                  <h2 className="text-sm font-semibold text-white">Default Mode &amp; Client Settings</h2>
                 </div>
+                <NetworkConfigEditor />
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Usage Tips */}
-          <div className="bg-blue-50 rounded-lg border border-blue-200 p-6">
-            <h2 className="text-lg font-semibold text-blue-900 mb-4">Usage Tips</h2>
-            
-            <div className="space-y-4 text-sm text-blue-800">
-              <div>
-                <h3 className="font-medium mb-2">For Mobile Hotspot:</h3>
-                <ul className="list-disc list-inside space-y-1 ml-4">
-                  <li>System automatically optimizes for cellular networks</li>
-                  <li>Video quality is reduced to save bandwidth</li>
-                  <li>Connection timeouts are increased for stability</li>
-                  <li>Compression is enabled to reduce data usage</li>
-                </ul>
+          {tab === 'profiles' && (
+            <div className="space-y-4">
+              <div className="text-xs text-white/50 px-1">
+                UI-side connection profiles control which IP/hostname the browser uses to reach the robot. Switching profiles does not change the robot&apos;s network — it changes how <em>this browser</em> connects.
               </div>
-              
-              <div>
-                <h3 className="font-medium mb-2">For Tailscale:</h3>
-                <ul className="list-disc list-inside space-y-1 ml-4">
-                  <li>Best performance and security</li>
-                  <li>Works through firewalls and NAT</li>
-                  <li>No need for port forwarding</li>
-                  <li>Automatic reconnection if connection drops</li>
-                </ul>
-              </div>
-              
-              <div>
-                <h3 className="font-medium mb-2">For WiFi:</h3>
-                <ul className="list-disc list-inside space-y-1 ml-4">
-                  <li>High-quality video streaming</li>
-                  <li>Low latency for real-time control</li>
-                  <li>Fast data transfer rates</li>
-                  <li>Stable connection for extended use</li>
-                </ul>
-              </div>
+              <NetworkProfileSelector />
             </div>
-          </div>
+          )}
 
-          {/* Troubleshooting */}
-          <div className="bg-yellow-50 rounded-lg border border-yellow-200 p-6">
-            <h2 className="text-lg font-semibold text-yellow-900 mb-4">Troubleshooting</h2>
-            
-            <div className="space-y-3 text-sm text-yellow-800">
-              <div>
-                <h3 className="font-medium">Connection Issues:</h3>
-                <p className="ml-4">Use the &quot;Fallback&quot; button to switch to the next available network profile</p>
+          {tab === 'test' && (
+            <div className="space-y-4">
+              <div className="text-xs text-white/50 px-1">
+                Test latency, bandwidth, and WebSocket connectivity to all robot services.
               </div>
-              
-              <div>
-                <h3 className="font-medium">Poor Performance:</h3>
-                <p className="ml-4">Run the connection test to get optimization recommendations</p>
-              </div>
-              
-              <div>
-                <h3 className="font-medium">Mobile Hotspot Problems:</h3>
-                <p className="ml-4">Ensure your mobile device has a strong cellular signal and sufficient data allowance</p>
-              </div>
-              
-              <div>
-                <h3 className="font-medium">Tailscale Issues:</h3>
-                <p className="ml-4">Check that Tailscale is running on both your device and the robot</p>
-              </div>
+              <MobileConnectionTest />
             </div>
-          </div>
+          )}
+
         </div>
       </div>
     </>

@@ -165,9 +165,20 @@ if _rclpy_ok:
                 String, '/omega/system_cmd', _best_effort_qos()
             )
 
+            # /omega/buzzer_cmd -- consumed by buzzer_node (GPIO 17)
+            self._buzzer_pub = self.create_publisher(
+                String, '/omega/buzzer_cmd', _best_effort_qos()
+            )
+
+            # /omega/servo_cmd -- consumed by servo_node (PCA9685 ch 8-15)
+            self._servo_pub = self.create_publisher(
+                String, '/omega/servo_cmd', _best_effort_qos()
+            )
+
             self.get_logger().info(
                 'omega_web_bridge ready -- publishing to /cmd_vel_in, '
-                '/omega/lighting_cmd, /omega/system_cmd'
+                '/omega/lighting_cmd, /omega/system_cmd, '
+                '/omega/buzzer_cmd, /omega/servo_cmd'
             )
 
         # --- velocity helpers ------------------------------------------
@@ -209,6 +220,41 @@ if _rclpy_ok:
             msg.data = json.dumps({'command': command, **kwargs,
                                    'ts_ms': int(time.time() * 1000)})
             self._syscmd_pub.publish(msg)
+
+        # --- buzzer helpers -------------------------------------------
+
+        def publish_buzzer_cmd(self, action: str, **kwargs) -> None:
+            """
+            Publish a buzzer command to /omega/buzzer_cmd.
+
+            action: 'on' | 'off' | 'for' | 'pulse'
+            kwargs: durationMs, onMs, offMs, repeat
+            """
+            import json
+            msg = String()
+            msg.data = json.dumps({'action': action, **kwargs,
+                                   'ts_ms': int(time.time() * 1000)})
+            self._buzzer_pub.publish(msg)
+
+        # --- servo helpers --------------------------------------------
+
+        def publish_servo_cmd(self, channel: str, angle: int, error: int = 10) -> None:
+            """
+            Publish a servo command to /omega/servo_cmd.
+
+            channel: '0'–'7' (maps to PCA9685 ch 8–15)
+                     'horizontal' → '0', 'vertical' → '1'
+            angle:   0–180 degrees
+            error:   trim offset (default 10 per Freenove spec)
+            """
+            import json
+            ch = '0' if channel in ('horizontal', '0') else \
+                 '1' if channel in ('vertical', '1') else channel
+            msg = String()
+            msg.data = json.dumps({'channel': ch, 'angle': int(angle),
+                                   'error': error,
+                                   'ts_ms': int(time.time() * 1000)})
+            self._servo_pub.publish(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +381,33 @@ class OmegaRosBridge:
         if not self._enabled:
             return False
         self._node.publish_system_cmd(command, **kwargs)
+        return True
+
+    def send_buzzer_cmd(self, action: str, **kwargs) -> bool:
+        """
+        Publish a buzzer command.
+
+        action: 'on' | 'off' | 'for' | 'pulse'
+        kwargs: durationMs, onMs, offMs, repeat
+        """
+        if not self._enabled:
+            return False
+        self._node.publish_buzzer_cmd(action, **kwargs)
+        return True
+
+    def send_servo_cmd(self, channel: str, angle: int, error: int = 10) -> bool:
+        """
+        Publish a servo position command.
+
+        channel: 'horizontal'|'0' (ultrasonic pan, inverted, PCA9685 ch8)
+                 'vertical'|'1'   (tilt, PCA9685 ch9)
+                 '2'–'7'          (aux servos, PCA9685 ch10–15)
+        angle:   0–180 degrees
+        error:   trim offset (default 10)
+        """
+        if not self._enabled:
+            return False
+        self._node.publish_servo_cmd(channel, angle, error)
         return True
 
     # ------------------------------------------------------------------

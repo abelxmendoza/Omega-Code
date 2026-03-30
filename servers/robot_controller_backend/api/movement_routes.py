@@ -21,7 +21,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 log = logging.getLogger(__name__)
 router = APIRouter()
 
-# Maps UI command strings (control_definitions.ts) to OmegaRosBridge command keys
+# Maps UI movement command strings to OmegaRosBridge command keys
 _UI_TO_BRIDGE: dict[str, str] = {
     'move-up':    'forward',
     'move-down':  'backward',
@@ -29,6 +29,21 @@ _UI_TO_BRIDGE: dict[str, str] = {
     'move-right': 'right',
     'move-stop':  'stop',
     'stop':       'stop',
+}
+
+# Buzzer commands — map UI command to buzzer action
+_BUZZ_CMDS: dict[str, str] = {
+    'buzz':       'on',
+    'buzz-stop':  'off',
+    'buzz-for':   'for',
+    'buzz-pulse': 'pulse',
+}
+
+# Servo commands — channels keyed by UI command string
+_SERVO_CMDS: dict[str, str] = {
+    'servo-horizontal':    'horizontal',
+    'servo-vertical':      'vertical',
+    'set-servo-position':  None,   # handles both axes; see handler below
 }
 
 _WELCOME = {
@@ -88,7 +103,43 @@ async def ws_movement(websocket: WebSocket):
                 })
                 continue
 
-            # Discrete movement / stop commands (buttons, keyboard)
+            # ── Buzzer commands ──────────────────────────────────────────
+            if cmd in _BUZZ_CMDS:
+                action = _BUZZ_CMDS[cmd]
+                kwargs: dict = {}
+                if action == 'for':
+                    kwargs['durationMs'] = int(data.get('durationMs', 500))
+                elif action == 'pulse':
+                    kwargs['onMs']   = int(data.get('onMs',   150))
+                    kwargs['offMs']  = int(data.get('offMs',  120))
+                    kwargs['repeat'] = int(data.get('repeat',   3))
+                ros_sent = bool(bridge and bridge.send_buzzer_cmd(action, **kwargs))
+                await websocket.send_json({
+                    'type': 'ack', 'action': cmd, 'status': 'ok',
+                    'ros_sent': ros_sent, 'ts': int(time.time() * 1000),
+                })
+                continue
+
+            # ── Servo commands ───────────────────────────────────────────
+            if cmd in _SERVO_CMDS:
+                ros_sent = False
+                if cmd == 'set-servo-position':
+                    # { command, horizontal: 0-180, vertical: 0-180 }
+                    for ch in ('horizontal', 'vertical'):
+                        if ch in data:
+                            angle = max(0, min(180, int(data[ch])))
+                            ros_sent = bool(bridge and bridge.send_servo_cmd(ch, angle))
+                else:
+                    channel = _SERVO_CMDS[cmd]
+                    angle = max(0, min(180, int(data.get('angle', 90))))
+                    ros_sent = bool(bridge and bridge.send_servo_cmd(channel, angle))
+                await websocket.send_json({
+                    'type': 'ack', 'action': cmd, 'status': 'ok',
+                    'ros_sent': ros_sent, 'ts': int(time.time() * 1000),
+                })
+                continue
+
+            # ── Discrete movement / stop commands (buttons, keyboard) ────
             speed = max(0.0, min(1.0, float(data.get('speed', 0.5))))
             bridge_cmd = _UI_TO_BRIDGE.get(cmd)
             if bridge_cmd is not None:

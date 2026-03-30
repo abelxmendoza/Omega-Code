@@ -15,21 +15,13 @@
 'use client';
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { CheckCircle, XCircle, Settings, Download, Activity } from 'lucide-react';
+import { useRouter } from 'next/router';
+import { CheckCircle, XCircle, Wifi, SlidersHorizontal, Download, Activity } from 'lucide-react';
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { net } from '@/utils/netProfile';
 import { CapabilityInfoModal } from './capability/CapabilityInfoModal';
-
-const NetworkWizard = dynamic(
-  () => import('./network/OmegaNetworkWizard'),
-  {
-    ssr: false,
-    loading: () => <div className="text-white/50 p-2 text-xs">Loading Network Wizard...</div>
-  }
-);
 
 // Install button component for PWA
 const InstallButton: React.FC = () => {
@@ -366,176 +358,12 @@ function useLatencyMetrics(intervalMs = 1000) {
 }
 
 /* ============================
-   Quick Actions (PAN + Wi-Fi)
-   ============================ */
-function useNetActions() {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [msg, setMsg]   = useState<string | null>(null);
-
-  const postJson = async (url: string, body: any) => {
-    const ac = new AbortController();
-    const t  = setTimeout(() => ac.abort(), 5000);
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body ?? {}),
-        signal: ac.signal,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `${res.status} ${res.statusText}`);
-      return data;
-    } finally {
-      clearTimeout(t);
-    }
-  };
-
-  const connectPan = async (macOrName?: string) => {
-    setMsg(null); setBusy('pan');
-    try {
-      const data = await postJson('/api/net/pan/connect', { macOrName });
-      setMsg(data?.message || 'Requested PAN connect');
-    } catch (e: any) {
-      setMsg(`PAN error: ${e?.message ?? 'failed'}`);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const connectWifi = async (ssid: string, psk: string) => {
-    setMsg(null); setBusy('wifi');
-    try {
-      const data = await postJson('/api/net/wifi/connect', { ssid, psk });
-      setMsg(data?.message || `Requested Wi-Fi connect to "${ssid}"`);
-    } catch (e: any) {
-      setMsg(`Wi-Fi error: ${e?.message ?? 'failed'}`);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  return { busy, msg, connectPan, connectWifi, clearMsg: () => setMsg(null) };
-}
-
-const QuickActions: React.FC<{
-  onDone?: () => void;
-  onRefresh?: () => void;
-}> = ({ onDone, onRefresh }) => {
-  const { busy, msg, connectPan, connectWifi, clearMsg } = useNetActions();
-  const [showWifi, setShowWifi] = useState(false);
-  const [ssid, setSsid] = useState('');
-  const [psk,  setPsk]  = useState('');
-
-  return (
-    <div className="w-full bg-black/20 rounded-md border border-white/10 p-2">
-      <div className="flex flex-wrap gap-2 items-center">
-        <button
-          className={`px-3 py-1.5 rounded text-sm text-white ${
-            busy === 'pan' ? 'bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-700'
-          }`}
-          onClick={() => connectPan()}
-          disabled={!!busy}
-          title="Connect robot to iPhone Personal Hotspot (Bluetooth PAN)"
-        >
-          Connect iPhone PAN
-        </button>
-
-        <button
-          className={`px-3 py-1.5 rounded text-sm text-white ${
-            showWifi ? 'bg-sky-700' : 'bg-sky-600 hover:bg-sky-700'
-          }`}
-          onClick={() => setShowWifi(v => !v)}
-          disabled={!!busy}
-          title="Show Wi-Fi connect form"
-        >
-          Wi-Fi…
-        </button>
-
-        <button
-          className="px-3 py-1.5 rounded text-sm text-white bg-zinc-700 hover:bg-zinc-600"
-          onClick={onRefresh}
-          disabled={!!busy}
-          title="Refresh network summary"
-        >
-          Refresh
-        </button>
-
-        {onDone && (
-          <button
-            className="ml-auto px-3 py-1.5 rounded text-sm text-white bg-zinc-700 hover:bg-zinc-600"
-            onClick={onDone}
-          >
-            Close
-          </button>
-        )}
-      </div>
-
-      {showWifi && (
-        <form
-          className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3"
-          onSubmit={(e) => { e.preventDefault(); connectWifi(ssid, psk); }}
-        >
-          <div>
-            <label className="text-xs text-white/70 mb-1 block">Network Name (SSID)</label>
-            <input
-              className="px-2 py-1.5 rounded bg-zinc-800 text-white border border-white/10 w-full"
-              placeholder="Your Wi-Fi network name"
-              value={ssid}
-              onChange={(e) => setSsid(e.target.value)}
-              required
-              autoComplete="off"
-              title="SSID = Wi-Fi network name (the name you see when connecting your phone/laptop)"
-            />
-            <div className="text-[10px] text-white/50 mt-0.5">💡 SSID = Your Wi-Fi network name</div>
-          </div>
-          <div>
-            <label className="text-xs text-white/70 mb-1 block">Password</label>
-            <input
-              className="px-2 py-1.5 rounded bg-zinc-800 text-white border border-white/10 w-full"
-              placeholder="Wi-Fi password"
-              value={psk}
-              onChange={(e) => setPsk(e.target.value)}
-              required
-              autoComplete="off"
-              type="password"
-            />
-          </div>
-          <div className="flex items-end">
-            <button
-              type="submit"
-              className={`px-3 py-1.5 rounded text-sm text-white w-full ${
-                busy === 'wifi' ? 'bg-amber-600' : 'bg-green-600 hover:bg-green-700'
-              }`}
-              disabled={!!busy}
-              title="Connect robot to Wi-Fi network"
-            >
-              Connect Wi-Fi
-            </button>
-          </div>
-        </form>
-      )}
-
-      {msg && (
-        <div className="mt-2 text-xs text-white/80">
-          {msg}{' '}
-          <button className="underline opacity-70 hover:opacity-100" onClick={clearMsg}>
-            dismiss
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
-
-/* ============================
    Header
    ============================ */
 
 const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false, gamepadName = '', gamepadPaused = false }) => {
-  const [showNetwork, setShowNetwork] = useState(false);
-  const [showQuick, setShowQuick] = useState(false);
+  const router = useRouter();
   const [showServers, setShowServers] = useState(true);
-  const networkPanelId = 'network-wizard-panel';
 
   // Resolve endpoints defensively (never throw during render)
   const { MOVE_URL, ULTRA_URL, LINE_URL, LIGHT_URL, VIDEO_URL } = useMemo(() => {
@@ -590,7 +418,7 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false,
     batteryLevel > 20 ? 'bg-blue-500 neon-blue' :
                         'bg-red-500';
 
-  const liveLinkLabel = `${netSummary.label} ${showNetwork ? '▲' : '▼'}`;
+  const liveLinkLabel = netSummary.label;
   const profile = getActiveProfile();
 
   return (
@@ -618,8 +446,9 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false,
 
           {/* Network Management Link */}
           <div className="text-[10px] xl4:text-sm px-1.5 xl4:px-2.5 py-0.5 xl4:py-1 rounded bg-blue-500/20 border border-blue-400/40 text-blue-100 hover:bg-blue-500/30 transition-colors">
-            <Link href="/network" title="Network Management">
-              <Settings className="w-3 xl4:w-4 h-3 xl4:h-4" />
+            <Link href="/network" title="Network Management" className="flex items-center gap-1">
+              <Wifi className="w-3 xl4:w-4 h-3 xl4:h-4" />
+              <span>Network</span>
             </Link>
           </div>
 
@@ -639,8 +468,9 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false,
 
           {/* Settings Link */}
           <div className="text-[10px] xl4:text-sm px-1.5 xl4:px-2.5 py-0.5 xl4:py-1 rounded bg-yellow-500/20 border border-yellow-400/40 text-yellow-100 hover:bg-yellow-500/30 transition-colors">
-            <Link href="/settings" title="Robot Settings">
-              <Settings className="w-3 xl4:w-4 h-3 xl4:h-4" />
+            <Link href="/settings" title="Robot Settings" className="flex items-center gap-1">
+              <SlidersHorizontal className="w-3 xl4:w-4 h-3 xl4:h-4" />
+              <span>Settings</span>
             </Link>
           </div>
         </div>
@@ -743,21 +573,13 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false,
           <span className="text-white/50">{showServers ? '▼' : '▶'}</span>
         </button>
 
-        {/* Live Link pill */}
+        {/* Live Link pill — navigates to Network Management page */}
         <Pill
           label={liveLinkLabel}
           state={netSummary.state}
-          titleOverride={netSummary.title || undefined}
+          titleOverride={netSummary.title ? `${netSummary.title} — click to manage` : 'Click to manage network'}
           isInteractive
-          onClick={() => {
-            setShowNetwork(prev => {
-              const next = !prev;
-              if (next) setShowQuick(true);
-              return next;
-            });
-          }}
-          ariaExpanded={showNetwork}
-          ariaControls={networkPanelId}
+          onClick={() => router.push('/network')}
         />
 
         {/* Server status pills - collapsible */}
@@ -805,21 +627,6 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false,
           </span>
         </div>
       </div>
-
-      {/* Quick Actions row */}
-      {showQuick && (
-        <QuickActions
-          onDone={() => setShowQuick(false)}
-          onRefresh={netSummary.refresh}
-        />
-      )}
-
-      {/* Embedded Network Wizard */}
-      {showNetwork && (
-        <div id={networkPanelId} className="mt-2">
-          <NetworkWizard />
-        </div>
-      )}
       </div>
     </div>
   );

@@ -358,3 +358,89 @@ async def get_tailscale_status_endpoint() -> Dict[str, Any]:
         log.error(f"Tailscale status check failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/ap/clients")
+async def get_ap_clients() -> Dict[str, Any]:
+    """
+    List devices currently connected to the robot's Wi-Fi Access Point.
+
+    Uses `iw dev wlan0 station dump` (preferred — gives signal strength) and
+    falls back to parsing /proc/net/arp for IP/MAC pairs.
+
+    Returns:
+        {
+            "ok": true,
+            "clients": [
+                {
+                    "mac": "aa:bb:cc:dd:ee:ff",
+                    "ip": "192.168.4.2",        # from ARP table, may be null
+                    "signal": -55,               # dBm, may be null
+                    "connected_since": "120s"    # uptime string, may be null
+                },
+                ...
+            ]
+        }
+    """
+    import subprocess
+    import re
+
+    def _arp_map() -> dict:
+        """Parse /proc/net/arp → {mac: ip}"""
+        arp: dict = {}
+        try:
+            with open('/proc/net/arp') as f:
+                for line in f.readlines()[1:]:
+                    parts = line.split()
+                    if len(parts) >= 4 and parts[2] != '0x0':
+                        arp[parts[3].lower()] = parts[0]
+        except Exception:
+            pass
+        return arp
+
+    clients: list = []
+    try:
+        # Primary: iw station dump
+        result = subprocess.run(
+            ['iw', 'dev', 'wlan0', 'station', 'dump'],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            arp = _arp_map()
+            current: dict = {}
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                m = re.match(r'^Station\s+([0-9a-f:]{17})', line, re.I)
+                if m:
+                    if current:
+                        clients.append(current)
+                    current = {'mac': m.group(1).lower(), 'ip': None,
+                               'signal': None, 'connected_since': None}
+                    current['ip'] = arp.get(current['mac'])
+                elif current:
+                    sig = re.search(r'signal:\s*([-\d]+)\s*dBm', line)
+                    if sig:
+                        current['signal'] = int(sig.group(1))
+                    conn = re.search(r'connected time:\s*(\d+\s*\w+)', line)
+                    if conn:
+                        current['connected_since'] = conn.group(1).strip()
+            if current:
+                clients.append(current)
+        else:
+            # Fallback: ARP table filtered to AP subnet
+            arp = _arp_map()
+            for mac, ip in arp.items():
+                if ip.startswith('192.168.'):
+                    clients.append({'mac': mac, 'ip': ip,
+                                    'signal': None, 'connected_since': None})
+    except FileNotFoundError:
+        # iw not installed — ARP-only fallback
+        arp = _arp_map()
+        for mac, ip in arp.items():
+            clients.append({'mac': mac, 'ip': ip,
+                            'signal': None, 'connected_since': None})
+    except Exception as e:
+        log.error(f"AP clients fetch failed: {e}")
+        return {'ok': False, 'clients': [], 'error': str(e)}
+
+    return {'ok': True, 'clients': clients}
+

@@ -31,12 +31,12 @@ const dlog = (...a: any[]) => DEBUG && console.info('[netProfile]', ...a);
 
 // ---- Default ports/paths per service (kept in one place) ----
 const DEF = {
-  video:      { port: '5000', path: '/video_feed' },
-  movement:   { port: '8081', path: '' },
-  ultrasonic: { port: '8080', path: '/ultrasonic' },
-  line:       { port: '8090', path: '/line-tracker' },
-  lighting:   { port: '8082', path: '/lighting' },
-  location:   { port: '8091', path: '/location' },
+  video:      { port: '5000',  path: '/video_feed' },
+  movement:   { port: '8000',  path: '/ws/movement' },
+  ultrasonic: { port: '8000',  path: '/ws/ultrasonic' },
+  line:       { port: '8000',  path: '/ws/line' },
+  lighting:   { port: '8000',  path: '/ws/lighting' },
+  location:   { port: '8000',  path: '/ws/location' },
 } as const;
 
 export const net = {

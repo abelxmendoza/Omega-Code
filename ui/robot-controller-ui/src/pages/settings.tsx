@@ -6,12 +6,12 @@
 
 import React, { useState } from 'react';
 import Head from 'next/head';
-import { Settings as SettingsIcon, Loader2 } from 'lucide-react';
+import Link from 'next/link';
+import { SlidersHorizontal, Loader2, ArrowLeft, Wifi } from 'lucide-react';
 import { ROBOT_ENABLED } from '@/utils/env';
 import { Card, CardContent } from '@/components/ui/card';
 import { SettingsSection } from '@/components/settings/SettingsSection';
 import { ProfileSelector } from '@/components/settings/ProfileSelector';
-import { NetworkConfigEditor } from '@/components/settings/NetworkConfigEditor';
 import { CameraConfigEditor } from '@/components/settings/CameraConfigEditor';
 import { MovementConfigEditor } from '@/components/settings/MovementConfigEditor';
 import { LightingConfigEditor } from '@/components/settings/LightingConfigEditor';
@@ -78,10 +78,18 @@ export default function SettingsPage() {
         <div className="max-w-6xl mx-auto space-y-6">
           {/* Header */}
           <div className="flex items-center gap-3">
-            <SettingsIcon className="w-8 h-8 text-purple-400" />
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Back
+            </Link>
+            <div className="w-px h-4 bg-white/15" />
+            <SlidersHorizontal className="w-7 h-7 text-yellow-400" />
             <div>
-              <h1 className="text-3xl font-bold text-white">Robot Settings</h1>
-              <p className="text-gray-400 mt-1">Configure Omega-1 robot settings</p>
+              <h1 className="text-2xl font-bold text-white">Robot Settings</h1>
+              <p className="text-gray-400 mt-0.5 text-sm">Configure Omega-1 robot settings</p>
             </div>
           </div>
 
@@ -140,12 +148,25 @@ export default function SettingsPage() {
                 </div>
               </SettingsSection>
 
-              {/* Network Settings */}
+              {/* Network Settings — moved to dedicated page */}
               <SettingsSection
                 title="Network Settings"
-                description="Configure Wi-Fi AP and client modes"
+                description="Wi-Fi, Access Point, and connection profiles"
               >
-                <NetworkConfigEditor />
+                <div className="flex items-center justify-between rounded-lg bg-gray-900 border border-white/10 px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <Wifi className="w-4 h-4 text-blue-400 shrink-0" />
+                    <p className="text-sm text-white/70">
+                      Network configuration has moved to the dedicated Network Management page.
+                    </p>
+                  </div>
+                  <Link
+                    href="/network"
+                    className="ml-4 shrink-0 px-3 py-1.5 rounded-md bg-blue-600/80 hover:bg-blue-600 text-xs font-semibold text-white transition-colors"
+                  >
+                    Open Network →
+                  </Link>
+                </div>
               </SettingsSection>
 
               {/* Camera Settings */}

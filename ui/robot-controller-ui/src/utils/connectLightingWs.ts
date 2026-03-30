@@ -16,8 +16,8 @@
 import { resolveWsUrl, resolveWsCandidates } from './resolveWsUrl';
 import { connectWithFallback, upgradeWsForHttps } from './wsConnect';
 
-const DEFAULT_PORT = '8082';
-const DEFAULT_PATH = '/lighting';
+const DEFAULT_PORT = '8000';
+const DEFAULT_PATH = '/ws/lighting';
 
 const DEBUG =
   typeof window !== 'undefined' &&
