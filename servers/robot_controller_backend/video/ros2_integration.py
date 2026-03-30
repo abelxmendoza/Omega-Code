@@ -27,7 +27,7 @@ try:
     from std_msgs.msg import Header
     from cv_bridge import CvBridge
     ros2_available = True
-except ImportError:
+except Exception:
     ros2_available = False
     log.debug("ROS2 not available (rclpy or cv_bridge missing)")
 
