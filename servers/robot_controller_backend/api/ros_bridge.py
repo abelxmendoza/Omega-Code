@@ -322,6 +322,8 @@ class OmegaRosBridge:
     def send_command(self, command: str, speed: float = 0.5) -> bool:
         """
         Translate a legacy UI command string into a /cmd_vel Twist.
+        Also drives motors directly via PiMotorDriver as fallback when
+        no ROS motor_controller_node subscriber is present.
 
         Args:
             command: One of the keys in _CMD_TO_TWIST  (e.g. 'forward')
@@ -330,11 +332,6 @@ class OmegaRosBridge:
 
         Returns:
             True if published, False if bridge is disabled or command unknown.
-
-        Example:
-            bridge.send_command('forward', speed=0.7)
-            bridge.send_command('left',    speed=0.4)
-            bridge.send_command('stop')
         """
         if not self._enabled:
             return False
@@ -347,7 +344,27 @@ class OmegaRosBridge:
         lin, ang = _CMD_TO_TWIST[cmd]
         speed = max(0.0, min(1.0, float(speed)))
 
+        # 1. Publish to ROS (no-op if no subscriber — future motor_controller_node)
         self._node.publish_twist(lin * speed, ang * speed)
+
+        # 2. Direct motor driver fallback (works without ROS motor_controller_node)
+        try:
+            from movement.hardware import get_motor_driver
+            motor = get_motor_driver()
+            pwm = int(speed * 4095)
+            if cmd == 'forward':
+                motor.set_pwm(pwm, pwm)
+            elif cmd == 'backward':
+                motor.set_pwm(-pwm, -pwm)
+            elif cmd == 'left':
+                motor.set_pwm(-pwm, pwm)
+            elif cmd == 'right':
+                motor.set_pwm(pwm, -pwm)
+            elif cmd == 'stop':
+                motor.stop()
+        except Exception as e:
+            log.warning('Direct motor fallback failed: %s', e)
+
         return True
 
     def send_twist(self, linear_x: float, angular_z: float) -> bool:
@@ -361,10 +378,15 @@ class OmegaRosBridge:
         return True
 
     def stop(self) -> bool:
-        """Publish a zero Twist (immediate stop)."""
+        """Publish a zero Twist (immediate stop) and stop motors directly."""
         if not self._enabled:
             return False
         self._node.publish_stop()
+        try:
+            from movement.hardware import get_motor_driver
+            get_motor_driver().stop()
+        except Exception as e:
+            log.warning('Direct motor stop failed: %s', e)
         return True
 
     # ------------------------------------------------------------------
