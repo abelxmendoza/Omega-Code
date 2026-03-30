@@ -215,7 +215,7 @@ export type WsKey =
   | 'NEXT_PUBLIC_VIDEO_STREAM_URL';
 
 export interface ResolveOpts {
-  /** Port to use when constructing from host vars. Default 8081. */
+  /** Port to use when constructing from host vars. Default 8000. */
   defaultPort?: string;
   /** Suggested WS path (e.g. '/lighting'). Only applied if current path is empty or '/'. */
   path?: string;
@@ -235,7 +235,7 @@ export function resolveWsCandidates(
   opts: ResolveOpts = {}
 ): string[] {
   const {
-    defaultPort = '8081',
+    defaultPort = '8000',
     path = '',
     includeSameOrigin = true,
     allowQueryWsOverride = true,
