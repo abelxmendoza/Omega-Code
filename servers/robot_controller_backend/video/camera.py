@@ -62,9 +62,19 @@ class Camera:
         log.info("Opening GStreamer pipeline: %s", GSTREAMER_PIPELINE)
         self._cap = cv2.VideoCapture(GSTREAMER_PIPELINE, cv2.CAP_GSTREAMER)
         if not self._cap.isOpened():
-            log.error("Failed to open GStreamer pipeline")
-            self._running = False
-            return
+            log.warning("GStreamer pipeline failed — falling back to V4L2 (/dev/video0)")
+            self._cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+            if self._cap.isOpened():
+                self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+                self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+                self._cap.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
+                self.backend = "v4l2"
+                log.info("V4L2 backend opened: %dx%d @ %d fps",
+                         CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS)
+            else:
+                log.error("Failed to open camera (tried GStreamer and V4L2)")
+                self._running = False
+                return
 
         _fps_t0 = time.time()
         _fps_count = 0
