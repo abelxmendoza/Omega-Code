@@ -21,6 +21,14 @@ Header = None
 CvBridge = None
 
 try:
+    # cv_bridge is compiled against NumPy 1.x — loading it under NumPy 2.x
+    # causes a C-level segfault before Python can catch the AttributeError.
+    # Guard here so the C extension is never loaded on incompatible runtimes.
+    _np_major = int(np.__version__.split('.')[0])
+    if _np_major >= 2:
+        raise ImportError(
+            f"cv_bridge requires NumPy < 2.0 (found {np.__version__})"
+        )
     import rclpy
     from rclpy.node import Node
     from sensor_msgs.msg import Image, CompressedImage
