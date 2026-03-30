@@ -21,6 +21,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 log = logging.getLogger(__name__)
 router = APIRouter()
 
+# Speed constants (PWM range 0–4095, matches Freenove / PCA9685 12-bit)
+_PWM_MAX        = 4095
+_DEFAULT_SPEED  = 1200   # ~29% — safe starting speed, matches UI default
+_SPEED_STEP     = 400    # ~10% per gas/brake press
+
 # Maps UI movement command strings to OmegaRosBridge command keys
 _UI_TO_BRIDGE: dict[str, str] = {
     'move-up':    'forward',
@@ -66,7 +71,10 @@ async def ws_movement(websocket: WebSocket):
     log.info('ws_movement: client connected, bridge active=%s',
              bridge.is_active if bridge else False)
 
-    await websocket.send_json(_WELCOME)
+    # Per-connection speed state (PWM 0–4095)
+    current_speed: int = _DEFAULT_SPEED
+
+    await websocket.send_json({**_WELCOME, 'speed': current_speed})
 
     try:
         while True:
@@ -79,12 +87,42 @@ async def ws_movement(websocket: WebSocket):
 
             cmd = str(data.get('command', '')).strip()
 
-            # Status query — return a minimal snapshot the UI can parse
+            # Status query — return live speed so UI can sync on connect
             if cmd == 'status':
                 await websocket.send_json({
                     'type': 'status',
-                    'speed': 0,
+                    'speed': current_speed,
                     'movementV2': _BASE_MOVEMENT_V2,
+                    'ts': int(time.time() * 1000),
+                })
+                continue
+
+            # ── Speed control ────────────────────────────────────────────
+            if cmd == 'set-speed':
+                # UI sends PWM value directly (0–4095)
+                raw = data.get('value', data.get('speed', current_speed))
+                current_speed = max(0, min(_PWM_MAX, int(raw)))
+                await websocket.send_json({
+                    'type': 'ack', 'action': 'set-speed', 'status': 'ok',
+                    'speed': current_speed,
+                    'ts': int(time.time() * 1000),
+                })
+                continue
+
+            if cmd == 'increase-speed':
+                current_speed = min(_PWM_MAX, current_speed + _SPEED_STEP)
+                await websocket.send_json({
+                    'type': 'ack', 'action': 'increase-speed', 'status': 'ok',
+                    'speed': current_speed,
+                    'ts': int(time.time() * 1000),
+                })
+                continue
+
+            if cmd == 'decrease-speed':
+                current_speed = max(0, current_speed - _SPEED_STEP)
+                await websocket.send_json({
+                    'type': 'ack', 'action': 'decrease-speed', 'status': 'ok',
+                    'speed': current_speed,
                     'ts': int(time.time() * 1000),
                 })
                 continue
@@ -93,11 +131,16 @@ async def ws_movement(websocket: WebSocket):
             if cmd == 'twist':
                 linear_x  = max(-1.0, min(1.0, float(data.get('linear_x',  0.0))))
                 angular_z = max(-1.0, min(1.0, float(data.get('angular_z', 0.0))))
-                ros_sent = bool(bridge and bridge.send_twist(linear_x, angular_z))
+                # Scale twist by current speed
+                speed_norm = current_speed / _PWM_MAX
+                ros_sent = bool(bridge and bridge.send_twist(
+                    linear_x * speed_norm, angular_z * speed_norm
+                ))
                 await websocket.send_json({
                     'type': 'ack',
                     'action': 'twist',
                     'status': 'ok',
+                    'speed': current_speed,
                     'ros_sent': ros_sent,
                     'ts': int(time.time() * 1000),
                 })
@@ -140,14 +183,15 @@ async def ws_movement(websocket: WebSocket):
                 continue
 
             # ── Discrete movement / stop commands (buttons, keyboard) ────
-            speed = max(0.0, min(1.0, float(data.get('speed', 0.5))))
+            speed_norm = current_speed / _PWM_MAX
             bridge_cmd = _UI_TO_BRIDGE.get(cmd)
             if bridge_cmd is not None:
-                ros_sent = bool(bridge and bridge.send_command(bridge_cmd, speed))
+                ros_sent = bool(bridge and bridge.send_command(bridge_cmd, speed_norm))
                 await websocket.send_json({
                     'type': 'ack',
                     'action': cmd,
                     'status': 'ok',
+                    'speed': current_speed,
                     'ros_sent': ros_sent,
                     'ts': int(time.time() * 1000),
                 })
