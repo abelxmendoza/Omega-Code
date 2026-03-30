@@ -31,8 +31,6 @@ export interface CapabilitiesResponse {
   error?: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
 export function useCapabilities(autoRefresh = true, refreshInterval = 30000) {
   const [capabilities, setCapabilities] = useState<CapabilityProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,10 +40,10 @@ export function useCapabilities(autoRefresh = true, refreshInterval = 30000) {
     try {
       setLoading(true);
       setError(null);
-      
-      const url = `${API_BASE}/api/capabilities/${forceRefresh ? '?refresh=true' : ''}`;
+
+      const path = `/api/capabilities/${forceRefresh ? '?refresh=true' : ''}`;
       // Use robotFetch wrapper to respect offline mode
-      const response = await robotFetch(url);
+      const response = await robotFetch(path);
       
       if ((response as any).offline) {
         setError('Robot backend offline');

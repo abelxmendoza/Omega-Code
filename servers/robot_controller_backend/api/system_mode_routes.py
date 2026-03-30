@@ -21,7 +21,7 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/system/mode", tags=["System Mode"])
+router = APIRouter(prefix="/api/system/mode", tags=["System Mode"])
 
 
 class SetModeRequest(BaseModel):

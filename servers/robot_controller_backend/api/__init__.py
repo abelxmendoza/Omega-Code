@@ -6,6 +6,7 @@ from .autonomy_routes import router as autonomy_router
 from .ros_routes import router as ros_router
 from .capability_routes import router as capability_router
 from .system_mode_routes import router as system_mode_router
+from .performance_routes import router as performance_router
 from .service_routes import router as service_router
 from .config_routes import router as config_router
 from .movement_routes import router as movement_router
@@ -25,6 +26,7 @@ router.include_router(autonomy_router)
 router.include_router(ros_router)
 router.include_router(capability_router)
 router.include_router(system_mode_router)
+router.include_router(performance_router)
 router.include_router(network_router)
 router.include_router(service_router)
 router.include_router(config_router)
