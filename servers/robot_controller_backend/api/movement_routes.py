@@ -51,6 +51,16 @@ _SERVO_CMDS: dict[str, str] = {
     'set-servo-position':  None,   # handles both axes; see handler below
 }
 
+# Camera nudge commands — relative angle steps (safe ±10° per press, clamped to 1200-1800µs range)
+_SERVO_NUDGE_STEP = 10   # degrees per button press
+_SERVO_NUDGE_CENTER = 90 # starting angle if no position tracked
+_SERVO_NUDGE: dict[str, tuple[str, int]] = {
+    'camera-servo-up':    ('vertical',    +_SERVO_NUDGE_STEP),
+    'camera-servo-down':  ('vertical',    -_SERVO_NUDGE_STEP),
+    'camera-servo-left':  ('horizontal',  +_SERVO_NUDGE_STEP),
+    'camera-servo-right': ('horizontal',  -_SERVO_NUDGE_STEP),
+}
+
 _WELCOME = {
     'type': 'welcome',
     'service': 'movement',
@@ -73,6 +83,9 @@ async def ws_movement(websocket: WebSocket):
 
     # Per-connection speed state (PWM 0–4095)
     current_speed: int = _DEFAULT_SPEED
+
+    # Per-connection servo position tracking (degrees, clamped 0–180)
+    servo_pos: dict[str, int] = {'horizontal': 90, 'vertical': 90}
 
     await websocket.send_json({**_WELCOME, 'speed': current_speed})
 
@@ -178,6 +191,19 @@ async def ws_movement(websocket: WebSocket):
                     ros_sent = bool(bridge and bridge.send_servo_cmd(channel, angle))
                 await websocket.send_json({
                     'type': 'ack', 'action': cmd, 'status': 'ok',
+                    'ros_sent': ros_sent, 'ts': int(time.time() * 1000),
+                })
+                continue
+
+            # ── Camera nudge commands (camera-servo-up/down/left/right) ─
+            if cmd in _SERVO_NUDGE:
+                channel, delta = _SERVO_NUDGE[cmd]
+                servo_pos[channel] = max(0, min(180, servo_pos[channel] + delta))
+                angle = servo_pos[channel]
+                ros_sent = bool(bridge and bridge.send_servo_cmd(channel, angle))
+                await websocket.send_json({
+                    'type': 'ack', 'action': cmd, 'status': 'ok',
+                    'channel': channel, 'angle': angle,
                     'ros_sent': ros_sent, 'ts': int(time.time() * 1000),
                 })
                 continue
