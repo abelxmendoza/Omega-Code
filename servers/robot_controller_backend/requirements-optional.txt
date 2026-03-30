@@ -1,0 +1,7 @@
+# Optional heavy dependencies — NOT required for motor/servo/WebSocket operation.
+# On aarch64 (Pi) these compile from source and take 30-60 minutes.
+# Install only if you need face recognition features:
+#   pip install -r requirements-optional.txt
+
+face-recognition>=1.3.0
+dlib>=19.24.0
