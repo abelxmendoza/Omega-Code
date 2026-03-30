@@ -176,6 +176,7 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
   const shouldReconnect = useRef(true);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backoffRef = useRef(1000); // Start at 1s, exponential backoff
+  const wsOfflineLogged = useRef(false); // suppress repeated "failed to connect" log spam
   
   // Connection verification: wait for server confirmation before marking as connected
   const connectionVerified = useRef(false);
@@ -461,10 +462,10 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         cleanupHeartbeat();
 
         if (shouldReconnect.current) {
-          // Exponential backoff: 1s, 2s, 4s, 8s, max 10s
-          const delay = Math.min(backoffRef.current, 10000);
+          // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
+          const delay = Math.min(backoffRef.current, 30000);
           reconnectTimer.current = setTimeout(connectAndSetup, delay);
-          backoffRef.current = Math.min(backoffRef.current * 2, 10000);
+          backoffRef.current = Math.min(backoffRef.current * 2, 30000);
         }
       };
 
@@ -482,19 +483,22 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
       setStatus('connecting');
       connectMovementWs()
         .then((wsInstance) => {
-          // Reset backoff on successful connection
           backoffRef.current = 1000;
+          wsOfflineLogged.current = false;
           setupWebSocket(wsInstance);
         })
         .catch((err) => {
           const errorMsg = err?.message || String(err) || 'Unknown error';
-          console.error('[CommandContext] WebSocket connection failed:', errorMsg);
-          addCommand(`WebSocket failed to connect: ${errorMsg}`);
-          
-          // Exponential backoff: 1s, 2s, 4s, 8s, max 10s
-          const delay = Math.min(backoffRef.current, 10000);
+          console.warn('[CommandContext] WebSocket connection failed:', errorMsg);
+          if (!wsOfflineLogged.current) {
+            wsOfflineLogged.current = true;
+            addCommand(`WebSocket offline — retrying in background`);
+          }
+
+          // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
+          const delay = Math.min(backoffRef.current, 30000);
           reconnectTimer.current = setTimeout(connectAndSetup, delay);
-          backoffRef.current = Math.min(backoffRef.current * 2, 10000);
+          backoffRef.current = Math.min(backoffRef.current * 2, 30000);
         });
     };
 

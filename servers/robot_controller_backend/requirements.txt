@@ -39,10 +39,10 @@ pyserial>=3.5
 numpy>=1.24.0
 scipy>=1.11.0
 
-# Computer Vision (face detection, tracking)
-face-recognition>=1.3.0
-dlib>=19.24.0
+# Computer Vision (basic)
 imutils>=0.5.4
+# face-recognition and dlib compile from source on aarch64 (very slow).
+# Install separately only if needed: pip install -r requirements-optional.txt
 
 # ML inference — Jetson only, install separately with CUDA-compatible wheels
 # See docs/JETSON_PYTORCH.md for install instructions

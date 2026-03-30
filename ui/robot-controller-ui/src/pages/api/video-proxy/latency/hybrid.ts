@@ -38,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(200).json(data);
     
   } catch (error) {
-    console.error('[latency-proxy] Error fetching hybrid latency:', error);
+    console.warn('[latency-proxy] Error fetching hybrid latency:', error instanceof Error ? error.message : String(error));
     res.status(503).json({ 
       error: 'Hybrid latency API unavailable',
       message: error instanceof Error ? error.message : 'Unknown error'

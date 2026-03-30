@@ -29,6 +29,16 @@ import time
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+# LED hardware (optional — degrades gracefully on non-Pi hosts)
+try:
+    from api.lighting_routes import led_controller as _led_controller
+    from controllers.lighting.dispatcher import apply_lighting_mode as _apply_lighting_mode
+    _LED_AVAILABLE = _led_controller is not None
+except Exception:
+    _led_controller = None
+    _apply_lighting_mode = None
+    _LED_AVAILABLE = False
+
 log = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -189,12 +199,28 @@ async def ws_lighting(websocket: WebSocket):
             pattern = str(data.get('pattern') or data.get('command') or '').strip()
             if not pattern:
                 await websocket.send_json({
-                    'type': 'ack', 'status': 'error',
+                    'type': 'lighting_result', 'ok': False,
                     'error': 'missing pattern field',
                     'ts': int(time.time() * 1000),
                 })
                 continue
 
+            led_ok = False
+            led_error = None
+
+            # Direct hardware path (Pi only)
+            if _LED_AVAILABLE:
+                try:
+                    if pattern == 'off':
+                        await asyncio.to_thread(_led_controller.clear_strip)
+                    else:
+                        await asyncio.to_thread(_apply_lighting_mode, data, _led_controller)
+                    led_ok = True
+                except Exception as exc:
+                    led_error = str(exc)
+                    log.warning('ws_lighting: LED hardware error: %s', exc)
+
+            # Also forward to ROS bridge (future ROS-native lighting node)
             ros_sent = False
             if ros_bridge:
                 extras = {
@@ -204,10 +230,11 @@ async def ws_lighting(websocket: WebSocket):
                 ros_sent = ros_bridge.send_lighting_cmd(pattern, **extras)
 
             await websocket.send_json({
-                'type': 'ack',
+                'type': 'lighting_result',
+                'ok': led_ok or ros_sent,
                 'pattern': pattern,
-                'status': 'ok',
                 'ros_sent': ros_sent,
+                'error': led_error,
                 'ts': int(time.time() * 1000),
             })
 
