@@ -71,15 +71,15 @@ function buildWsCandidates(baseKey: string): string[] {
   const local = getEnvVar(`${baseKey}_LOCAL`);
   if (local) candidates.push(local);
   
-  // Add default localhost fallbacks
+  // Add default localhost fallbacks (unified FastAPI backend on port 8000)
   if (baseKey.includes('MOVEMENT')) {
-    candidates.push('ws://localhost:8081/', 'ws://localhost:3001/ws/movement');
+    candidates.push('ws://localhost:8000/ws/movement');
   } else if (baseKey.includes('ULTRASONIC')) {
-    candidates.push('ws://localhost:8080/ultrasonic', 'ws://localhost:3001/ws/ultrasonic');
+    candidates.push('ws://localhost:8000/ws/ultrasonic');
   } else if (baseKey.includes('LINE_TRACKER')) {
-    candidates.push('ws://localhost:8090/line-tracker', 'ws://localhost:3001/ws/line');
+    candidates.push('ws://localhost:8000/ws/line');
   } else if (baseKey.includes('LIGHTING')) {
-    candidates.push('ws://localhost:8082/lighting', 'ws://localhost:3001/ws/lighting');
+    candidates.push('ws://localhost:8000/ws/lighting');
   }
   
   return candidates.filter((url, index, arr) => arr.indexOf(url) === index); // Remove duplicates

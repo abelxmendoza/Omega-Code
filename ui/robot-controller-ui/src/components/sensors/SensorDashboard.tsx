@@ -38,10 +38,9 @@ interface UltrasonicData {
 type ServerStatus = 'connecting' | 'connected' | 'disconnected';
 
 // ------------- WebSocket URLs (from env) ----------------
-// Use resolveWsUrl with default port 8080 and path /ultrasonic for direct Go server connection
 const ULTRASONIC_WS = resolveWsUrl('NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC', {
-  defaultPort: '8080',
-  path: '/ultrasonic',
+  defaultPort: '8000',
+  path: '/ws/ultrasonic',
 });
 
 // Small status dot helper
@@ -154,12 +153,12 @@ const SensorDashboard: React.FC = () => {
     };
   }, []);
 
-  // Ultrasonic WS (direct connection to Go server on port 8080)
+  // Ultrasonic WS (FastAPI unified backend on port 8000)
   useEffect(() => {
     // Build candidates: direct env vars first, then fallback to host-based URLs
     const candidates = resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC', {
-      defaultPort: '8080',
-      path: '/ultrasonic',
+      defaultPort: '8000',
+      path: '/ws/ultrasonic',
     });
     
     if (!candidates.length) {

@@ -6,7 +6,7 @@
 //   - connectUltrasonicWs(opts): tries candidates until one connects; supports AbortSignal
 //   - openUltrasonicSocket(): direct opener (no fallback), auto-upgrades ws:// → wss://
 // Notes:
-//   Your Go server (main_ultrasonic.go) defaults to PORT 8080 and PATH /ultrasonic.
+//   FastAPI unified backend defaults to PORT 8000 and PATH /ws/ultrasonic.
 //   This stream may not emit pong; treat any message as alive in your status hook.
 //
 // Enable debug logs by setting NEXT_PUBLIC_WS_DEBUG=1
@@ -16,8 +16,8 @@
 import { resolveWsUrl, resolveWsCandidates } from './resolveWsUrl';
 import { connectWithFallback, upgradeWsForHttps } from './wsConnect';
 
-const DEFAULT_PORT = '8080';
-const DEFAULT_PATH = '/ultrasonic';
+const DEFAULT_PORT = '8000';
+const DEFAULT_PATH = '/ws/ultrasonic';
 
 const DEBUG =
   typeof window !== 'undefined' &&

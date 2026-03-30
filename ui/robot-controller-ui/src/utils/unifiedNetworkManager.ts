@@ -70,11 +70,11 @@ class UnifiedNetworkManager {
       gatewayHost: 'omega1-1.hartley-ghost.ts.net',
       gatewayPort: '7070',
       wsEndpoints: {
-        movement: 'ws://omega1-1.hartley-ghost.ts.net:8081/',
-        ultrasonic: 'ws://omega1-1.hartley-ghost.ts.net:8080/ultrasonic',
-        lineTracker: 'ws://omega1-1.hartley-ghost.ts.net:7070/ws/line',
-        lighting: 'ws://100.93.225.61:8082/lighting',
-        video: 'ws://omega1-1.hartley-ghost.ts.net:7070/video_feed'
+        movement: 'ws://omegaone:8000/ws/movement',
+        ultrasonic: 'ws://omegaone:8000/ws/ultrasonic',
+        lineTracker: 'ws://omegaone:8000/ws/line',
+        lighting: 'ws://omegaone:8000/ws/lighting',
+        video: 'ws://omegaone:5000/video_feed'
       },
       httpEndpoints: {
         gateway: 'http://omega1-1.hartley-ghost.ts.net:7070',
@@ -100,16 +100,16 @@ class UnifiedNetworkManager {
       gatewayHost: '192.168.6.164',
       gatewayPort: '7070',
       wsEndpoints: {
-        movement: 'ws://192.168.1.107:8081/',
-        ultrasonic: 'ws://192.168.1.107:8080/ultrasonic',
-        lineTracker: 'ws://192.168.6.164:7070/ws/line',
-        lighting: 'ws://192.168.1.107:8082/lighting',
-        video: 'ws://192.168.6.164:7070/video_feed'
+        movement: 'ws://192.168.1.107:8000/ws/movement',
+        ultrasonic: 'ws://192.168.1.107:8000/ws/ultrasonic',
+        lineTracker: 'ws://192.168.1.107:8000/ws/line',
+        lighting: 'ws://192.168.1.107:8000/ws/lighting',
+        video: 'ws://192.168.1.107:5000/video_feed'
       },
       httpEndpoints: {
-        gateway: 'http://192.168.6.164:7070',
-        performance: 'http://192.168.6.164:7070/api/performance/metrics',
-        video: 'http://192.168.6.164:7070/video_feed'
+        gateway: 'http://192.168.1.107:8000',
+        performance: 'http://192.168.1.107:8000/api/performance/metrics',
+        video: 'http://192.168.1.107:5000/video_feed'
       },
       optimization: {
         timeout: 10000,
@@ -130,16 +130,16 @@ class UnifiedNetworkManager {
       gatewayHost: '192.168.6.164', // Same as WiFi but with mobile optimizations
       gatewayPort: '7070',
       wsEndpoints: {
-        movement: 'ws://192.168.1.107:8081/',
-        ultrasonic: 'ws://192.168.1.107:8080/ultrasonic',
-        lineTracker: 'ws://192.168.6.164:7070/ws/line',
-        lighting: 'ws://192.168.1.107:8082/lighting',
-        video: 'ws://192.168.6.164:7070/video_feed'
+        movement: 'ws://192.168.1.107:8000/ws/movement',
+        ultrasonic: 'ws://192.168.1.107:8000/ws/ultrasonic',
+        lineTracker: 'ws://192.168.1.107:8000/ws/line',
+        lighting: 'ws://192.168.1.107:8000/ws/lighting',
+        video: 'ws://192.168.1.107:5000/video_feed'
       },
       httpEndpoints: {
-        gateway: 'http://192.168.6.164:7070',
-        performance: 'http://192.168.6.164:7070/api/performance/metrics',
-        video: 'http://192.168.6.164:7070/video_feed'
+        gateway: 'http://192.168.1.107:8000',
+        performance: 'http://192.168.1.107:8000/api/performance/metrics',
+        video: 'http://192.168.1.107:5000/video_feed'
       },
       optimization: {
         timeout: 10000,
@@ -160,16 +160,16 @@ class UnifiedNetworkManager {
       gatewayHost: '100.93.225.61', // Direct Tailscale IP
       gatewayPort: '7070',
       wsEndpoints: {
-        movement: 'ws://100.93.225.61:8081/',
-        ultrasonic: 'ws://100.93.225.61:8080/ultrasonic',
-        lineTracker: 'ws://100.93.225.61:7070/ws/line',
-        lighting: 'ws://100.93.225.61:8082/lighting',
-        video: 'ws://100.93.225.61:7070/video_feed'
+        movement: 'ws://100.93.225.61:8000/ws/movement',
+        ultrasonic: 'ws://100.93.225.61:8000/ws/ultrasonic',
+        lineTracker: 'ws://100.93.225.61:8000/ws/line',
+        lighting: 'ws://100.93.225.61:8000/ws/lighting',
+        video: 'ws://100.93.225.61:5000/video_feed'
       },
       httpEndpoints: {
-        gateway: 'http://100.93.225.61:7070',
-        performance: 'http://100.93.225.61:7070/api/performance/metrics',
-        video: 'http://100.93.225.61:7070/video_feed'
+        gateway: 'http://100.93.225.61:8000',
+        performance: 'http://100.93.225.61:8000/api/performance/metrics',
+        video: 'http://100.93.225.61:5000/video_feed'
       },
       optimization: {
         timeout: 10000,
@@ -190,16 +190,16 @@ class UnifiedNetworkManager {
       gatewayHost: 'localhost',
       gatewayPort: '7070',
       wsEndpoints: {
-        movement: 'ws://localhost:8081/',
-        ultrasonic: 'ws://localhost:8080/ultrasonic',
-        lineTracker: 'ws://localhost:7070/ws/line',
-        lighting: 'ws://localhost:8082/lighting',
-        video: 'ws://localhost:7070/video_feed'
+        movement: 'ws://localhost:8000/ws/movement',
+        ultrasonic: 'ws://localhost:8000/ws/ultrasonic',
+        lineTracker: 'ws://localhost:8000/ws/line',
+        lighting: 'ws://localhost:8000/ws/lighting',
+        video: 'ws://localhost:5000/video_feed'
       },
       httpEndpoints: {
-        gateway: 'http://localhost:7070',
-        performance: 'http://localhost:7070/api/performance/metrics',
-        video: 'http://localhost:7070/video_feed'
+        gateway: 'http://localhost:8000',
+        performance: 'http://localhost:8000/api/performance/metrics',
+        video: 'http://localhost:5000/video_feed'
       },
       optimization: {
         timeout: 10000,

@@ -171,7 +171,7 @@ const MotorTelemetryPanel: React.FC = memo(() => {
 
   // WebSocket connection for motor telemetry
   const motorTelemetryWs = useRobustWebSocket({
-    url: currentProfile?.wsEndpoints?.movement || 'ws://localhost:8081/',
+    url: currentProfile?.wsEndpoints?.movement || 'ws://omegaone:8000/ws/movement',
     onMessage: (data) => {
       try {
         // Parse motor telemetry data for 4 motors

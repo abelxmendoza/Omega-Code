@@ -40,10 +40,10 @@ export default function MobileConnectionTest({ onTestComplete, className = '' }:
     try {
       // Test WebSocket endpoints
       const wsUrls = [
-        ...resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT', { defaultPort: '8081' }),
-        ...resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC', { defaultPort: '8080' }),
-        ...resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER', { defaultPort: '8090' }),
-        ...resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING', { defaultPort: '8082' }),
+        ...resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT', { defaultPort: '8000' }),
+        ...resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_ULTRASONIC', { defaultPort: '8000' }),
+        ...resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_LINE_TRACKER', { defaultPort: '8000' }),
+        ...resolveWsCandidates('NEXT_PUBLIC_BACKEND_WS_URL_LIGHTING', { defaultPort: '8000' }),
       ];
       
       const wsTestResults = await testWebSocketEndpoints(wsUrls);

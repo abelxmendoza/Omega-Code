@@ -13,6 +13,6 @@ export const ROBOT_ENABLED = IS_LOCAL;
 
 // Provide a safe dummy base URL for production
 export const ROBOT_BASE_URL = IS_LOCAL
-  ? "http://omega1.local:8080"
+  ? "http://omegaone:8000"
   : "http://localhost:0"; // invalid on purpose to prevent accidental calls
 
