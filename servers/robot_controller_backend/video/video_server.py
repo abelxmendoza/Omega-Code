@@ -100,11 +100,11 @@ except ImportError:
 try:
     from .ros2_integration import init_ros2_publisher, shutdown_ros2, ROS2VideoPublisher
     ROS2_AVAILABLE = True
-except ImportError:
+except Exception:
     try:
         from ros2_integration import init_ros2_publisher, shutdown_ros2, ROS2VideoPublisher
         ROS2_AVAILABLE = True
-    except ImportError:
+    except Exception:
         init_ros2_publisher = None
         shutdown_ros2 = None
         ROS2VideoPublisher = None
