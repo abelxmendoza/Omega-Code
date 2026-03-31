@@ -158,8 +158,8 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
   });
   
   // Speed tracking (PWM 0-4095, percentage 0-100)
-  // Default to 1200 PWM (matches backend default) = ~29%
-  const [speed, setSpeed] = useState<number>(1200); // Default speed matches backend
+  // Default to 800 PWM (matches backend calm default) = ~20%
+  const [speed, setSpeed] = useState<number>(800); // Default calm speed matches backend
   const speedPct = Math.round((speed / 4095) * 100);
   
   // Movement V2 data

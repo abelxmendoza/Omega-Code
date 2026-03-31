@@ -254,6 +254,7 @@ const SpeedControl: React.FC = () => {
       {/* Control Buttons */}
       <div className="grid grid-cols-2 gap-3 w-full">
         <button
+          type="button"
           className={`py-2 rounded text-white transition-colors bg-blue-600 hover:bg-blue-700 ${
             disabled ? 'cursor-not-allowed opacity-50' : ''
           }`}
@@ -266,6 +267,7 @@ const SpeedControl: React.FC = () => {
         </button>
 
         <button
+          type="button"
           className={`py-2 rounded text-white transition-colors bg-blue-600 hover:bg-blue-700 ${
             disabled ? 'cursor-not-allowed opacity-50' : ''
           }`}
@@ -278,6 +280,7 @@ const SpeedControl: React.FC = () => {
         </button>
 
         <button
+          type="button"
           className={`col-span-2 py-2 rounded text-white transition-colors bg-red-600 hover:bg-red-700 ${
             disabled ? 'cursor-not-allowed opacity-50' : ''
           }`}
@@ -290,6 +293,7 @@ const SpeedControl: React.FC = () => {
         </button>
 
         <button
+          type="button"
           className="col-span-2 py-2 rounded text-white bg-yellow-600 hover:bg-yellow-700 transition-colors"
           onClick={openLed}
           title="I (LED)"
@@ -299,11 +303,11 @@ const SpeedControl: React.FC = () => {
         </button>
 
         <button
+          type="button"
           className={`col-span-2 py-2 rounded text-white select-none transition-colors bg-purple-600 hover:bg-purple-700 ${
             disabled ? 'cursor-not-allowed opacity-50' : ''
           }`}
           {...hornPointerHandlers}
-          disabled={disabled}
           title="Hold 0 key or press-and-hold"
           aria-label="Horn (hold 0)"
         >

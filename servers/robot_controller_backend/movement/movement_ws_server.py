@@ -568,10 +568,12 @@ def _servo_state_payload(horizontal: int, vertical: int) -> dict:
     }
 DEFAULT_SPEED_STEP   = 200
 DEFAULT_SERVO_STEP   = 5
+CALM_DEFAULT_SPEED   = 800   # ~20% — low calm starting speed
 
-current_speed             = 1200
+current_speed             = CALM_DEFAULT_SPEED
 current_horizontal_angle  = 90   # Updated to match current position
 current_vertical_angle    = 90   # Updated to match current position
+_last_direction           = None  # Track last movement direction so speed changes reapply
 
 # Serialize motor operations
 motor_lock = asyncio.Lock()
@@ -684,7 +686,7 @@ def cancel_buzz_task():
 
 async def do_stop():
     # Stop motors + buzzer
-    global current_speed
+    global current_speed, _last_direction
     async with motor_lock:
         try:
             motor.stop()
@@ -693,6 +695,7 @@ async def do_stop():
     await buzz_off_safe()
     # Reset speed to 0 on stop for UI sync
     current_speed = 0
+    _last_direction = None
 
 def _call_motor(fn, speed: int):
     try:
@@ -850,7 +853,7 @@ def _extract_request_path(ws: WebSocketServerProtocol, request_path: Optional[st
 
 async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = None):
     global current_speed, current_horizontal_angle, current_vertical_angle, _last_move_op_id
-    global _last_buzz_op_id, _buzz_task
+    global _last_buzz_op_id, _buzz_task, _last_direction
 
     request_path = _extract_request_path(ws, request_path)
     peer = getattr(ws, "remote_address", None)
@@ -933,6 +936,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                 if cmd in {"forward", "backward", "left", "right"}:
                     log(f"[CMD] Executing movement: {cmd} at speed {speed}")
                     current_speed = speed
+                    _last_direction = cmd
                     await do_move(cmd, current_speed)
                     await send_json(ws, ok(cmd, speed=current_speed))
 
@@ -951,6 +955,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
 
                 elif cmd == "stop":
                     log(f"[CMD] Executing stop")
+                    _last_direction = None
                     await do_stop()
                     await send_json(ws, ok("stop", speed=current_speed))
 
@@ -1014,10 +1019,14 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                 # -------- SPEED --------
                 elif cmd == "increase-speed":
                     current_speed = clamp(current_speed + DEFAULT_SPEED_STEP, SPEED_MIN, SPEED_MAX)
+                    if _last_direction:
+                        await do_move(_last_direction, current_speed)
                     await send_json(ws, ok("increase-speed", speed=current_speed))
 
                 elif cmd == "decrease-speed":
                     current_speed = clamp(current_speed - DEFAULT_SPEED_STEP, SPEED_MIN, SPEED_MAX)
+                    if _last_direction:
+                        await do_move(_last_direction, current_speed)
                     await send_json(ws, ok("decrease-speed", speed=current_speed))
 
                 elif cmd == "set-speed":
@@ -1026,6 +1035,8 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     except Exception:
                         val = current_speed
                     current_speed = clamp(val, SPEED_MIN, SPEED_MAX)
+                    if _last_direction:
+                        await do_move(_last_direction, current_speed)
                     await send_json(ws, ok("set-speed", speed=current_speed))
 
                 # -------- MOVEMENT V2 PROFILE --------
