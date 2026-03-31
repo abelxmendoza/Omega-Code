@@ -72,19 +72,19 @@ class MotionDetector:
         # Hardware-aware defaults
         if sensitivity is None:
             if _hardware["is_pi4b"]:
-                sensitivity = 30  # Slightly less sensitive for Pi 4B
+                sensitivity = 35  # Pi sensor noise needs higher threshold
             elif _hardware["is_jetson"]:
-                sensitivity = 20  # More sensitive on Jetson
+                sensitivity = 25  # More sensitive on Jetson
             else:
-                sensitivity = 25  # Default
-        
+                sensitivity = 30  # Default
+
         if min_area is None:
             if _hardware["is_pi4b"]:
-                min_area = 800  # Larger area threshold for Pi
+                min_area = 2000  # Large threshold to filter camera noise on Pi
             elif _hardware["is_jetson"]:
-                min_area = 400  # Smaller area for Jetson
+                min_area = 800   # Smaller area for Jetson
             else:
-                min_area = 500  # Default
+                min_area = 1500  # Default
         
         self.sensitivity = int(sensitivity)
         self.min_area = int(min_area)
@@ -150,16 +150,30 @@ class MotionDetector:
                 threshold_frame, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
 
+            # Global-change guard: if more than 40% of the frame shows motion
+            # it's a lighting/exposure shift, not real motion — skip all boxes.
+            frame_area = frame.shape[0] * frame.shape[1]
+            total_motion_area = sum(
+                cv2.contourArea(c) for c in contours
+                if cv2.contourArea(c) > self.min_area
+            )
+            if total_motion_area > 0.40 * frame_area:
+                self._frame_count += 1
+                return frame, False
+
             motion_detected = False
+            boxes_drawn = 0
+            MAX_BOXES = 6  # Cap to avoid flooding the frame
             for contour in contours:
+                if boxes_drawn >= MAX_BOXES:
+                    break
                 area = cv2.contourArea(contour)
                 if area > self.min_area:
                     motion_detected = True
                     (x, y, w, h) = cv2.boundingRect(contour)
-                    # Draw green box around movement
                     cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                    
-                    # Add area label for debugging (optional)
+                    boxes_drawn += 1
+
                     if _hardware["is_jetson"]:  # Only on Jetson for performance
                         cv2.putText(
                             frame, f"{int(area)}",

@@ -103,6 +103,7 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
   const heartbeatInFlightAt = useRef<number | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mounted = useRef(false);
+  const pendingApply = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Helpers
   const wsOpen = () => ws.current && ws.current.readyState === WebSocket.OPEN;
@@ -303,58 +304,40 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  // Helper to auto-apply changes when LED is on
-  const autoApplyIfOn = () => {
-    // Demo mode: allow auto-apply
-    if (!ROBOT_ENABLED && ledOn) {
-      setTimeout(() => {
-        if (ledOn) {
-          const effectiveBrightness = Math.max(0.35, brightness / 100);
-          const commandData: Record<string, unknown> = {
-            color: color1,
-            mode: mode,
-            pattern: pattern,
-            interval: pattern !== 'static' ? intervalMs : 0,
-            brightness: effectiveBrightness,
-          };
-          if (mode === 'dual') {
-            commandData.color2 = color2;
-            commandData.orientation = dualOrientation;
-          }
-          console.log('[LedModal] 🎭 DEMO MODE: Auto-applied settings:', JSON.stringify(commandData));
-        }
-      }, 300);
-      return;
-    }
-
-    if (ledOn && wsOpen() && serverStatus === 'connected') {
-      // Small delay to batch rapid changes
-      setTimeout(() => {
-        if (ledOn && wsOpen()) {
-          // Always use at least 35% brightness (0.35) unless user set it higher
-          const effectiveBrightness = Math.max(0.35, brightness / 100);
-          const commandData: Record<string, unknown> = {
-            color: color1,
-            mode: mode,
-            pattern: pattern,
-            interval: pattern !== 'static' ? intervalMs : 0,
-            brightness: effectiveBrightness,
-          };
-          // Add color2 and orientation only when mode is dual
-          if (mode === 'dual') {
-            commandData.color2 = color2;
-            commandData.orientation = dualOrientation;
-          }
-          try {
-            send(commandData);
-            console.log('[LedModal] 🔄 Auto-applied settings:', JSON.stringify(commandData));
-          } catch (error) {
-            console.error('[LedModal] ❌ Auto-apply failed:', error);
-          }
-        }
-      }, 300); // 300ms debounce
-    }
-  };
+  // Auto-apply current settings to hardware whenever LED is on and any setting changes.
+  // Uses a ref-based send to avoid stale closures — ws.current is always fresh.
+  useEffect(() => {
+    if (!ledOn || !ROBOT_ENABLED || serverStatus !== 'connected') return;
+    if (pendingApply.current) clearTimeout(pendingApply.current);
+    pendingApply.current = setTimeout(() => {
+      pendingApply.current = null;
+      if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
+      const commandData: Record<string, unknown> = {
+        color: color1,
+        mode,
+        pattern,
+        interval: pattern !== 'static' ? intervalMs : 0,
+        brightness: brightness / 100,
+      };
+      if (mode === 'dual') {
+        commandData.color2 = color2;
+        commandData.orientation = dualOrientation;
+      }
+      try {
+        ws.current.send(JSON.stringify(commandData));
+        console.log('[LedModal] 🔄 Auto-applied settings:', JSON.stringify(commandData));
+      } catch (err) {
+        console.error('[LedModal] ❌ Auto-apply failed:', err);
+      }
+    }, 300);
+    return () => {
+      if (pendingApply.current) {
+        clearTimeout(pendingApply.current);
+        pendingApply.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [color1, color2, mode, pattern, intervalMs, brightness, dualOrientation, ledOn, serverStatus]);
 
   // Handlers
   const handleColorChange = (color: ColorResult) => {
@@ -363,7 +346,6 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     } else {
       setColor2(color.hex);
     }
-    autoApplyIfOn();
   };
   
   // Get current color being edited
@@ -384,20 +366,13 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     }
   };
   
-  // Get available patterns for current mode (uses current state)
-  const getAvailablePatterns = (): readonly LightingPattern[] => {
-    return resolvePatterns(mode);
-  };
-
   const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newMode = e.target.value as LightingMode;
     setMode(newMode);
-    
+
     // Reset pattern to first available pattern for new mode
-    // Use resolver to build a correctly typed array
     const availablePatterns: LightingPattern[] = resolvePatterns(newMode);
-    
-    // Validate pattern safely
+
     if (!availablePatterns.includes(pattern as LightingPattern)) {
       console.warn("[LEDModal] Invalid pattern for current mode. Resetting.", {
         invalidPattern: pattern,
@@ -406,8 +381,6 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
       });
       setPattern(availablePatterns[0]);
     }
-    
-    autoApplyIfOn();
   };
   const handlePatternChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const nextPattern = e.target.value as LightingPattern;
@@ -416,17 +389,14 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
     if (nextPattern === 'music' && intervalMs > 250) {
       setIntervalMs(120);
     }
-    autoApplyIfOn();
   };
   const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(e.target.value);
     setIntervalMs(Number.isFinite(value) ? Math.max(100, Math.floor(value)) : 100);
-    autoApplyIfOn();
   };
   const handleBrightnessChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(e.target.value);
     if (Number.isFinite(value)) setBrightness(Math.min(100, Math.max(0, Math.floor(value))));
-    autoApplyIfOn();
   };
 
   const send = (payload: Record<string, unknown>) => {
@@ -774,7 +744,6 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
                 value={dualOrientation}
                 onChange={(e) => {
                   setDualOrientation(e.target.value as DualOrientation);
-                  autoApplyIfOn();
                 }}
                 className="w-full bg-[#1A1A1A] text-[#E0E0E0] p-2.5 rounded-lg border border-[#C400FF]/30 focus:border-[#C400FF] focus:ring-2 focus:ring-[#C400FF]/50 transition-all"
                 style={{ 
@@ -830,7 +799,7 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
                 boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 10px rgba(196, 0, 255, 0.1)'
               }}
             >
-              {LIGHTING_PATTERNS.map((p) => (
+              {resolvePatterns(mode).map((p) => (
                 <option key={p} value={p} className="bg-[#1A1A1A]">
                   {p.charAt(0).toUpperCase() + p.slice(1)}
                 </option>

@@ -209,8 +209,12 @@ const CameraFrame: React.FC<CameraFrameProps> = ({
         return;
       }
       try {
+        // Only drop to 'connecting' if we weren't already in a good state.
+        // Avoids flashing the status indicator on every 5-second health poll.
         setStatus(s => (s === 'connected' || s === 'no_camera') ? s : 'connecting');
-        publish({ state: 'connecting' });
+        if (status !== 'connected' && status !== 'no_camera') {
+          publish({ state: 'connecting' });
+        }
 
         const start = performance.now?.() ?? Date.now();
         const res = await fetchWithTimeout(healthUrl, Math.max(1500, checkIntervalMs - 500));

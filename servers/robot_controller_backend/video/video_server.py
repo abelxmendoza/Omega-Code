@@ -299,6 +299,12 @@ RESTART_ON_STALL  = os.getenv("RESTART_ON_STALL", "1").lower() in ("1", "true", 
 STALE_MS          = int(os.getenv("STALE_MS", os.getenv("FRAME_STALE_MS", "2500")))
 WATCHDOG_PERIOD_MS= int(os.getenv("WATCHDOG_PERIOD_MS", "1500"))
 
+# Per-frame throttle intervals (all overridable via env)
+CPU_POLL_INTERVAL         = float(os.getenv("CPU_POLL_INTERVAL", "2.0"))
+TELEMETRY_PUBLISH_INTERVAL= float(os.getenv("TELEMETRY_INTERVAL", "5.0"))
+ARUCO_INTERVAL            = float(os.getenv("ARUCO_INTERVAL", "0.1"))
+MOTION_INTERVAL           = float(os.getenv("MOTION_INTERVAL", "0.067"))
+
 # Feature flags (respect hardware capabilities unless explicitly overridden)
 FACE_RECOGNITION_ENABLED = (
     os.getenv("FACE_RECOGNITION", "auto").lower() == "1" or
@@ -381,6 +387,27 @@ _metrics = {
 }
 _last_frame_time = 0.0
 _frame_skip_counter = 0  # For Pi 4B load management
+
+# CPU usage cache — avoids blocking psutil calls every frame
+_cached_cpu_percent = 0.0
+_last_cpu_poll_time = 0.0
+
+# Throttle state for per-module rate limiting
+_last_motion_run      = 0.0
+_last_aruco_run       = 0.0
+_last_telemetry_publish = 0.0
+
+
+def _get_cpu_percent() -> float:
+    """Return cached CPU %, refreshing at most every CPU_POLL_INTERVAL seconds (non-blocking)."""
+    global _cached_cpu_percent, _last_cpu_poll_time
+    if psutil is None:
+        return 0.0
+    now = time.time()
+    if (now - _last_cpu_poll_time) > CPU_POLL_INTERVAL:
+        _cached_cpu_percent = psutil.cpu_percent(interval=None)  # non-blocking
+        _last_cpu_poll_time = now
+    return _cached_cpu_percent
 
 if FACE_RECOGNITION_ENABLED:
     try:
@@ -606,7 +633,7 @@ def generate_frames():
     MJPEG generator: reads frames, overlays motion (and tracker if enabled).
     If no camera yet, yields placeholder frames (when enabled).
     """
-    global tracking_enabled, camera
+    global tracking_enabled, camera, _frame_skip_counter, _last_motion_run, _last_aruco_run, _last_telemetry_publish
     _last_frame_time = 0.0
 
     while True:
@@ -632,7 +659,7 @@ def generate_frames():
             # Frame skipping for Pi 4B under heavy CPU load
             if _hardware_profile.get("is_pi4b") and psutil:
                 try:
-                    cpu_percent = psutil.cpu_percent(interval=0.05)
+                    cpu_percent = _get_cpu_percent()
                     if cpu_percent > 90:
                         # Skip every other frame when CPU > 90%
                         _frame_skip_counter += 1
@@ -661,20 +688,21 @@ def generate_frames():
                 # Check and auto-switch mode if needed
                 # hybrid_system_manager.check_and_auto_switch_mode()  # stubbed — method not implemented
             
-            # Motion overlay (with error handling, hardware-aware)
+            # Motion overlay (~15 fps max, hardware-aware)
             motion_detected = False
             motion_regions = []
             if ENABLE_MOTION_HW and motion_detector is not None:
-                if not should_throttle or "motion" not in throttle_priority[:1]:  # Only throttle if priority allows
-                    try:
-                        frame, motion_detected = motion_detector.detect_motion(frame)
-                        # Extract motion regions for hybrid system
-                        if motion_detected and hybrid_system_manager:
-                            # Get motion regions from detector (if available)
-                            pass  # TODO: Extract regions from motion detector
-                    except Exception as e:
-                        logging.warning(f"⚠️ Motion detection error: {e}")
-                        _metrics["errors_total"] += 1
+                if not should_throttle or "motion" not in throttle_priority[:1]:
+                    _now_motion = time.time()
+                    if (_now_motion - _last_motion_run) >= MOTION_INTERVAL:
+                        try:
+                            frame, motion_detected = motion_detector.detect_motion(frame)
+                            if motion_detected and hybrid_system_manager:
+                                pass  # TODO: Extract regions from motion detector
+                        except Exception as e:
+                            logging.warning(f"⚠️ Motion detection error: {e}")
+                            _metrics["errors_total"] += 1
+                        _last_motion_run = _now_motion
             
             # Publish motion event to Orin (hybrid system)
             if hybrid_system_manager and motion_detected:
@@ -706,26 +734,28 @@ def generate_frames():
                         logging.warning(f"⚠️ Face recognition error: {e}")
                         _metrics["errors_total"] += 1
 
-            # ArUco detection
+            # ArUco detection (10 fps max)
             aruco_markers = []
             if ARUCO_DETECTION_ENABLED and aruco_detector and aruco_detector.active:
-                if not should_throttle or "aruco" not in throttle_priority[:3]:  # Medium priority
-                    try:
-                        frame, detections = aruco_detector.annotate(frame)
-                        if detections and hybrid_system_manager:
-                            # Convert detections to hybrid messages format
-                            for det in detections:
-                                if hasattr(det, 'marker_id'):
-                                    marker = ArUcoMarker(
-                                        marker_id=det.marker_id,
-                                        corners=[[float(c[0]), float(c[1])] for c in det.corners],
-                                        centre=[float(det.centre[0]), float(det.centre[1])],
-                                        pose=getattr(det, 'pose', None)
-                                    )
-                                    aruco_markers.append(marker)
-                    except Exception as e:
-                        logging.warning(f"⚠️ ArUco detection error: {e}")
-                        _metrics["errors_total"] += 1
+                if not should_throttle or "aruco" not in throttle_priority[:3]:
+                    _now_aruco = time.time()
+                    if (_now_aruco - _last_aruco_run) >= ARUCO_INTERVAL:
+                        try:
+                            frame, detections = aruco_detector.annotate(frame)
+                            if detections and hybrid_system_manager:
+                                for det in detections:
+                                    if hasattr(det, 'marker_id'):
+                                        marker = ArUcoMarker(
+                                            marker_id=det.marker_id,
+                                            corners=[[float(c[0]), float(c[1])] for c in det.corners],
+                                            centre=[float(det.centre[0]), float(det.centre[1])],
+                                            pose=getattr(det, 'pose', None)
+                                        )
+                                        aruco_markers.append(marker)
+                        except Exception as e:
+                            logging.warning(f"⚠️ ArUco detection error: {e}")
+                            _metrics["errors_total"] += 1
+                        _last_aruco_run = _now_aruco
             
             # Publish ArUco markers to Orin (hybrid system)
             if hybrid_system_manager and aruco_markers:
@@ -771,26 +801,24 @@ def generate_frames():
                 except Exception as e:
                     logging.warning(f"⚠️ Hybrid system publish error: {e}")
             
-            # Publish telemetry to Orin (hybrid system)
+            # Publish telemetry to Orin (5 s max rate — CPU/memory reads are expensive)
             if hybrid_system_manager and hybrid_system_manager.is_hybrid_mode():
-                try:
-                    if psutil:
-                        cpu_usage = psutil.cpu_percent(interval=0.1)
-                        memory_usage = psutil.virtual_memory().percent
-                    else:
-                        cpu_usage = 0.0
-                        memory_usage = 0.0
-                    
-                    telemetry = TelemetryData(
-                        cpu_temp=hybrid_system_manager.thermal_monitor.get_temperature(),
-                        battery_voltage=0.0,  # TODO: Get from battery sensor
-                        battery_percentage=0.0,  # TODO: Get from battery sensor
-                        cpu_usage=cpu_usage,
-                        memory_usage=memory_usage
-                    )
-                    hybrid_system_manager.publish_telemetry(telemetry)
-                except Exception as e:
-                    logging.warning(f"⚠️ Telemetry publish error: {e}")
+                _now_tel = time.time()
+                if (_now_tel - _last_telemetry_publish) >= TELEMETRY_PUBLISH_INTERVAL:
+                    try:
+                        cpu_usage = _get_cpu_percent()
+                        memory_usage = psutil.virtual_memory().percent if psutil else 0.0
+                        telemetry = TelemetryData(
+                            cpu_temp=hybrid_system_manager.thermal_monitor.get_temperature(),
+                            battery_voltage=0.0,
+                            battery_percentage=0.0,
+                            cpu_usage=cpu_usage,
+                            memory_usage=memory_usage
+                        )
+                        hybrid_system_manager.publish_telemetry(telemetry)
+                        _last_telemetry_publish = _now_tel
+                    except Exception as e:
+                        logging.warning(f"⚠️ Telemetry publish error: {e}")
 
             # Encode JPEG with quality setting (hardware-optimized)
             import cv2 as _cv2  # type: ignore
@@ -802,15 +830,16 @@ def generate_frames():
             # Adaptive quality based on hardware load (for Pi 4B)
             quality = JPEG_QUALITY
             if _hardware_profile.get("is_pi4b") and psutil:
-                # Reduce quality slightly if CPU is under heavy load
+                # Reduce quality slightly under heavy load (cached — no blocking call).
+                # Floor at 70 — below that, 8x8 DCT block artifacts become visible as "random squares".
                 try:
-                    cpu_percent = psutil.cpu_percent(interval=0.1)
+                    cpu_percent = _get_cpu_percent()
                     if cpu_percent > 80:
-                        quality = max(60, JPEG_QUALITY - 10)  # Reduce quality under load
+                        quality = max(70, JPEG_QUALITY - 5)
                     elif cpu_percent > 60:
-                        quality = max(65, JPEG_QUALITY - 5)
+                        quality = max(70, JPEG_QUALITY - 3)
                 except Exception:
-                    pass  # Use default if psutil fails
+                    pass
             
             encode_params = [_cv2.IMWRITE_JPEG_QUALITY, quality]
             ok, buf = _cv2.imencode(".jpg", frame, encode_params)
@@ -940,18 +969,6 @@ def health():
         except Exception:
             pass
     
-    return jsonify(payload), (200 if connected else 503)
-    payload["face_recognition"] = {
-        "configured": FACE_RECOGNITION_ENABLED,
-        "active": bool(face_recognizer and face_recognizer.active),
-        "known_faces": int(face_recognizer.known_faces_count if face_recognizer else 0),
-    }
-    payload["aruco"] = {
-        "configured": ARUCO_DETECTION_ENABLED,
-        "active": bool(aruco_detector and aruco_detector.active),
-        "dictionary": aruco_detector.dictionary_name if aruco_detector else None,
-        "pose_estimation": bool(aruco_detector and aruco_detector.pose_estimation_enabled),
-    }
     return jsonify(payload), (200 if connected else 503)
 
 

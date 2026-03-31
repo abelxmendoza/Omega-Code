@@ -44,6 +44,12 @@ def hex_to_rgb(hex_color: str):
     except ValueError as e:
         raise ValueError(f"Invalid hex color: {hex_color} - {e}")
 
+# Aliases: UI pattern names → canonical dispatcher names
+_PATTERN_ALIASES = {
+    "solid": "static",   # Some UI builds send "solid" instead of "static"
+    "pulse": "breathing", # UI "pulse" → breathing effect
+}
+
 # Pattern routing dictionary for O(1) lookup instead of if/elif chain
 _PATTERN_HANDLERS = {
     "static": lambda strip, c1, c2, i, b, m: (
@@ -67,6 +73,7 @@ def apply_lighting_mode(payload: dict, led_controller):
     try:
         # Extract and validate inputs
         pattern = payload.get("pattern", "static").lower()
+        pattern = _PATTERN_ALIASES.get(pattern, pattern)  # normalize aliases
         mode = payload.get("mode", "single").lower()
         interval = payload.get("interval", 1000)
         color_hex = payload.get("color", "#ffffff")
@@ -95,8 +102,12 @@ def apply_lighting_mode(payload: dict, led_controller):
         # Pre-compute scaled colors
         color1_scaled = tuple(int(channel * brightness) for channel in color1)
         
-        # Placeholder for dual color (future UI support)
-        color2 = (0, 0, 0)
+        # Secondary color for dual mode
+        color2_hex = payload.get("color2", "#000000")
+        try:
+            color2 = hex_to_rgb(color2_hex)
+        except ValueError:
+            color2 = (0, 0, 0)
         color2_scaled = tuple(int(channel * brightness) for channel in color2)
         
         strip = led_controller.strip
@@ -178,7 +189,7 @@ def apply_lighting_mode(payload: dict, led_controller):
         elif pattern in _PATTERN_HANDLERS:
             _PATTERN_HANDLERS[pattern](strip, color1_scaled, color2_scaled, interval, brightness, mode)
         else:
-            raise ValueError(f"Unknown pattern: {pattern} (supported: static, fade, blink, chase, rainbow, lightshow, music, rave, breathing, aurora, matrix, fire, omega_signature)")
+            raise ValueError(f"Unknown pattern: {pattern} (supported: static/solid, pulse/breathing, fade, blink, chase, rainbow, lightshow, music, rave, aurora, matrix, fire, omega_signature)")
             
     except ValueError as e:
         print(f"❌ [ERROR] Invalid lighting command: {e}", file=sys.stderr)

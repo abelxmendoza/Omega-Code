@@ -122,10 +122,8 @@ class MockCamera:
             cv2.putText(frame, f"FPS: {self.target_fps}", 
                        (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
             
-            # Add subtle noise (less on Pi for performance)
-            if not _hardware["is_pi4b"]:
-                noise = np.random.randint(0, 30, (self.height, self.width, 3), dtype=np.uint8)
-                frame = cv2.add(frame, noise)
+            # No per-frame noise — random noise every frame fools the motion
+            # detector into drawing bounding boxes over the entire image.
             
             self.frame = frame
             self._frame_count = frame_count
@@ -136,8 +134,8 @@ class MockCamera:
             time.sleep(sleep_time)
             
     def get_frame(self):
-        """Get current frame"""
-        return self.frame
+        """Get current frame (copy so callers can't mutate the shared frame)"""
+        return self.frame.copy() if self.frame is not None else None
     
     def get_stats(self):
         """Get mock camera statistics"""
