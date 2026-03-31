@@ -500,22 +500,9 @@ def _create_camera(device: Optional[str] = None) -> bool:
     global camera, motion_detector, tracker, _last_init_attempt
     _last_init_attempt = time.time()
     
-    # Run hardware verification if CameraManager is available
-    try:
-        from .camera_manager import CameraManager
-        manager = CameraManager(width=CAMERA_WIDTH, height=CAMERA_HEIGHT, fps=CAMERA_FPS)
-        hw_status = manager.verify_hardware()
-
-        logging.info(f"Camera hardware check: detected={hw_status['camera_detected']}, "
-                     f"supported={hw_status['camera_supported']}")
-
-        if hw_status['recommendations']:
-            for rec in hw_status['recommendations']:
-                logging.warning(f"⚠ {rec}")
-    except ImportError:
-        logging.debug("CameraManager not available, skipping hardware verification")
-    except Exception as e:
-        logging.debug(f"Hardware verification failed: {e}")
+    # Hardware verification skipped — verify_hardware() opens and may leak a
+    # Picamera2 instance, leaving the camera in Acquired state before Camera()
+    # gets to it. camera.py handles its own backend detection.
     
     try:
         # Initialize Picamera2 camera (device parameter ignored - Picamera2 doesn't use device paths)
