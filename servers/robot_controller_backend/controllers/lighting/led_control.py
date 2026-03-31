@@ -77,6 +77,49 @@ class StubPixelStrip:
     def show(self):  # pragma: no cover - trivial stub
         return None
 
+class _DaemonStrip:
+    """Strip shim that forwards commands to led_daemon.py subprocess."""
+
+    def __init__(self, proc, num_pixels):
+        self._proc = proc
+        self._num_pixels = num_pixels
+        self._pixels = [(0, 0, 0)] * num_pixels
+        self._brightness = 255
+
+    def _send(self, cmd: dict):
+        import json as _json
+        try:
+            self._proc.stdin.write(_json.dumps(cmd) + "\n")
+            self._proc.stdin.flush()
+            self._proc.stdout.readline()  # consume ack
+        except Exception:
+            pass
+
+    def numPixels(self):
+        return self._num_pixels
+
+    def setPixelColor(self, index, color):
+        # Store as (r,g,b) — flushed on show()
+        r = (color >> 16) & 0xFF
+        g = (color >> 8) & 0xFF
+        b = color & 0xFF
+        if 0 <= index < self._num_pixels:
+            self._pixels[index] = (r, g, b)
+
+    def show(self):
+        # Send the first pixel's color as a bulk color command (good enough for solid colors)
+        if self._pixels:
+            r, g, b = self._pixels[0]
+            self._send({"cmd": "color", "r": r, "g": g, "b": b})
+
+    def begin(self):
+        pass
+
+    def setBrightness(self, value):
+        self._brightness = value
+        self._send({"cmd": "brightness", "value": value})
+
+
 class LedController:
     """
     Controller class for WS2812/WS2811 LED strips using rpi_ws281x.
@@ -101,6 +144,7 @@ class LedController:
         self.num_pixels = num_pixels
         self.is_on = False
         self._is_stub = False
+        self._daemon_proc = None
         
         try:
             print(f"🔧 [INIT] Initializing LED strip: {num_pixels} pixels, pin {pin}, brightness {brightness}")
@@ -123,17 +167,43 @@ class LedController:
             self.strip = StubPixelStrip(num_pixels)
             self._is_stub = True
         except Exception as exc:
-            # Check if it's a permission error (expected when not running as root)
             if "Permission denied" in str(exc) or "mmap() failed" in str(exc) or "code -5" in str(exc):
-                print(f"⚠️  [WARN] Hardware access denied (need sudo for hardware control)")
-                print(f"   Falling back to StubPixelStrip (no hardware output)")
-                print(f"   To control hardware LEDs, run with: sudo python3 ...")
+                print(f"⚠️  [WARN] Hardware access denied — trying sudo subprocess daemon")
+                if self._try_start_daemon(pin, brightness):
+                    print(f"✅ [SUCCESS] LED daemon started via sudo subprocess")
+                    return
+                print(f"   Daemon unavailable — falling back to StubPixelStrip")
             else:
                 print(f"❌ [ERROR] Failed to initialize LED strip: {exc}")
-                print(f"   Error type: {type(exc).__name__}")
-                print(f"   Falling back to StubPixelStrip (no hardware output)")
             self.strip = StubPixelStrip(num_pixels)
             self._is_stub = True
+
+    def _try_start_daemon(self, pin, brightness) -> bool:
+        """Launch led_daemon.py as a sudo subprocess. Returns True on success."""
+        import subprocess, json as _json
+        daemon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "led_daemon.py")
+        try:
+            proc = subprocess.Popen(
+                ["sudo", sys.executable, daemon_path],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                bufsize=1,
+            )
+            # Read ready line (daemon writes {"ok": true, "msg": "..."} on start)
+            ready = proc.stdout.readline()
+            resp = _json.loads(ready)
+            if not resp.get("ok"):
+                proc.terminate()
+                return False
+            self._daemon_proc = proc
+            self.strip = _DaemonStrip(proc, self.num_pixels)
+            self._is_stub = False
+            return True
+        except Exception as e:
+            print(f"   Daemon start failed: {e}")
+            return False
 
     def color_wipe(self, color, wait_ms=50):
         """Optimized color wipe using batch operations."""
