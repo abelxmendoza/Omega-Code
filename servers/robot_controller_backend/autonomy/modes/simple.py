@@ -12,12 +12,14 @@ import time
 from typing import Any, Mapping, MutableMapping
 
 from ..base import AutonomyModeHandler, AutonomyError
+from .obstacle_avoidance import ObstacleAvoidanceMode
 
 __all__ = [
     "IdleMode",
     "LoggingMode",
     "WaypointMode",
     "DockMode",
+    "ObstacleAvoidanceMode",
     "DEFAULT_MODE_FACTORIES",
 ]
 
@@ -94,7 +96,7 @@ def DEFAULT_MODE_FACTORIES() -> Mapping[str, Any]:
         "patrol": lambda **kw: LoggingMode("patrol", logger=kw.get("logger")),
         "follow": lambda **kw: LoggingMode("follow", logger=kw.get("logger")),
         "line_follow": lambda **kw: LoggingMode("line_follow", logger=kw.get("logger")),
-        "avoid_obstacles": lambda **kw: LoggingMode("avoid_obstacles", logger=kw.get("logger")),
+        "avoid_obstacles": lambda **kw: ObstacleAvoidanceMode(logger=kw.get("logger")),
         "edge_detect": lambda **kw: LoggingMode("edge_detect", logger=kw.get("logger")),
         "waypoints": lambda **kw: WaypointMode(logger=kw.get("logger")),
         "color_track": lambda **kw: LoggingMode("color_track", logger=kw.get("logger")),
