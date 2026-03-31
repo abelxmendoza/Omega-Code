@@ -42,6 +42,9 @@ from typing import Set, Optional
 
 log = logging.getLogger(__name__)
 
+# Latest ultrasonic reading shared with obstacle avoidance (avoids opening sensor twice)
+_bridge_latest_distance_cm: float | None = None
+
 _rclpy_ok = False
 try:
     import rclpy
@@ -95,11 +98,13 @@ class OmegaSensorBridge:
     def create(cls, loop: asyncio.AbstractEventLoop) -> 'OmegaSensorBridge':
         """
         Create and start the sensor bridge.
-        Returns a no-op instance if rclpy is unavailable.
+        Falls back to direct hardware polling when rclpy is unavailable.
         """
         if not _rclpy_ok:
-            log.info('Sensor bridge: rclpy absent -- running as no-op')
-            return cls(loop, None, None)
+            log.info('Sensor bridge: rclpy absent -- using direct hardware polling')
+            bridge = cls(loop, None, None)
+            bridge._start_hardware_polling()
+            return bridge
 
         try:
             if not rclpy.ok():
@@ -197,6 +202,49 @@ class OmegaSensorBridge:
                 self._loop.call_soon_threadsafe(q.put_nowait, data)
             except Exception:
                 pass
+
+    # ------------------------------------------------------------------
+    # Direct hardware polling (no ROS2)
+    # ------------------------------------------------------------------
+
+    def _start_hardware_polling(self) -> None:
+        """Poll ultrasonic sensor directly at ~10 Hz when ROS2 is unavailable."""
+        try:
+            from sensors.ultrasonic_sensor import Ultrasonic
+            sensor = Ultrasonic()
+            self._enabled = True
+            log.info('Sensor bridge: direct hardware polling started (ultrasonic)')
+
+            def _poll():
+                global _bridge_latest_distance_cm
+                try:
+                    while True:
+                        dist_cm = sensor.get_distance()
+                        if dist_cm > 0:
+                            _bridge_latest_distance_cm = dist_cm
+                            dist_m = round(dist_cm / 100.0, 3)
+                            data = {
+                                'type': 'ultrasonic',
+                                'distance_m': dist_m,
+                                'distance_cm': round(dist_cm, 1),
+                                'distance_inch': round(dist_m * 39.3701, 1),
+                                'ts': int(time.time() * 1000),
+                            }
+                            self._fan_out(self._us_queues, data)
+                        time.sleep(0.1)  # 10 Hz
+                except Exception as exc:
+                    log.warning('Sensor hardware poll error: %s', exc)
+                finally:
+                    try:
+                        sensor.close()
+                    except Exception:
+                        pass
+
+            thread = threading.Thread(target=_poll, daemon=True, name='sensor_hw_poll')
+            thread.start()
+
+        except Exception as exc:
+            log.warning('Direct hardware polling unavailable: %s', exc)
 
     # ------------------------------------------------------------------
     # Lifecycle

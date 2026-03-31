@@ -105,19 +105,39 @@ class ObstacleAvoidanceMode(AutonomyModeHandler):
             from sensors.ultrasonic_sensor import Ultrasonic
             return Ultrasonic()
         except Exception as e:
-            self.logger.error("Failed to open ultrasonic sensor: %s", e)
+            self.logger.error("Failed to open ultrasonic sensor: %s", e, exc_info=True)
             return None
 
-    def _loop(self):
-        sensor = self._get_sensor()
-        if sensor is None:
-            self.logger.error("No ultrasonic sensor — aborting obstacle avoidance")
-            self._state = "error"
-            return
+    def _get_distance_from_bridge(self) -> float:
+        """Try to read latest distance from the sensor bridge shared state."""
+        try:
+            from api.sensor_bridge import _bridge_latest_distance_cm
+            v = _bridge_latest_distance_cm
+            return v if v is not None and v > 0 else -1.0
+        except Exception:
+            return -1.0
 
+    def _loop(self):
+        # Prefer bridge shared reading to avoid opening GPIO twice.
+        # Fall back to a direct sensor instance only if bridge isn't polling.
         bridge = self._get_bridge()
         if bridge is None:
             self.logger.warning("No movement bridge — avoidance will log only")
+
+        # Check if bridge is already polling
+        try:
+            from api.sensor_bridge import _bridge_latest_distance_cm as _check
+            use_bridge = _check is not None or True  # bridge module loaded
+            sensor = None
+            self.logger.info("Using sensor bridge shared reading")
+        except Exception:
+            use_bridge = False
+            sensor = self._get_sensor()
+            if sensor is None:
+                self.logger.error("No ultrasonic sensor — aborting obstacle avoidance")
+                self._state = "error"
+                return
+            self.logger.info("Using direct sensor instance")
 
         period = 1.0 / self._poll_hz
         self._state = "moving"
@@ -127,9 +147,11 @@ class ObstacleAvoidanceMode(AutonomyModeHandler):
             while not self._stop_event.is_set():
                 t0 = time.monotonic()
 
-                dist = sensor.get_distance()
+                if use_bridge:
+                    dist = self._get_distance_from_bridge()
+                else:
+                    dist = sensor.get_distance()
                 if dist < 0:
-                    # Bad reading — treat as clear
                     dist = 999.0
                 self._distance_cm = dist
 
@@ -158,7 +180,8 @@ class ObstacleAvoidanceMode(AutonomyModeHandler):
                 self._stop_event.wait(sleep_for)
 
         finally:
-            sensor.close()
+            if sensor:
+                sensor.close()
             if bridge:
                 bridge.stop()
             self._state = "idle"
