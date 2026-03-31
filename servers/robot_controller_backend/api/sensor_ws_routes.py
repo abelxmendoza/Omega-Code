@@ -25,6 +25,7 @@ Thread model:
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -38,6 +39,47 @@ except Exception:
     _led_controller = None
     _apply_lighting_mode = None
     _LED_AVAILABLE = False
+
+# --- Cancellable LED pattern worker ---
+# Each new command gets its own stop_event; we signal the previous one before starting.
+_led_stop: threading.Event | None = None
+_led_thread: threading.Thread | None = None
+
+
+def _start_led_pattern(data: dict) -> None:
+    """Stop any running pattern and start a new one in a daemon thread."""
+    global _led_stop, _led_thread
+
+    # Signal previous pattern to stop
+    old_stop = _led_stop
+    if old_stop:
+        old_stop.set()
+
+    # Give the old thread a brief window to exit (handles short sleep patterns)
+    old_thread = _led_thread
+    if old_thread and old_thread.is_alive():
+        old_thread.join(timeout=0.15)
+
+    # Fresh stop event for the new pattern
+    stop_ev = threading.Event()
+    _led_stop = stop_ev
+
+    def _run() -> None:
+        try:
+            _apply_lighting_mode(data, _led_controller, stop_event=stop_ev)
+        except Exception as exc:
+            log.warning("LED pattern thread error: %s", exc)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    _led_thread = t
+
+
+def _stop_led_now() -> None:
+    """Signal the running LED pattern to stop immediately."""
+    global _led_stop
+    if _led_stop:
+        _led_stop.set()
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -212,9 +254,13 @@ async def ws_lighting(websocket: WebSocket):
             if _LED_AVAILABLE:
                 try:
                     if pattern == 'off':
+                        # Stop any running pattern, then clear the strip
+                        _stop_led_now()
                         await asyncio.to_thread(_led_controller.clear_strip)
                     else:
-                        await asyncio.to_thread(_apply_lighting_mode, data, _led_controller)
+                        # Fire-and-forget in a background thread so the WS
+                        # handler can immediately process the next command.
+                        _start_led_pattern(data)
                     led_ok = True
                 except Exception as exc:
                     led_error = str(exc)

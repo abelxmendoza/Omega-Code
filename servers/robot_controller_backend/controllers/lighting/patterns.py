@@ -16,11 +16,25 @@ import math
 import time
 import sys
 from time import sleep
-from typing import Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 from functools import lru_cache
+import threading
 
 import numpy as np
 from rpi_ws281x import Color
+
+
+def _interruptible_sleep(seconds: float, stop_event: Optional[threading.Event] = None) -> bool:
+    """Sleep for up to `seconds`. Returns True early if stop_event is set."""
+    if stop_event is None:
+        sleep(seconds)
+        return False
+    end = time.time() + seconds
+    while time.time() < end:
+        if stop_event.is_set():
+            return True
+        sleep(min(0.05, end - time.time()))
+    return False
 
 
 def _scale_rgb(rgb, scale, brightness):
@@ -172,7 +186,7 @@ def dual_color(strip, color1, color2=Color(0,0,0), orientation="alternate"):
     
     strip.show()
 
-def fade(strip, color1, color2=None, steps=50, delay=0.01):
+def fade(strip, color1, color2=None, steps=50, delay=0.01, stop_event=None):
     """
     Fade from black to color1, or from color1 to color2 if provided.
     Args:
@@ -181,10 +195,13 @@ def fade(strip, color1, color2=None, steps=50, delay=0.01):
         color2: Tuple (r,g,b) as the second color (optional).
         steps: Number of fade steps.
         delay: Time delay between steps.
+        stop_event: threading.Event — set it to interrupt the pattern early.
     """
     def lerp(a, b, t):
         return int(a + (b - a) * t)
     for step in range(steps):
+        if stop_event and stop_event.is_set():
+            return
         t = step / steps
         if color2:
             # Fade between color1 and color2
@@ -202,7 +219,7 @@ def fade(strip, color1, color2=None, steps=50, delay=0.01):
         strip.show()
         sleep(delay)
 
-def blink(strip, color1, color2=Color(0,0,0), delay=0.5):
+def blink(strip, color1, color2=Color(0,0,0), delay=0.5, stop_event=None):
     """
     Blink all LEDs with color1, then color2 (or off if color2 not given).
     Args:
@@ -210,14 +227,19 @@ def blink(strip, color1, color2=Color(0,0,0), delay=0.5):
         color1: First Color object.
         color2: Second Color object (or off).
         delay: Time for each color.
+        stop_event: threading.Event — set it to interrupt the pattern early.
     """
     for _ in range(10):
+        if stop_event and stop_event.is_set():
+            return
         color_wipe(strip, color1)
-        sleep(delay)
+        if _interruptible_sleep(delay, stop_event):
+            return
         color_wipe(strip, color2)
-        sleep(delay)
+        if _interruptible_sleep(delay, stop_event):
+            return
 
-def chase(strip, color1, color2=Color(0,0,0), delay=0.05):
+def chase(strip, color1, color2=Color(0,0,0), delay=0.05, stop_event=None):
     """
     Optimized chase effect - create a moving chase with optional background color.
     Args:
@@ -225,11 +247,14 @@ def chase(strip, color1, color2=Color(0,0,0), delay=0.05):
         color1: Color object for chasing pixel.
         color2: Background Color object.
         delay: Time for each move.
+        stop_event: threading.Event — set it to interrupt the pattern early.
     """
     try:
         num_pixels = strip.numPixels()
         # Pre-fill with background color, then update chasing pixel
         for i in range(num_pixels):
+            if stop_event and stop_event.is_set():
+                return
             # Fill all with background first
             for j in range(num_pixels):
                 strip.setPixelColor(j, color2)
@@ -241,13 +266,14 @@ def chase(strip, color1, color2=Color(0,0,0), delay=0.05):
         print(f"❌ [ERROR] chase failed: {e}", file=sys.stderr)
         raise
 
-def rainbow(strip, wait_ms=20, iterations=1):
+def rainbow(strip, wait_ms=20, iterations=1, stop_event=None):
     """
     Optimized rainbow - display a rainbow across the strip with cached calculations.
     Args:
         strip: The initialized NeoPixel strip object.
         wait_ms: Delay between color changes.
         iterations: Number of rainbow cycles.
+        stop_event: threading.Event — set it to interrupt the pattern early.
     """
     @lru_cache(maxsize=256)
     def wheel(pos):
@@ -261,12 +287,14 @@ def rainbow(strip, wait_ms=20, iterations=1):
         else:
             pos -= 170
             return Color(0, pos * 3, 255 - pos * 3)
-    
+
     try:
         num_pixels = strip.numPixels()
         wait_sec = max(0.01, wait_ms / 1000.0)  # Pre-compute wait time
-        
+
         for j in range(256 * iterations):
+            if stop_event and stop_event.is_set():
+                return
             for i in range(num_pixels):
                 strip.setPixelColor(i, wheel((i + j) & 255))
             strip.show()
@@ -328,6 +356,7 @@ def music_visualizer(
     update_ms: int = 80,
     duration_s: float = 8.0,
     sample_rate: int = 44100,
+    stop_event: Optional[threading.Event] = None,
 ) -> None:
     """Animate LEDs so they "dance" in response to music captured from the microphone.
 
@@ -394,6 +423,8 @@ def music_visualizer(
 
     end_time = time.time() + duration
     while time.time() < end_time:
+        if stop_event and stop_event.is_set():
+            return
         amplitude = capture_level()
         if amplitude < 0:
             fallback_phase += update_sec * 2.0
@@ -417,7 +448,7 @@ def music_visualizer(
         offset = (offset + 1) % num_pixels
         time.sleep(update_sec)
 
-def lightshow(strip, base_rgb, interval_ms=100, brightness=1.0, cycles=3):
+def lightshow(strip, base_rgb, interval_ms=100, brightness=1.0, cycles=3, stop_event=None):
     """Create a multi-stage lightshow using the provided base color.
 
     The effect blends rotating color bands derived from ``base_rgb`` with
@@ -450,8 +481,12 @@ def lightshow(strip, base_rgb, interval_ms=100, brightness=1.0, cycles=3):
     total_cycles = max(1, cycles)
 
     for cycle in range(total_cycles):
+        if stop_event and stop_event.is_set():
+            return
         # Rotating bands derived from the palette
         for offset in range(num_pixels):
+            if stop_event and stop_event.is_set():
+                return
             for i in range(num_pixels):
                 strip.setPixelColor(i, palette[(i + offset + cycle) % len(palette)])
             strip.show()
@@ -459,6 +494,8 @@ def lightshow(strip, base_rgb, interval_ms=100, brightness=1.0, cycles=3):
 
         # Sparkle sweep to add extra movement/highlights
         for offset in range(num_pixels):
+            if stop_event and stop_event.is_set():
+                return
             for i in range(num_pixels):
                 strip.setPixelColor(i, palette[(i + offset + cycle) % len(palette)])
             strip.setPixelColor((offset * 2) % num_pixels, sparkle)
@@ -472,6 +509,7 @@ def rave_mode(
     brightness: float = 1.0,
     interval_ms: int = 50,
     duration_s: float = 30.0,
+    stop_event: Optional[threading.Event] = None,
 ) -> None:
     """Create an energetic "rave mode" dancing lights effect.
     
@@ -525,8 +563,10 @@ def rave_mode(
     color_index = 0
     
     end_time = time.time() + duration
-    
+
     while time.time() < end_time:
+        if stop_event and stop_event.is_set():
+            return
         phase += update_sec * 4.0  # Fast phase progression
         strobe_counter += 1
         
@@ -567,6 +607,7 @@ def breathing(
     brightness: float = 1.0,
     interval_ms: int = 50,
     cycles: int = 5,
+    stop_event: Optional[threading.Event] = None,
 ) -> None:
     """Smooth breathing effect - like a gentle pulse.
     
@@ -590,8 +631,12 @@ def breathing(
     base_color = tuple(int(c * brightness) for c in base_rgb)
     
     for cycle in range(cycles):
+        if stop_event and stop_event.is_set():
+            return
         # Breathe in (fade up)
         for step in range(0, 101, 2):
+            if stop_event and stop_event.is_set():
+                return
             scale = step / 100.0
             # Smooth curve using ease-in-out
             eased = scale * scale * (3.0 - 2.0 * scale)
@@ -602,10 +647,13 @@ def breathing(
             for i in range(num_pixels):
                 strip.setPixelColor(i, color)
             strip.show()
-            time.sleep(update_sec * 2)
-        
+            if _interruptible_sleep(update_sec * 2, stop_event):
+                return
+
         # Breathe out (fade down)
         for step in range(100, -1, -2):
+            if stop_event and stop_event.is_set():
+                return
             scale = step / 100.0
             eased = scale * scale * (3.0 - 2.0 * scale)
             r = int(base_color[0] * eased)
@@ -615,7 +663,8 @@ def breathing(
             for i in range(num_pixels):
                 strip.setPixelColor(i, color)
             strip.show()
-            time.sleep(update_sec * 2)
+            if _interruptible_sleep(update_sec * 2, stop_event):
+                return
 
 
 def aurora(
@@ -624,6 +673,7 @@ def aurora(
     brightness: float = 1.0,
     interval_ms: int = 80,
     duration_s: float = 20.0,
+    stop_event: Optional[threading.Event] = None,
 ) -> None:
     """Aurora effect - flowing, wave-like colors like northern lights.
     
@@ -658,8 +708,10 @@ def aurora(
     
     phase = 0.0
     end_time = time.time() + duration
-    
+
     while time.time() < end_time:
+        if stop_event and stop_event.is_set():
+            return
         phase += update_sec * 0.5  # Slow, flowing movement
         
         for i in range(num_pixels):
@@ -692,6 +744,7 @@ def matrix_rain(
     brightness: float = 1.0,
     interval_ms: int = 100,
     duration_s: float = 15.0,
+    stop_event: Optional[threading.Event] = None,
 ) -> None:
     """Matrix-style rain effect - falling columns of light.
     
@@ -722,8 +775,10 @@ def matrix_rain(
     drop_counter = 0
     
     end_time = time.time() + duration
-    
+
     while time.time() < end_time:
+        if stop_event and stop_event.is_set():
+            return
         # Clear strip
         for i in range(num_pixels):
             strip.setPixelColor(i, Color(0, 0, 0))
@@ -771,6 +826,7 @@ def fire_effect(
     brightness: float = 1.0,
     interval_ms: int = 50,
     duration_s: float = 20.0,
+    stop_event: Optional[threading.Event] = None,
 ) -> None:
     """Fire effect - flickering flames with orange/red/yellow colors.
     
@@ -795,8 +851,10 @@ def fire_effect(
     heat = [0] * num_pixels
     
     end_time = time.time() + duration
-    
+
     while time.time() < end_time:
+        if stop_event and stop_event.is_set():
+            return
         # Cool down every cell a little
         for i in range(num_pixels):
             cooling = (i * 7) / num_pixels + 2
@@ -901,7 +959,7 @@ def status_indicator(
         color_wipe(strip, Color(*color))
 
 
-def omega_signature(strip, wait_ms=20, brightness=0.5):
+def omega_signature(strip, wait_ms=20, brightness=0.5, stop_event=None):
     """
     Omega Technologies Signature Pattern:
     
@@ -950,6 +1008,8 @@ def omega_signature(strip, wait_ms=20, brightness=0.5):
         # Very low brightness, slow fade (~3s), looks like robot powering on
         steps = 60
         for step in range(steps):
+            if stop_event and stop_event.is_set():
+                return
             # Interpolate black → void purple
             t = step / steps
             r = int(BLACK[0] * (1 - t) + VOID_PURPLE[0] * t)
@@ -957,10 +1017,12 @@ def omega_signature(strip, wait_ms=20, brightness=0.5):
             b = int(BLACK[2] * (1 - t) + VOID_PURPLE[2] * t)
             fill((r, g, b))
             time.sleep(0.05)  # ~3 seconds total
-        
+
         # --- Stage 2: Omega Surge (void purple → electric purple shimmer wave) ---
         # Shimmer wave runs down the LED strip, smooth, controlled, cyberpunk look
         for offset in range(total_pixels * 2):
+            if stop_event and stop_event.is_set():
+                return
             for i in range(total_pixels):
                 # Create shimmer effect: every 12th pixel group gets electric purple
                 if (i + offset) % 12 < 3:
@@ -982,25 +1044,35 @@ def omega_signature(strip, wait_ms=20, brightness=0.5):
         # 2 fast low-brightness flashes, 1 slow long flash, returns to purple
         heartbeats = [0.2, 0.2, 0.6]  # short, short, long
         for hb in heartbeats:
+            if stop_event and stop_event.is_set():
+                return
             fill(BLOOD_RED, scale=1.0)
-            time.sleep(hb)
+            if _interruptible_sleep(hb, stop_event):
+                return
             fill(OMEGA_PURPLE, scale=0.2)
-            time.sleep(0.2)
-        
+            if _interruptible_sleep(0.2, stop_event):
+                return
+
         # --- Stage 4: Steady Presence Mode (breathing purple/black loop) ---
         # Idle mode: slow, hypnotic breathing in Omega Purple
-        # This loops until the user stops it
+        # This loops until stop_event is set
         while True:
+            if stop_event and stop_event.is_set():
+                return
             # Breathe out (fade up)
             for step in range(50):
+                if stop_event and stop_event.is_set():
+                    return
                 scale = step / 50.0
                 # Smooth ease-in-out curve
                 eased = scale * scale * (3.0 - 2.0 * scale)
                 fill(OMEGA_PURPLE, scale=eased)
                 time.sleep(0.02)
-            
+
             # Breathe in (fade down)
             for step in range(50, -1, -1):
+                if stop_event and stop_event.is_set():
+                    return
                 scale = step / 50.0
                 eased = scale * scale * (3.0 - 2.0 * scale)
                 fill(OMEGA_PURPLE, scale=eased)

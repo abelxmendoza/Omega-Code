@@ -449,7 +449,9 @@ export default function Home() {
 
           {/* Zone 4: Performance Dashboard (full width below) */}
           <ErrorBoundary>
-            <PerformanceDashboard />
+            <div className="flex justify-center">
+              <PerformanceDashboard />
+            </div>
           </ErrorBoundary>
 
           <div className="flex justify-center">

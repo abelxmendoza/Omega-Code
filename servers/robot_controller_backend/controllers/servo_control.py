@@ -15,6 +15,7 @@ Arguments:
 import sys
 import os
 import logging
+import time
 import traceback
 
 # Configure logging
@@ -85,8 +86,10 @@ class Servo:
         try:
             self.PwmServo = PCA9685(0x40, debug=True)
             self.PwmServo.setPWMFreq(50)
-            self.PwmServo.setServoPulse(8, 1500)  # Horizontal servo
-            self.PwmServo.setServoPulse(9, 1500)  # Vertical servo
+            time.sleep(0.5)              # let PCA9685 stabilize after freq change
+            self.PwmServo.setServoPulse(8, 1500)  # Horizontal servo - neutral
+            self.PwmServo.setServoPulse(9, 1500)  # Vertical servo - neutral
+            time.sleep(0.1)              # hold neutral before releasing
             self.error_count = 0
             self.max_errors = 10
             logger.info("Servo controller initialized successfully")

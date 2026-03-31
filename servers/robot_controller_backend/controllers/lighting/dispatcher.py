@@ -51,17 +51,18 @@ _PATTERN_ALIASES = {
 }
 
 # Pattern routing dictionary for O(1) lookup instead of if/elif chain
+# Signature: (strip, c1, c2, interval, brightness, mode, orientation, stop_event)
 _PATTERN_HANDLERS = {
-    "static": lambda strip, c1, c2, i, b, m: (
-        dual_color(strip, Color(*c1), Color(*c2)) if m == "dual"
+    "static": lambda strip, c1, c2, i, b, m, o, se: (
+        dual_color(strip, Color(*c1), Color(*c2), orientation=o) if m == "dual"
         else color_wipe(strip, Color(*c1))
     ),
-    "fade": lambda strip, c1, c2, i, b, m: fade(strip, c1, c2, delay=i / 1000.0),
-    "blink": lambda strip, c1, c2, i, b, m: blink(strip, Color(*c1), Color(*c2), delay=i / 1000.0),
-    "chase": lambda strip, c1, c2, i, b, m: chase(strip, Color(*c1), Color(*c2), delay=i / 1000.0),
+    "fade":  lambda strip, c1, c2, i, b, m, o, se: fade(strip, c1, c2, delay=i / 1000.0, stop_event=se),
+    "blink": lambda strip, c1, c2, i, b, m, o, se: blink(strip, Color(*c1), Color(*c2), delay=i / 1000.0, stop_event=se),
+    "chase": lambda strip, c1, c2, i, b, m, o, se: chase(strip, Color(*c1), Color(*c2), delay=i / 1000.0, stop_event=se),
 }
 
-def apply_lighting_mode(payload: dict, led_controller):
+def apply_lighting_mode(payload: dict, led_controller, stop_event=None):
     """
     Optimized dispatcher with comprehensive error handling and validation.
     Routes the payload from the UI or API to the appropriate LED pattern function.
@@ -111,12 +112,13 @@ def apply_lighting_mode(payload: dict, led_controller):
         color2_scaled = tuple(int(channel * brightness) for channel in color2)
         
         strip = led_controller.strip
-        
+        orientation = payload.get("orientation", "alternate")
+
         # Optimized pattern routing with dictionary lookup
         if pattern == "lightshow" or mode == "lightshow":
-            lightshow(strip, color1, interval_ms=interval, brightness=brightness)
+            lightshow(strip, color1, interval_ms=interval, brightness=brightness, stop_event=stop_event)
         elif pattern == "rainbow" or mode == "rainbow":
-            rainbow(strip, wait_ms=interval)
+            rainbow(strip, wait_ms=interval, stop_event=stop_event)
         elif pattern in {"music", "music-reactive"}:
             update_ms = interval if interval > 0 else 80
             duration = max(8.0, update_ms / 1000.0 * 80)
@@ -126,6 +128,7 @@ def apply_lighting_mode(payload: dict, led_controller):
                 brightness=brightness,
                 update_ms=int(update_ms),
                 duration_s=duration,
+                stop_event=stop_event,
             )
         elif pattern == "rave":
             # Rave mode - energetic dancing lights (no audio required)
@@ -137,6 +140,7 @@ def apply_lighting_mode(payload: dict, led_controller):
                 brightness=brightness,
                 interval_ms=int(update_ms),
                 duration_s=duration,
+                stop_event=stop_event,
             )
         elif pattern == "breathing":
             # Breathing effect - smooth pulse
@@ -146,6 +150,7 @@ def apply_lighting_mode(payload: dict, led_controller):
                 brightness=brightness,
                 interval_ms=interval if interval > 0 else 50,
                 cycles=5,
+                stop_event=stop_event,
             )
         elif pattern == "aurora":
             # Aurora effect - flowing northern lights
@@ -157,6 +162,7 @@ def apply_lighting_mode(payload: dict, led_controller):
                 brightness=brightness,
                 interval_ms=int(update_ms),
                 duration_s=duration,
+                stop_event=stop_event,
             )
         elif pattern == "matrix":
             # Matrix rain effect
@@ -168,6 +174,7 @@ def apply_lighting_mode(payload: dict, led_controller):
                 brightness=brightness,
                 interval_ms=int(update_ms),
                 duration_s=duration,
+                stop_event=stop_event,
             )
         elif pattern == "fire":
             # Fire effect - flickering flames
@@ -178,6 +185,7 @@ def apply_lighting_mode(payload: dict, led_controller):
                 brightness=brightness,
                 interval_ms=int(update_ms),
                 duration_s=duration,
+                stop_event=stop_event,
             )
         elif pattern == "omega_signature":
             # Omega Technologies signature pattern - multi-stage brand showcase
@@ -185,9 +193,10 @@ def apply_lighting_mode(payload: dict, led_controller):
                 strip,
                 wait_ms=interval if interval > 0 else 20,
                 brightness=brightness,
+                stop_event=stop_event,
             )
         elif pattern in _PATTERN_HANDLERS:
-            _PATTERN_HANDLERS[pattern](strip, color1_scaled, color2_scaled, interval, brightness, mode)
+            _PATTERN_HANDLERS[pattern](strip, color1_scaled, color2_scaled, interval, brightness, mode, orientation, stop_event)
         else:
             raise ValueError(f"Unknown pattern: {pattern} (supported: static/solid, pulse/breathing, fade, blink, chase, rainbow, lightshow, music, rave, aurora, matrix, fire, omega_signature)")
             

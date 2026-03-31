@@ -305,6 +305,21 @@ Servo = None
 buzz_on = _noop_buzz_on
 buzz_off = _noop_buzz_off
 
+# Lazy servo accessor — defined here so it works in both SIM_MODE and hardware paths.
+# _ServoClass is set to the real Servo class in the hardware init block below;
+# in SIM_MODE, servo is already a _NoopServo instance so the body never runs.
+_ServoClass = None
+
+def _get_servo():
+    global servo
+    if servo is None:
+        try:
+            servo = _ServoClass() if _ServoClass is not None else _NoopServo()
+        except Exception as e:
+            warn("Servo init failed:", repr(e))
+            servo = _NoopServo()
+    return servo
+
 # Hardware initialization with proper logging and fallback order
 telemetry_enabled = False
 motor_driver_type = None
@@ -340,7 +355,11 @@ else:
             except ImportError:
                 from controllers.buzzer import setup_buzzer, buzz_on as _buzz_on, buzz_off as _buzz_off
         
-        servo = _Servo()
+        # Defer Servo() instantiation until first use so the PCA9685 is not
+        # touched at import time (avoids cold-start snap on omega-api startup).
+        _ServoClass = _Servo
+        servo = None
+
         buzz_on = _buzz_on
         buzz_off = _buzz_off
         
@@ -1158,7 +1177,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     delta = int(data.get("angle", 0))
                     current_horizontal_angle = clamp(current_horizontal_angle + delta, SERVO_MIN, SERVO_MAX)
                     try:
-                        servo.setServoPwm("horizontal", current_horizontal_angle)
+                        _get_servo().setServoPwm("horizontal", current_horizontal_angle)
                     except Exception as e:
                         elog("servo H failed:", repr(e))
                         raise
@@ -1172,7 +1191,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     delta = int(data.get("angle", 0))
                     current_vertical_angle = clamp(current_vertical_angle + delta, SERVO_MIN, SERVO_MAX)
                     try:
-                        servo.setServoPwm("vertical", current_vertical_angle)
+                        _get_servo().setServoPwm("vertical", current_vertical_angle)
                     except Exception as e:
                         elog("servo V failed:", repr(e))
                         raise
@@ -1190,10 +1209,10 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     else:
                         if h is not None:
                             current_horizontal_angle = clamp(int(h), SERVO_MIN, SERVO_MAX)
-                            servo.setServoPwm("horizontal", current_horizontal_angle)
+                            _get_servo().setServoPwm("horizontal", current_horizontal_angle)
                         if v is not None:
                             current_vertical_angle = clamp(int(v), SERVO_MIN, SERVO_MAX)
-                            servo.setServoPwm("vertical", current_vertical_angle)
+                            _get_servo().setServoPwm("vertical", current_vertical_angle)
                         await send_json(ws, ok(
                             "set-servo-position",
                             horizontal=current_horizontal_angle,
@@ -1206,8 +1225,8 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     # Horizontal: 90°, Vertical: 90°
                     current_horizontal_angle = 90
                     current_vertical_angle = 90
-                    servo.setServoPwm("horizontal", current_horizontal_angle)
-                    servo.setServoPwm("vertical", current_vertical_angle)
+                    _get_servo().setServoPwm("horizontal", current_horizontal_angle)
+                    _get_servo().setServoPwm("vertical", current_vertical_angle)
                     await send_json(ws, ok(
                         "reset-servo",
                         horizontal=current_horizontal_angle,
@@ -1218,7 +1237,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                 # camera nudge aliases
                 elif cmd == "camera-servo-left":
                     current_horizontal_angle = clamp(current_horizontal_angle - DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
-                    servo.setServoPwm("horizontal", current_horizontal_angle)
+                    _get_servo().setServoPwm("horizontal", current_horizontal_angle)
                     await send_json(ws, ok(
                         "camera-servo-left",
                         angle=current_horizontal_angle,
@@ -1227,7 +1246,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
 
                 elif cmd == "camera-servo-right":
                     current_horizontal_angle = clamp(current_horizontal_angle + DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
-                    servo.setServoPwm("horizontal", current_horizontal_angle)
+                    _get_servo().setServoPwm("horizontal", current_horizontal_angle)
                     await send_json(ws, ok(
                         "camera-servo-right",
                         angle=current_horizontal_angle,
@@ -1236,7 +1255,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
 
                 elif cmd == "camera-servo-up":
                     current_vertical_angle = clamp(current_vertical_angle + DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
-                    servo.setServoPwm("vertical", current_vertical_angle)
+                    _get_servo().setServoPwm("vertical", current_vertical_angle)
                     await send_json(ws, ok(
                         "camera-servo-up",
                         angle=current_vertical_angle,
@@ -1245,7 +1264,7 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
 
                 elif cmd == "camera-servo-down":
                     current_vertical_angle = clamp(current_vertical_angle - DEFAULT_SERVO_STEP, SERVO_MIN, SERVO_MAX)
-                    servo.setServoPwm("vertical", current_vertical_angle)
+                    _get_servo().setServoPwm("vertical", current_vertical_angle)
                     await send_json(ws, ok(
                         "camera-servo-down",
                         angle=current_vertical_angle,
@@ -1414,8 +1433,8 @@ async def main():
         try:
             current_horizontal_angle = 90
             current_vertical_angle = 90
-            servo.setServoPwm("horizontal", current_horizontal_angle)
-            servo.setServoPwm("vertical", current_vertical_angle)
+            _get_servo().setServoPwm("horizontal", current_horizontal_angle)
+            _get_servo().setServoPwm("vertical", current_vertical_angle)
             log(f"[MOVE][INIT] Servos centered: horizontal={current_horizontal_angle}°, vertical={current_vertical_angle}°")
         except Exception as e:
             warn(f"[MOVE][INIT] Failed to center servos on startup: {e}")

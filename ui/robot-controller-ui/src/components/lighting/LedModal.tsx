@@ -70,15 +70,10 @@ type ServerStatus = 'connecting' | 'connected' | 'disconnected';
 
 // Dual color orientations (for LEDs arranged around chassis perimeter)
 const DUAL_ORIENTATIONS = [
-  'alternate',     // Every other LED alternates colors
-  'front_back',    // Front & back edges vs left & right edges
-  'left_right',    // Left & right edges vs front & back edges
-  'sides',         // Each side alternates (front/back=color1, left/right=color2)
-  'corners',       // Corner LEDs vs edge LEDs
-  'center_edge',   // Center of each side vs edges of each side
-  'gradient',      // Smooth transition around perimeter
-  'segments',      // 4 segments alternating
-  'thirds',        // 3 segments alternating
+  'alternate',  // Every other LED alternates colors
+  'front_back', // Front & back vs left & right sides
+  'corners',    // Corner LEDs vs edge LEDs
+  'segments',   // 4 segments alternating
 ] as const;
 
 type DualOrientation = (typeof DUAL_ORIENTATIONS)[number];
@@ -746,19 +741,14 @@ const LedModal: React.FC<LedModalProps> = ({ isOpen, onClose }) => {
                   setDualOrientation(e.target.value as DualOrientation);
                 }}
                 className="w-full bg-[#1A1A1A] text-[#E0E0E0] p-2.5 rounded-lg border border-[#C400FF]/30 focus:border-[#C400FF] focus:ring-2 focus:ring-[#C400FF]/50 transition-all"
-                style={{ 
+                style={{
                   boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 10px rgba(196, 0, 255, 0.1)'
                 }}
               >
                 <option value="alternate" className="bg-[#1A1A1A]">Alternate (Every Other LED)</option>
-                <option value="front_back" className="bg-[#1A1A1A]">Front/Back Edges vs Left/Right</option>
-                <option value="left_right" className="bg-[#1A1A1A]">Left/Right Edges vs Front/Back</option>
-                <option value="sides" className="bg-[#1A1A1A]">Sides Alternate (Front/Back vs Left/Right)</option>
+                <option value="front_back" className="bg-[#1A1A1A]">Front/Back vs Left/Right Sides</option>
                 <option value="corners" className="bg-[#1A1A1A]">Corners vs Edges</option>
-                <option value="center_edge" className="bg-[#1A1A1A]">Center of Each Side vs Edges</option>
-                <option value="gradient" className="bg-[#1A1A1A]">Gradient (Smooth Around Perimeter)</option>
                 <option value="segments" className="bg-[#1A1A1A]">Segments (4 Sections)</option>
-                <option value="thirds" className="bg-[#1A1A1A]">Thirds (3 Sections)</option>
               </select>
             </div>
           )}
