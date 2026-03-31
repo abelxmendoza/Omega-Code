@@ -14,7 +14,7 @@
 
 'use client';
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { CheckCircle, XCircle, Wifi, SlidersHorizontal, Download, Activity } from 'lucide-react';
@@ -295,63 +295,92 @@ interface LatencyMetrics {
   };
 }
 
-function useLatencyMetrics(intervalMs = 1000) {
+// Latency polling: base interval 30s (was 1s = 120 req/min hitting dead endpoints).
+// Circuit breaker: after 3 consecutive failures, back off to 60s.
+const LATENCY_BASE_INTERVAL   = 30_000;
+const LATENCY_BACKOFF_INTERVAL = 60_000;
+const LATENCY_FAILURE_THRESHOLD = 3;
+
+function useLatencyMetrics(intervalMs = LATENCY_BASE_INTERVAL) {
   const [metrics, setMetrics] = useState<LatencyMetrics>({});
   const [loading, setLoading] = useState(true);
+  const failureCountRef = useRef(0);
+  const activeIntervalRef = useRef(intervalMs);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchLatency = useCallback(async () => {
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), 2000);
+    let fetchFailed = false;
     try {
-      // Fetch Pi-only latency
       const piRes = await fetch('/api/video-proxy/latency', {
         method: 'GET',
         signal: ac.signal,
         cache: 'no-store',
       }).catch(() => null);
-      
+
       let piData: any = null;
       if (piRes?.ok) {
-        try {
-          piData = await piRes.json();
-        } catch {}
+        try { piData = await piRes.json(); } catch {}
       }
 
-      // Fetch hybrid latency
       const hybridRes = await fetch('/api/video-proxy/latency/hybrid', {
         method: 'GET',
         signal: ac.signal,
         cache: 'no-store',
       }).catch(() => null);
-      
+
       let hybridData: any = null;
       if (hybridRes?.ok) {
-        try {
-          hybridData = await hybridRes.json();
-        } catch {}
+        try { hybridData = await hybridRes.json(); } catch {}
       }
 
-      setMetrics({
-        piOnly: piData?.latencies_ms || undefined,
-        hybrid: hybridData?.ok ? {
-          round_trip_ms: hybridData.round_trip_ms,
-          inference_ms: hybridData.inference_ms,
-        } : undefined,
-      });
-    } catch (e) {
-      // Silently fail - latency is optional
+      const anyOk = piRes?.ok || hybridRes?.ok;
+      if (anyOk) {
+        failureCountRef.current = 0;
+        setMetrics({
+          piOnly: piData?.latencies_ms || undefined,
+          hybrid: hybridData?.ok ? {
+            round_trip_ms: hybridData.round_trip_ms,
+            inference_ms: hybridData.inference_ms,
+          } : undefined,
+        });
+      } else {
+        fetchFailed = true;
+      }
+    } catch {
+      fetchFailed = true;
     } finally {
       clearTimeout(t);
       setLoading(false);
     }
-  }, []);
+
+    // Circuit breaker: escalate interval on repeated failures
+    if (fetchFailed) {
+      failureCountRef.current += 1;
+      if (failureCountRef.current >= LATENCY_FAILURE_THRESHOLD &&
+          activeIntervalRef.current !== LATENCY_BACKOFF_INTERVAL) {
+        activeIntervalRef.current = LATENCY_BACKOFF_INTERVAL;
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = setInterval(() => { void fetchLatency(); }, LATENCY_BACKOFF_INTERVAL);
+      }
+    } else if (activeIntervalRef.current !== intervalMs) {
+      // Recover: reset to base interval
+      activeIntervalRef.current = intervalMs;
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = setInterval(() => { void fetchLatency(); }, intervalMs);
+    }
+  }, [intervalMs]);
 
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | null = null;
     let mounted = true;
+    activeIntervalRef.current = intervalMs;
     (async () => { if (mounted) await fetchLatency(); })();
-    timer = setInterval(() => { void fetchLatency(); }, intervalMs);
-    return () => { mounted = false; if (timer) clearInterval(timer); };
+    timerRef.current = setInterval(() => { void fetchLatency(); }, intervalMs);
+    return () => {
+      mounted = false;
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, [fetchLatency, intervalMs]);
 
   return { metrics, loading };
@@ -405,8 +434,8 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false,
   // Net summary
   const netSummary = useNetSummary(8000);
 
-  // Latency metrics
-  const latencyMetrics = useLatencyMetrics(1000);
+  // Latency metrics — 30s base interval with circuit breaker (was 1s)
+  const latencyMetrics = useLatencyMetrics(LATENCY_BASE_INTERVAL);
 
   const states = [move.status, ultra.status, line.status, light.status, video.status] as const;
   const upCount = states.filter((s) => s === 'connected').length;

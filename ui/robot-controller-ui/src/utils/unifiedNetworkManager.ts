@@ -57,7 +57,9 @@ class UnifiedNetworkManager {
 
   constructor() {
     this.initializeProfiles();
-    this.startPeriodicTesting();
+    // Periodic auto-testing disabled: it made direct cross-origin fetch() calls to robot IPs
+    // (CORS-blocked) and declared all profiles unavailable, causing 429s and connection thrashing.
+    // Call testAllProfiles() manually if needed from a diagnostics UI.
   }
 
   private initializeProfiles(): void {
@@ -259,40 +261,31 @@ class UnifiedNetworkManager {
 
   private async testProfile(profile: NetworkProfile): Promise<NetworkTestResult> {
     const startTime = Date.now();
-    
+
+    // Route through the Next.js same-origin proxy to avoid CORS.
+    // Direct fetches to http://robot-ip:8000/... are blocked by the browser.
+    const proxyUrl = `/api/health-check?target=${encodeURIComponent(profile.httpEndpoints.gateway)}`;
+
     try {
-      // logDebug: profile test logging suppressed to reduce noise when robot is offline
-      
-      // Test HTTP connectivity first
-      const response = await fetch(profile.httpEndpoints.performance, {
+      const response = await fetch(proxyUrl, {
         method: 'GET',
-        signal: AbortSignal.timeout(profile.optimization.timeout)
+        signal: AbortSignal.timeout(profile.optimization.timeout),
       });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const endTime = Date.now();
-      const latency = endTime - startTime;
-
-      // Test bandwidth
-      const data = await response.text();
-      const bandwidth = (data.length * 1000) / latency;
-
-      console.log(`[UnifiedNetworkManager] Profile ${profile.name} test successful: ${latency}ms latency`);
-
+      const latency = Date.now() - startTime;
       return {
         profile,
         success: true,
         latency,
-        bandwidth,
-        stability: 100, // Simplified for now
-        testDuration: Date.now() - startTime
+        bandwidth: 0,
+        stability: 100,
+        testDuration: latency,
       };
-
     } catch (error) {
-      console.warn(`[UnifiedNetworkManager] Profile ${profile.name} test failed:`, error instanceof Error ? error.message : String(error));
       return {
         profile,
         success: false,
@@ -300,23 +293,19 @@ class UnifiedNetworkManager {
         bandwidth: 0,
         stability: 0,
         error: String(error),
-        testDuration: Date.now() - startTime
+        testDuration: Date.now() - startTime,
       };
     }
   }
 
   private async pingProfile(profile: NetworkProfile): Promise<number> {
     const startTime = performance.now();
-    
-    const response = await fetch(profile.httpEndpoints.performance, {
+    const proxyUrl = `/api/health-check?target=${encodeURIComponent(profile.httpEndpoints.gateway)}`;
+    const response = await fetch(proxyUrl, {
       method: 'GET',
-      signal: AbortSignal.timeout(profile.optimization.timeout)
+      signal: AbortSignal.timeout(profile.optimization.timeout),
     });
-
-    if (!response.ok) {
-      throw new Error(`Ping failed: ${response.status}`);
-    }
-
+    if (!response.ok) throw new Error(`Ping failed: ${response.status}`);
     return performance.now() - startTime;
   }
 

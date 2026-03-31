@@ -158,8 +158,8 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
   });
   
   // Speed tracking (PWM 0-4095, percentage 0-100)
-  // Default to 800 PWM (matches backend calm default) = ~20%
-  const [speed, setSpeed] = useState<number>(800); // Default calm speed matches backend
+  // Default to 1800 PWM (matches backend CALM_DEFAULT_SPEED) = ~44%
+  const [speed, setSpeed] = useState<number>(1800); // Default calm speed matches backend
   const speedPct = Math.round((speed / 4095) * 100);
   
   // Movement V2 data
@@ -462,8 +462,9 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         cleanupHeartbeat();
 
         if (shouldReconnect.current) {
-          // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
-          const delay = Math.min(backoffRef.current, 30000);
+          // Exponential backoff + jitter: prevents reconnect storms when multiple
+          // subsystems disconnect simultaneously (e.g., on backend restart).
+          const delay = Math.min(backoffRef.current, 30000) + Math.random() * 500;
           reconnectTimer.current = setTimeout(connectAndSetup, delay);
           backoffRef.current = Math.min(backoffRef.current * 2, 30000);
         }
@@ -495,8 +496,8 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
             addCommand(`WebSocket offline — retrying in background`);
           }
 
-          // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
-          const delay = Math.min(backoffRef.current, 30000);
+          // Exponential backoff + jitter
+          const delay = Math.min(backoffRef.current, 30000) + Math.random() * 500;
           reconnectTimer.current = setTimeout(connectAndSetup, delay);
           backoffRef.current = Math.min(backoffRef.current * 2, 30000);
         });

@@ -297,13 +297,15 @@ class _NoopMotor:
 class _NoopServo:
     def setServoPwm(self, axis: str, angle: int): log(f"NOOP servo[{axis}] -> {angle}")
 
-def _noop_buzz_on():  log("NOOP buzz_on")
-def _noop_buzz_off(): log("NOOP buzz_off")
+def _noop_buzz_on():    log("NOOP buzz_on")
+def _noop_buzz_off():   log("NOOP buzz_off")
+def _noop_setup_buzzer(): log("NOOP setup_buzzer")
 
 Motor = None
 Servo = None
-buzz_on = _noop_buzz_on
-buzz_off = _noop_buzz_off
+buzz_on       = _noop_buzz_on
+buzz_off      = _noop_buzz_off
+setup_buzzer  = _noop_setup_buzzer
 
 # Lazy servo accessor — defined here so it works in both SIM_MODE and hardware paths.
 # _ServoClass is set to the real Servo class in the hardware init block below;
@@ -360,14 +362,15 @@ else:
         _ServoClass = _Servo
         servo = None
 
-        buzz_on = _buzz_on
+        buzz_on  = _buzz_on
         buzz_off = _buzz_off
-        
+        # setup_buzzer is already the real function (imported above without alias)
+
         # Try to initialize buzzer safely
         try:
             setup_buzzer()
         except Exception as e:
-            warn("buzzer setup failed (continuing):", repr(e))
+            warn("buzzer setup failed (will retry on first buzz):", repr(e))
         
         # Now try motor initialization in priority order
         # Priority 1: MotorTelemetryController (with telemetry)
@@ -568,7 +571,7 @@ def _servo_state_payload(horizontal: int, vertical: int) -> dict:
     }
 DEFAULT_SPEED_STEP   = 200
 DEFAULT_SERVO_STEP   = 5
-CALM_DEFAULT_SPEED   = 800   # ~20% — low calm starting speed
+CALM_DEFAULT_SPEED   = 1800  # ~44% — calm but above motor stall torque
 
 current_speed             = CALM_DEFAULT_SPEED
 current_horizontal_angle  = 90   # Updated to match current position
@@ -664,6 +667,7 @@ async def buzz_on_safe():
     global buzzer_on_state
     async with buzzer_lock:
         try:
+            setup_buzzer()  # idempotent — re-runs GPIO.setup if pin was never configured
             buzz_on()
             buzzer_on_state = True
         except Exception as e:

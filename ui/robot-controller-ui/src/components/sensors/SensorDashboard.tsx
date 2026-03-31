@@ -283,11 +283,11 @@ const SensorDashboard: React.FC = () => {
             setUltraError(`Connection closed unexpectedly (code: ${code})`);
           }
           
-          // Try next candidate after a delay
+          // Try next candidate after a delay + jitter (prevents storm on backend restart)
           if (currentCandidateIndex < candidates.length - 1) {
             console.log(`[ULTRASONIC] Retrying with next candidate in 2s...`);
             currentCandidateIndex++;
-            reconnectTimeout = setTimeout(tryConnect, 2000);
+            reconnectTimeout = setTimeout(tryConnect, 2000 + Math.random() * 500);
           } else {
             console.error(`[ULTRASONIC] ❌ All connection attempts exhausted. Check:`);
             console.error(`[ULTRASONIC]   1. Server running: go run main_ultrasonic.go`);
@@ -301,10 +301,10 @@ const SensorDashboard: React.FC = () => {
         console.error(`[ULTRASONIC] ❌ Failed to create WebSocket for ${url}:`, errorMsg);
         setUltraError(`Failed to create connection: ${errorMsg}`);
         setUltraStatus('disconnected');
-        
+
         if (currentCandidateIndex < candidates.length - 1) {
           currentCandidateIndex++;
-          reconnectTimeout = setTimeout(tryConnect, 2000);
+          reconnectTimeout = setTimeout(tryConnect, 2000 + Math.random() * 500);
         } else {
           console.error(`[ULTRASONIC] ❌ All candidates failed. Last error: ${errorMsg}`);
           setUltraError(`All connection attempts failed: ${errorMsg}`);
