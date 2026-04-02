@@ -5,11 +5,38 @@ Provides REST endpoints for system mode management.
 """
 
 import logging
+import os
+import json as _json
+import urllib.request as _urllib_req
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 
 from video.system_state import get_system_state, SystemMode
+
+# video_server is a separate Flask process (port 5000).
+# We must notify it via HTTP whenever the mode changes, because Python
+# in-process singletons are not shared across OS process boundaries.
+_VIDEO_SERVER_URL = os.getenv("VIDEO_SERVER_URL", "http://127.0.0.1:5000")
+
+
+def _notify_video_server(mode: int) -> None:
+    """
+    Fire-and-forget POST to video_server /mode/set.
+    Runs in a thread-pool executor so it never blocks the async event loop.
+    Failure is non-fatal — video_server may not be running yet.
+    """
+    try:
+        body = _json.dumps({"mode": mode}).encode()
+        req = _urllib_req.Request(
+            f"{_VIDEO_SERVER_URL}/mode/set",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        _urllib_req.urlopen(req, timeout=1)
+    except Exception as exc:
+        log.warning("Could not notify video_server of mode change: %s", exc)
 
 # Try to import hybrid system manager (optional)
 try:
@@ -118,6 +145,12 @@ async def set_system_mode(request: SetModeRequest = Body(...)) -> Dict[str, Any]
                 detail="Failed to set system mode"
             )
         
+        # Notify video_server process of mode change (cross-process IPC via HTTP).
+        # video_server is a separate Flask process — its in-memory singleton is independent.
+        # Fire-and-forget via thread executor; failure is non-fatal.
+        import asyncio
+        asyncio.get_event_loop().run_in_executor(None, _notify_video_server, request.mode)
+
         # Also update hybrid system manager if available
         if HYBRID_SYSTEM_AVAILABLE and get_hybrid_system_manager is not None:
             try:
@@ -125,7 +158,7 @@ async def set_system_mode(request: SetModeRequest = Body(...)) -> Dict[str, Any]
                 hybrid_manager.set_manual_mode(request.mode)
             except Exception as e:
                 log.warning(f"Failed to update hybrid system manager: {e}")
-        
+
         # Get updated status
         status = system_state.get_status()
         

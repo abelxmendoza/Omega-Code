@@ -136,14 +136,12 @@ except Exception:
     ArUcoMarker = None
     HYBRID_SYSTEM_AVAILABLE = False
 
-# System state (vision mode selector)
-try:
-    from .system_state import get_system_state as _get_system_state
-except ImportError:
-    try:
-        from system_state import get_system_state as _get_system_state
-    except ImportError:
-        _get_system_state = None
+# Current vision mode — authoritative state for THIS process (video_server).
+# FastAPI (system_mode_routes) is a separate process; it notifies us via
+# POST /mode/set whenever the UI changes the mode. We store it here so
+# generate_frames() can read it without any IPC on every frame.
+# 0=Raw, 1=Motion, 2=Tracking, 3=Face, 4=ArUco, 5=PiRec, 6=YOLO, 7=Nav
+_vision_mode: int = 0
 
 # Local imports - try relative first, then absolute
 try:
@@ -697,8 +695,8 @@ def generate_frames():
                 # Check and auto-switch mode if needed
                 # hybrid_system_manager.check_and_auto_switch_mode()  # stubbed — method not implemented
             
-            # Resolve current vision mode (0=Raw, 1=Motion, 2=Tracking, 3=Faces, 4=ArUco, 5=Rec, 6=YOLO, 7=Nav)
-            _vision_mode = _get_system_state().get_current_mode() if _get_system_state is not None else 0
+            # _vision_mode is the module-level int set by POST /mode/set.
+            # Reading it here (no lock needed — GIL protects int reads on CPython).
 
             # Motion overlay (~15 fps max, hardware-aware) — mode 1 only
             motion_detected = False
@@ -784,8 +782,9 @@ def generate_frames():
                     return int(time.time() * 1e9)
             capture_timestamp_ns = time_ns()
             
-            # Frame overlays (timestamp, FPS, telemetry)
-            if ENABLE_OVERLAYS and frame_overlay is not None:
+            # Frame overlays (timestamp, FPS, telemetry).
+            # Skip in Raw (0) and Pi-Recording (5) — those modes must deliver clean frames.
+            if ENABLE_OVERLAYS and frame_overlay is not None and _vision_mode not in (0, 5):
                 try:
                     frame = frame_overlay.add_overlays(frame, capture_timestamp_ns=capture_timestamp_ns)
                 except Exception as e:
@@ -1011,6 +1010,29 @@ def start_tracking():
         return f"❌ Tracking failed: {e}", 500
 
 
+@app.post("/mode/set")
+def set_vision_mode():
+    """
+    Set the active vision mode for this process.
+    Called by FastAPI system_mode_routes on every UI mode change (IPC bridge).
+    JSON body: {"mode": 0-7}
+    """
+    global _vision_mode
+    data = request.get_json(force=True, silent=True) or {}
+    mode = data.get("mode")
+    if mode is None or not isinstance(mode, int) or not (0 <= mode <= 7):
+        return jsonify({"ok": False, "error": "mode must be int 0-7"}), 400
+    _vision_mode = mode
+    logging.info(f"Vision mode → {_vision_mode}")
+    return jsonify({"ok": True, "mode": _vision_mode})
+
+
+@app.get("/mode/status")
+def get_vision_mode_status():
+    """Return the current vision mode active in this process."""
+    return jsonify({"ok": True, "mode": _vision_mode})
+
+
 @app.post("/face_recognition/reload")
 def reload_face_recognition():
     if not FACE_RECOGNITION_ENABLED:
@@ -1070,17 +1092,17 @@ def snapshot():
     if frame is None:
         return jsonify({"ok": False, "error": "no_frame_available"}), 503
 
-    # Apply overlays (same as video feed)
-    if motion_detector:
+    # Apply vision processing — respect current mode (same gating as generate_frames)
+    if _vision_mode == 1 and motion_detector:
         frame, _ = motion_detector.detect_motion(frame)
-    
-    if tracking_enabled and tracker:
+
+    if _vision_mode == 2 and tracking_enabled and tracker:
         frame, _ = tracker.update_tracking(frame)
-    
-    if FACE_RECOGNITION_ENABLED and face_recognizer and face_recognizer.active:
+
+    if _vision_mode == 3 and FACE_RECOGNITION_ENABLED and face_recognizer and face_recognizer.active:
         frame, _ = face_recognizer.annotate(frame)
-    
-    if ARUCO_DETECTION_ENABLED and aruco_detector and aruco_detector.active:
+
+    if _vision_mode == 4 and ARUCO_DETECTION_ENABLED and aruco_detector and aruco_detector.active:
         frame, _ = aruco_detector.annotate(frame)
 
     # Get quality from query param or use default
