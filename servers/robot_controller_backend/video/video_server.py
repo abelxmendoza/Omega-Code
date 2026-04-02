@@ -136,6 +136,15 @@ except Exception:
     ArUcoMarker = None
     HYBRID_SYSTEM_AVAILABLE = False
 
+# System state (vision mode selector)
+try:
+    from .system_state import get_system_state as _get_system_state
+except ImportError:
+    try:
+        from system_state import get_system_state as _get_system_state
+    except ImportError:
+        _get_system_state = None
+
 # Local imports - try relative first, then absolute
 try:
     from .aruco_detection import ArucoDetector
@@ -688,10 +697,13 @@ def generate_frames():
                 # Check and auto-switch mode if needed
                 # hybrid_system_manager.check_and_auto_switch_mode()  # stubbed — method not implemented
             
-            # Motion overlay (~15 fps max, hardware-aware)
+            # Resolve current vision mode (0=Raw, 1=Motion, 2=Tracking, 3=Faces, 4=ArUco, 5=Rec, 6=YOLO, 7=Nav)
+            _vision_mode = _get_system_state().get_current_mode() if _get_system_state is not None else 0
+
+            # Motion overlay (~15 fps max, hardware-aware) — mode 1 only
             motion_detected = False
             motion_regions = []
-            if ENABLE_MOTION_HW and motion_detector is not None:
+            if _vision_mode == 1 and ENABLE_MOTION_HW and motion_detector is not None:
                 if not should_throttle or "motion" not in throttle_priority[:1]:
                     _now_motion = time.time()
                     if (_now_motion - _last_motion_run) >= MOTION_INTERVAL:
@@ -703,14 +715,14 @@ def generate_frames():
                             logging.warning(f"⚠️ Motion detection error: {e}")
                             _metrics["errors_total"] += 1
                         _last_motion_run = _now_motion
-            
+
             # Publish motion event to Orin (hybrid system)
             if hybrid_system_manager and motion_detected:
                 hybrid_system_manager.publish_motion_event(motion_detected, motion_regions)
 
-            # Tracker overlay (optional)
+            # Tracker overlay — mode 2 only
             tracking_bbox = None
-            if tracking_enabled and tracker is not None:
+            if _vision_mode == 2 and tracking_enabled and tracker is not None:
                 if not should_throttle or "tracking" not in throttle_priority[:2]:  # Only throttle if priority allows
                     try:
                         frame, tracking_info = tracker.update_tracking(frame)
@@ -721,12 +733,13 @@ def generate_frames():
                     except Exception as e:
                         logging.warning(f"⚠️ Tracking error: {e}")
                         _metrics["errors_total"] += 1
-            
+
             # Publish tracking bbox to Orin (hybrid system)
             if hybrid_system_manager and tracking_bbox:
                 hybrid_system_manager.publish_tracking_bbox(tracking_bbox)
 
-            if FACE_RECOGNITION_ENABLED and face_recognizer and face_recognizer.active:
+            # Face recognition — mode 3 only
+            if _vision_mode == 3 and FACE_RECOGNITION_ENABLED and face_recognizer and face_recognizer.active:
                 if not should_throttle or "face_detection" not in throttle_priority[:4]:  # Lowest priority
                     try:
                         frame, _ = face_recognizer.annotate(frame)
@@ -734,9 +747,9 @@ def generate_frames():
                         logging.warning(f"⚠️ Face recognition error: {e}")
                         _metrics["errors_total"] += 1
 
-            # ArUco detection (10 fps max)
+            # ArUco detection (10 fps max) — mode 4 only
             aruco_markers = []
-            if ARUCO_DETECTION_ENABLED and aruco_detector and aruco_detector.active:
+            if _vision_mode == 4 and ARUCO_DETECTION_ENABLED and aruco_detector and aruco_detector.active:
                 if not should_throttle or "aruco" not in throttle_priority[:3]:
                     _now_aruco = time.time()
                     if (_now_aruco - _last_aruco_run) >= ARUCO_INTERVAL:

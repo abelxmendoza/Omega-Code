@@ -21,6 +21,7 @@ import { CheckCircle, XCircle, Wifi, SlidersHorizontal, Download, Activity } fro
 import { useWsStatus, ServiceStatus } from '../hooks/useWsStatus';
 import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { net } from '@/utils/netProfile';
+import { toHealthUrl } from '@/utils/urlHelpers';
 import { CapabilityInfoModal } from './capability/CapabilityInfoModal';
 
 // Install button component for PWA
@@ -121,23 +122,6 @@ const getActiveProfile = (): 'lan' | 'tailscale' | 'local' => {
   return (['lan', 'tailscale', 'local'].includes(env) ? env : 'local') as any;
 };
 
-/** Convert an MJPEG URL (.../video_feed[?]) to sibling `/health`. */
-function toHealthUrl(videoUrl?: string) {
-  if (!videoUrl) return '';
-  try {
-    const u = new URL(videoUrl);
-    if (/\/video_feed\/?$/i.test(u.pathname)) {
-      u.pathname = u.pathname.replace(/\/video_feed\/?$/i, '/health');
-      u.search = '';
-    } else {
-      u.pathname = (u.pathname.replace(/\/+$/, '') || '') + '/health';
-    }
-    return u.toString();
-  } catch {
-    // Fallback: string replace
-    return videoUrl.replace(/\/video_feed(?:\?.*)?$/i, '').replace(/\/+$/, '') + '/health';
-  }
-}
 
 const Dot: React.FC<{ state: HeaderState }> = ({ state }) => {
   const color =

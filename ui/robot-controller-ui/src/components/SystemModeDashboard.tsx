@@ -115,11 +115,35 @@ export default function SystemModeDashboard() {
   useEffect(() => {
     fetchModes();
     fetchStatus();
-    
-    // Poll status every second
-    const interval = setInterval(fetchStatus, 1000);
-    return () => clearInterval(interval);
-  }, [fetchStatus, fetchModes]);
+
+    // Poll at 10s (was 1s — 1s caused 60 req/min on a non-critical status endpoint).
+    // Circuit breaker: after 3 consecutive fetch errors, back off to 60s.
+    let failCount = 0;
+    let intervalId: ReturnType<typeof setInterval>;
+
+    const guardedFetch = async () => {
+      try {
+        const response = await fetch('/api/system/mode/status');
+        if (response.ok) {
+          failCount = 0;
+          const data = await response.json();
+          setStatus(data);
+          setError(null);
+        } else {
+          failCount += 1;
+        }
+      } catch {
+        failCount += 1;
+      }
+      if (failCount === 3) {
+        clearInterval(intervalId);
+        intervalId = setInterval(guardedFetch, 60_000);
+      }
+    };
+
+    intervalId = setInterval(guardedFetch, 10_000);
+    return () => clearInterval(intervalId);
+  }, [fetchModes, fetchStatus]);
 
   const currentMode = status?.mode ?? 0;
   const isThrottling = status?.throttling ?? false;

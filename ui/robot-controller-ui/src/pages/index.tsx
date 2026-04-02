@@ -48,6 +48,7 @@ import {
   createWsWire,
   mockWire,
 } from '@/utils/autonomyApi';
+import { getEnvByProfile, getActiveProfile, coerceWsScheme } from '@/utils/envProfile';
 
 const DEBUG = !!process.env.NEXT_PUBLIC_WS_DEBUG;
 const MOCK_WS = process.env.NEXT_PUBLIC_MOCK_WS === '1';
@@ -71,43 +72,6 @@ const CameraFrame = dynamic(() => import('../components/CameraFrame'), {
     </div>
   ),
 });
-
-/* ----------------------------- helpers/env ----------------------------- */
-
-/** Active network profile (lan | tailscale | local). */
-const getActiveProfile = (): 'lan' | 'tailscale' | 'local' => {
-  const p = (process.env.NEXT_PUBLIC_NETWORK_PROFILE || 'local').toLowerCase();
-  return (['lan', 'tailscale', 'local'].includes(p) ? p : 'local') as any;
-};
-
-/** Read env var by profile, with LOCAL fallback. Example base: 'NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT'. */
-const getEnvByProfile = (base: string, profile?: string): string => {
-  const p = (profile || getActiveProfile()).toUpperCase();
-  return (
-    process.env[`${base}_${p}`] ||
-    process.env[`${base}_LOCAL`] ||
-    ''
-  );
-};
-
-/** Honor NEXT_PUBLIC_WS_FORCE_INSECURE=1 to keep ws:// even on https pages. */
-const coerceWsScheme = (rawUrl: string): string => {
-  if (!rawUrl) return rawUrl;
-  try {
-    const u = new URL(rawUrl, typeof window !== 'undefined' ? window.location.href : 'http://localhost');
-    const forceInsecure = !!process.env.NEXT_PUBLIC_WS_FORCE_INSECURE;
-    if (forceInsecure) {
-      if (u.protocol === 'wss:') u.protocol = 'ws:';
-      return u.toString();
-    }
-    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && u.protocol === 'ws:') {
-      u.protocol = 'wss:';
-    }
-    return u.toString();
-  } catch {
-    return rawUrl;
-  }
-};
 
 /* --------------------------------- Page --------------------------------- */
 

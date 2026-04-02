@@ -9,6 +9,7 @@
 */
 
 import React, { useState, useEffect, memo } from 'react';
+import { useSystemHealth } from '@/context/SystemHealthContext';
 
 interface PerformanceData {
   timestamp: number;
@@ -67,91 +68,46 @@ interface CacheStats {
   totalRequests: number;
 }
 
+// Circuit breaker thresholds for performance polling
+const PERF_POLL_INTERVAL_MS  = 30_000; // was 2000 — 30s is plenty for a dashboard
+const PERF_BACKOFF_INTERVAL_MS = 60_000;
+const PERF_FAILURE_THRESHOLD = 3;
+
 const PerformanceDashboard: React.FC = memo(() => {
+  const health = useSystemHealth();
   const [performanceData, setPerformanceData] = useState<PerformanceData | null>(null);
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
   const [isMonitoring, setIsMonitoring] = useState(false);
 
   useEffect(() => {
-    // Start performance monitoring
+    // Skip polling when the backend is known-down from the centralized health service.
+    // This prevents hammering a dead endpoint — the health service will flip us back
+    // to connected once /api/health recovers.
+    if (!health.connected) {
+      setIsMonitoring(false);
+      return;
+    }
+
     const startMonitoring = async () => {
       try {
         setIsMonitoring(true);
-        
-        // Connect to Pi's performance API through the gateway
+        let failureCount = 0;
+        let currentInterval = PERF_POLL_INTERVAL_MS;
+
         const fetchPerformanceData = async () => {
           try {
             const response = await fetch('/api/performance-proxy/metrics');
             if (response.ok) {
+              failureCount = 0;
               const data = await response.json();
               setPerformanceData(data);
             } else {
-              console.warn('Performance API not available, using fallback data');
-              // Fallback to simulated data if Pi API is unavailable
-              setPerformanceData({
-                timestamp: Date.now(),
-                source: 'Development',
-                deviceName: 'MacBook Pro',
-                cpuUsage: Math.random() * 100,
-                memoryUsage: Math.random() * 8 * 1024 * 1024 * 1024, // Random GB
-                memoryPercent: Math.random() * 100,
-                diskUsage: Math.random() * 100,
-                networkIO: {
-                  bytesSent: Math.random() * 1000000,
-                  bytesRecv: Math.random() * 1000000,
-                  packetsSent: Math.random() * 10000,
-                  packetsRecv: Math.random() * 10000,
-                },
-                websocketConnections: Math.floor(Math.random() * 5),
-                uptime: Math.random() * 86400,
-                loadAverage: Math.random() * 4,
-                temperature: null,
-                responseTime: Math.random() * 100,
-                errorRate: Math.random() * 5,
-                throughput: Math.random() * 1000,
-                piSpecific: {
-                  gpioStatus: { status: 'unknown', pins: 'N/A' },
-                  cameraStatus: { status: 'unknown', enabled: false },
-                  robotServices: { movement: false, camera: false, sensors: false, lighting: false },
-                  piModel: 'N/A',
-                  firmwareVersion: 'N/A',
-                },
-                robotTelemetry: {
-                  power: { voltage: null, percentage: null, charging: false, powerSource: 'unknown', undervoltage: false, powerConsumption: null },
-                  sensors: {
-                    camera: { fps: null, resolution: null, status: 'unknown' },
-                    ultrasonic: { distance: null, status: 'unknown', pins: 'N/A' },
-                    lineTracking: { sensors: [], status: 'unknown', pins: 'N/A' },
-                    voltage: { value: null, status: 'unknown', adc: 'N/A', i2c: 'N/A' },
-                    buzzer: { status: 'unknown', pin: 'N/A' },
-                    leds: { status: 'unknown', pins: 'N/A' },
-                  },
-                  motors: {
-                    leftMotor: { speed: 0, position: 0, temperature: null, status: 'unknown' },
-                    rightMotor: { speed: 0, position: 0, temperature: null, status: 'unknown' },
-                    servoMotors: [],
-                    actuators: [],
-                  },
-                  network: { wifiSignal: null, latency: null, throughput: null, connectionType: 'unknown', ipAddress: null },
-                  autonomous: { 
-                    mode: 'manual', 
-                    navigation: { status: 'inactive', target: null, path: [] }, 
-                    obstacleAvoidance: { enabled: false, detected: false },
-                    lineFollowing: { enabled: false, onLine: false },
-                    mission: { active: false, progress: 0 }
-                  },
-                  safety: { 
-                    emergencyStop: false, 
-                    safetyLimits: { enabled: false, violations: 0 },
-                    collisionDetection: { enabled: false, detected: false },
-                    batteryProtection: { enabled: false, lowBattery: false },
-                    thermalProtection: { enabled: false, overheated: false }
-                  },
-                },
-              });
+              failureCount += 1;
+              console.warn(`Performance API unavailable (${failureCount}/${PERF_FAILURE_THRESHOLD})`);
             }
           } catch (error) {
-            console.error('Failed to fetch performance data:', error);
+            failureCount += 1;
+            console.warn(`Performance fetch error (${failureCount}/${PERF_FAILURE_THRESHOLD}):`, error);
           }
         };
 
@@ -162,107 +118,47 @@ const PerformanceDashboard: React.FC = memo(() => {
               const data = await response.json();
               setCacheStats(data);
             }
-          } catch (error) {
-            console.error('Failed to fetch cache stats:', error);
+          } catch {
+            // cache stats are non-critical — fail silently
           }
         };
 
         // Initial fetch
         await fetchPerformanceData();
         await fetchCacheStats();
-        
-        const interval = setInterval(() => {
+
+        // Circuit-breaker interval: backs off to 60s after 3 consecutive failures
+        let intervalId: ReturnType<typeof setInterval>;
+        const tick = () => {
           fetchPerformanceData();
           fetchCacheStats();
-          // Simulate performance data (replace with real API call)
-          const mockData: PerformanceData = {
-            timestamp: Date.now(),
-            source: 'Development',
-            deviceName: 'MacBook Pro',
-            cpuUsage: Math.random() * 100,
-            memoryUsage: Math.random() * 1000,
-            memoryPercent: Math.random() * 100,
-            diskUsage: Math.random() * 100,
-            networkIO: {
-              bytesSent: Math.random() * 1000000,
-              bytesRecv: Math.random() * 1000000,
-              packetsSent: Math.random() * 10000,
-              packetsRecv: Math.random() * 10000,
-            },
-            websocketConnections: Math.floor(Math.random() * 10),
-            uptime: Math.random() * 86400,
-            loadAverage: Math.random() * 4,
-            temperature: null,
-            responseTime: Math.random() * 100,
-            errorRate: Math.random() * 5,
-            throughput: Math.random() * 1000,
-            piSpecific: {
-              gpioStatus: { status: 'unknown', pins: 'N/A' },
-              cameraStatus: { status: 'unknown', enabled: false },
-              robotServices: { movement: false, camera: false, sensors: false, lighting: false },
-              piModel: 'N/A',
-              firmwareVersion: 'N/A',
-            },
-            robotTelemetry: {
-              power: { voltage: null, percentage: null, charging: false, powerSource: 'unknown', undervoltage: false, powerConsumption: null },
-              sensors: {
-                camera: { fps: null, resolution: null, status: 'unknown' },
-                ultrasonic: { distance: null, status: 'unknown', pins: 'N/A' },
-                lineTracking: { sensors: [], status: 'unknown', pins: 'N/A' },
-                voltage: { value: null, status: 'unknown', adc: 'N/A', i2c: 'N/A' },
-                buzzer: { status: 'unknown', pin: 'N/A' },
-                leds: { status: 'unknown', pins: 'N/A' },
-              },
-              motors: {
-                leftMotor: { speed: 0, position: 0, temperature: null, status: 'unknown' },
-                rightMotor: { speed: 0, position: 0, temperature: null, status: 'unknown' },
-                servoMotors: [],
-                actuators: [],
-              },
-              network: { wifiSignal: null, latency: null, throughput: null, connectionType: 'unknown', ipAddress: null },
-              autonomous: { 
-                mode: 'manual', 
-                navigation: { status: 'inactive', target: null, path: [] }, 
-                obstacleAvoidance: { enabled: false, detected: false },
-                lineFollowing: { enabled: false, onLine: false },
-                mission: { active: false, progress: 0 }
-              },
-              safety: { 
-                emergencyStop: false, 
-                safetyLimits: { enabled: false, violations: 0 },
-                collisionDetection: { enabled: false, detected: false },
-                batteryProtection: { enabled: false, lowBattery: false },
-                thermalProtection: { enabled: false, overheated: false }
-              },
-            },
-          };
-          
-          setPerformanceData(mockData);
-          
-          // Simulate cache stats
-          const mockCacheStats: CacheStats = {
-            hits: Math.floor(Math.random() * 1000),
-            misses: Math.floor(Math.random() * 100),
-            hitRate: Math.random() * 100,
-            totalRequests: Math.floor(Math.random() * 1100),
-          };
-          
-          setCacheStats(mockCacheStats);
-        }, 2000);
+          // Escalate to back-off interval after threshold
+          if (failureCount >= PERF_FAILURE_THRESHOLD && currentInterval !== PERF_BACKOFF_INTERVAL_MS) {
+            currentInterval = PERF_BACKOFF_INTERVAL_MS;
+            clearInterval(intervalId);
+            intervalId = setInterval(tick, PERF_BACKOFF_INTERVAL_MS);
+          } else if (failureCount === 0 && currentInterval !== PERF_POLL_INTERVAL_MS) {
+            // Recover: reset to normal interval on success
+            currentInterval = PERF_POLL_INTERVAL_MS;
+            clearInterval(intervalId);
+            intervalId = setInterval(tick, PERF_POLL_INTERVAL_MS);
+          }
+        };
+        intervalId = setInterval(tick, PERF_POLL_INTERVAL_MS);
 
-        return () => clearInterval(interval);
+        return () => clearInterval(intervalId);
       } catch (error) {
         console.error('Failed to start performance monitoring:', error);
       }
     };
 
     const cleanup = startMonitoring();
-    
+
     return () => {
       cleanup.then(cleanupFn => cleanupFn?.());
       setIsMonitoring(false);
     };
-  }, []);
+  }, [health.connected]);
 
   const getStatusColor = (value: number, thresholds: { warning: number; critical: number }) => {
     if (value >= thresholds.critical) return 'text-red-500';
@@ -282,7 +178,11 @@ const PerformanceDashboard: React.FC = memo(() => {
       <div className="bg-gray-800 text-white p-4 rounded-md shadow-md">
         <h2 className="text-lg font-bold mb-4">Performance Dashboard</h2>
         <div className="text-center text-gray-400">
-          {isMonitoring ? 'Starting monitoring...' : 'Monitoring not available'}
+          {!health.connected
+            ? 'Backend offline — waiting for connection'
+            : isMonitoring
+              ? 'Starting monitoring...'
+              : 'Monitoring not available'}
         </div>
       </div>
     );

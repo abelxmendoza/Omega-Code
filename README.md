@@ -13,6 +13,29 @@ integration, servo pan-tilt, and autonomous operation.
 
 ---
 
+## Engineering Overview
+
+During development the control system exhibited critical instability: duplicate WebSocket
+channels sent conflicting motor commands, frontend polling exceeded ~240 requests/min
+(overwhelming the Pi's FastAPI backend), health checks silently failed by issuing
+`fetch("ws://...")` calls (WS scheme is illegal for HTTP fetch), and the Performance
+Dashboard displayed randomly-generated fake data that masked real system state.
+
+The system was redesigned into a centralized, fault-tolerant architecture:
+
+| Problem | Solution |
+|---|---|
+| Duplicate WebSocket control channels | Single-source-of-truth via `CommandContext`; all command sending delegates through one WS connection |
+| ~240 HTTP requests/min to dead endpoints | Circuit breakers on every poller (3 failures → 60 s backoff); polling reduced to <10 req/min at rest |
+| N independent health-check loops | `SystemHealthService` singleton + `SystemHealthContext` — one `/api/health` probe loop for the entire app |
+| `fetch("ws://...")` silent failures | `toHealthUrl()` / `wsUrlToHttp()` normalize all WS URLs to HTTP before any fetch call |
+| Fake simulated performance data | Removed; `PerformanceDashboard` shows real Pi metrics or a clear "backend offline" state |
+| No automated test coverage | 156 tests added: unit (circuit breaker, URL helpers, env profile), integration (context, API), E2E (Cypress) |
+
+**Result:** HTTP requests <10/min at rest, stable WS control, accurate system state, no console noise from protocol mismatches.
+
+---
+
 ## System Architecture
 
 ```
@@ -185,13 +208,18 @@ Omega-Code/
         │   ├── pages/              # Routes: index, network, ros, services, settings + API proxies
         │   ├── components/         # UI by domain: control/, lighting/, sensors/, network/,
         │   │                       #   ros/, settings/, services/, capability/, macros/, common/, ui/
-        │   ├── context/            # CommandContext (WS + log), MacroContext, CapabilityContext
+        │   ├── context/            # CommandContext (WS + log), MacroContext, CapabilityContext,
+        │   │                       #   SystemHealthContext (centralized health provider)
+        │   ├── services/           # systemHealth.ts — singleton poll loop + circuit breaker
         │   ├── hooks/              # WS lifecycle, HTTP polling, gamepad, ROS2 status
-        │   ├── utils/              # robotFetch / RobotResponse, connect*Ws connectors, autonomy client
+        │   ├── utils/              # robotFetch / RobotResponse, connect*Ws connectors, autonomy client,
+        │   │                       #   urlHelpers (toHealthUrl, wsUrlToHttp), envProfile
         │   ├── config/             # gateway.ts — profile-aware URL resolution
         │   ├── themes/             # omega-theme.ts (dark industrial), cyber-theme.ts (neon)
         │   └── control_definitions.ts  # Single source of truth for all WS command strings
-        └── tests/                  # 90 Jest + MSW unit/component tests
+        └── tests/                  # 156 Jest + MSW + Cypress tests
+            ├── unit/               #   utils (urlHelpers, envProfile), services (systemHealth)
+            └── integration/        #   SystemHealthContext, system-mode API, settings
 
 scripts/
 └── setup_pi_camera.sh              # One-shot Pi camera stack bootstrap
@@ -759,3 +787,7 @@ pip install -e ~/Desktop/Omega-Code/
 | Go lighting server stays | LED timing is critical; goroutines > rclpy timers |
 | CycloneDDS unicast-only | Hotspot APs drop multicast; static peers is reliable |
 | pip install -e . for backend | Cleaner than sys.path hacks; works in all envs |
+| SystemHealthService as singleton | One `/api/health` probe loop for the entire frontend lifetime; components subscribe rather than each running their own polling loop — eliminates the N×polling amplification problem |
+| Circuit breaker on all pollers | 3 consecutive failures → 60 s backoff; prevents log spam and 429s when the Pi is unreachable; success resets to normal interval automatically |
+| ws:// normalized to http:// before fetch | `fetch()` rejects WS-scheme URLs at the browser level (silent TypeError); `toHealthUrl()` / `wsUrlToHttp()` coerce the scheme before any health probe |
+| Simulated performance data removed | Fake random metrics make the dashboard look healthy when the Pi is offline; replaced with an explicit "backend offline" state so degradation is always visible |

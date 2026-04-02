@@ -236,7 +236,28 @@ export default function VisionModePanel() {
 
   useEffect(() => {
     fetchStatus();
-    pollRef.current = setInterval(fetchStatus, 3000);
+    // 15s interval (was 3s). Circuit breaker: 3 failures → 60s back-off.
+    let failCount = 0;
+    const guardedFetch = async () => {
+      try {
+        const res = await fetch('/api/system/mode/status');
+        if (res.ok) {
+          failCount = 0;
+          const data = await res.json();
+          setCurrentMode(data.mode ?? null);
+          setOrinAvailable(!!data.orin_available);
+        } else {
+          failCount += 1;
+        }
+      } catch {
+        failCount += 1;
+      }
+      if (failCount === 3 && pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = setInterval(guardedFetch, 60_000);
+      }
+    };
+    pollRef.current = setInterval(guardedFetch, 15_000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [fetchStatus]);
 
