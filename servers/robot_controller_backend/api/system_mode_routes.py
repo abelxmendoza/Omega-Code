@@ -22,21 +22,28 @@ _VIDEO_SERVER_URL = os.getenv("VIDEO_SERVER_URL", "http://127.0.0.1:5000")
 
 def _notify_video_server(mode: int) -> None:
     """
-    Fire-and-forget POST to video_server /mode/set.
-    Runs in a thread-pool executor so it never blocks the async event loop.
-    Failure is non-fatal — video_server may not be running yet.
+    POST mode to video_server /mode/set (cross-process IPC).
+    Runs in a thread-pool executor — never blocks the async event loop.
+    Retries once on failure. Non-fatal if video_server is down.
     """
-    try:
-        body = _json.dumps({"mode": mode}).encode()
-        req = _urllib_req.Request(
-            f"{_VIDEO_SERVER_URL}/mode/set",
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        _urllib_req.urlopen(req, timeout=1)
-    except Exception as exc:
-        log.warning("Could not notify video_server of mode change: %s", exc)
+    import time as _time
+    body = _json.dumps({"mode": mode}).encode()
+    for attempt in range(1, 3):  # 2 attempts max
+        try:
+            req = _urllib_req.Request(
+                f"{_VIDEO_SERVER_URL}/mode/set",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            _urllib_req.urlopen(req, timeout=1)
+            return  # success
+        except Exception as exc:
+            if attempt == 1:
+                log.warning("[MODE_SYNC_ERROR] Attempt %d failed, retrying: %s", attempt, exc)
+                _time.sleep(0.2)
+            else:
+                log.warning("[MODE_SYNC_ERROR] Failed to notify video_server (mode=%d): %s", mode, exc)
 
 # Try to import hybrid system manager (optional)
 try:

@@ -66,8 +66,10 @@ Hardware Optimizations:
 
 import os
 import time
+import json
 import logging
 import platform
+import urllib.request
 from typing import Optional, List, Dict, Any
 
 try:
@@ -142,6 +144,8 @@ except Exception:
 # generate_frames() can read it without any IPC on every frame.
 # 0=Raw, 1=Motion, 2=Tracking, 3=Face, 4=ArUco, 5=PiRec, 6=YOLO, 7=Nav
 _vision_mode: int = 0
+# Frame counter for periodic debug logging (not every frame)
+_frame_log_counter: int = 0
 
 # Local imports - try relative first, then absolute
 try:
@@ -483,6 +487,37 @@ if ENABLE_ROS2 and init_ros2_publisher is not None:
 
 
 
+def _sync_mode_from_fastapi() -> None:
+    """
+    On startup, pull the current mode from FastAPI and set _vision_mode.
+
+    FastAPI may have persisted a mode from before video_server restarted.
+    Without this, a video_server restart always silently resets to mode 0
+    while the UI still shows a different mode selected.
+
+    Retries 3 times with 1 s delay. Fails safe: stays at 0 if API is down.
+    """
+    global _vision_mode
+    api_base = os.getenv("FASTAPI_URL", "http://127.0.0.1:8000")
+    url = f"{api_base}/api/system/mode/status"
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(url, timeout=2) as resp:
+                data = json.loads(resp.read().decode())
+                mode = int(data.get("mode", 0))
+                if 0 <= mode <= 7:
+                    _vision_mode = mode
+                    logging.info(f"[VISION] Synced mode from FastAPI: {mode}")
+                    return
+                logging.warning(f"[VISION] FastAPI returned out-of-range mode {mode}, defaulting to 0")
+                return
+        except Exception as exc:
+            logging.warning(f"[VISION] Sync attempt {attempt}/3 failed: {exc}")
+            if attempt < 3:
+                time.sleep(1)
+    logging.info("[VISION] FastAPI unavailable at startup — starting in mode 0 (Raw)")
+
+
 def _log_startup() -> None:
     logging.info("🚀 Video server starting…")
     
@@ -640,7 +675,7 @@ def generate_frames():
     MJPEG generator: reads frames, overlays motion (and tracker if enabled).
     If no camera yet, yields placeholder frames (when enabled).
     """
-    global tracking_enabled, camera, _frame_skip_counter, _last_motion_run, _last_aruco_run, _last_telemetry_publish
+    global tracking_enabled, camera, _frame_skip_counter, _last_motion_run, _last_aruco_run, _last_telemetry_publish, _frame_log_counter
     _last_frame_time = 0.0
 
     while True:
@@ -695,96 +730,103 @@ def generate_frames():
                 # Check and auto-switch mode if needed
                 # hybrid_system_manager.check_and_auto_switch_mode()  # stubbed — method not implemented
             
-            # _vision_mode is the module-level int set by POST /mode/set.
-            # Reading it here (no lock needed — GIL protects int reads on CPython).
+            # ── Perception pipeline ──────────────────────────────────────────
+            # _vision_mode is a module-level int.  Only POST /mode/set writes it.
+            # GIL guarantees safe int reads on CPython without a lock.
+            mode = _vision_mode  # snapshot once per frame — consistent for this iteration
 
-            # Motion overlay (~15 fps max, hardware-aware) — mode 1 only
+            # Periodic visibility log every ~300 frames (≈10 s at 30 fps)
+            _frame_log_counter += 1
+            if _frame_log_counter % 300 == 0:
+                logging.debug(f"[VISION] Active mode: {mode}")
+
+            # Per-frame outputs reset each iteration
             motion_detected = False
-            motion_regions = []
-            if _vision_mode == 1 and ENABLE_MOTION_HW and motion_detector is not None:
+            motion_regions: list = []
+            tracking_bbox = None
+            aruco_markers: list = []
+
+            if mode == 0:
+                pass  # Raw — zero CV processing, zero overlays (enforced below)
+
+            elif mode == 1:
+                # Motion Detection
                 if not should_throttle or "motion" not in throttle_priority[:1]:
                     _now_motion = time.time()
                     if (_now_motion - _last_motion_run) >= MOTION_INTERVAL:
-                        try:
-                            frame, motion_detected = motion_detector.detect_motion(frame)
-                            if motion_detected and hybrid_system_manager:
-                                pass  # TODO: Extract regions from motion detector
-                        except Exception as e:
-                            logging.warning(f"⚠️ Motion detection error: {e}")
-                            _metrics["errors_total"] += 1
+                        if motion_detector is not None:
+                            try:
+                                logging.debug("[PIPELINE] Running motion detection")
+                                frame, motion_detected = motion_detector.detect_motion(frame)
+                            except Exception as e:
+                                logging.warning(f"[PIPELINE] Motion detection error: {e}")
+                                _metrics["errors_total"] += 1
                         _last_motion_run = _now_motion
 
-            # Publish motion event to Orin (hybrid system)
+            elif mode == 2:
+                # Object Tracking
+                if tracking_enabled and tracker is not None:
+                    if not should_throttle or "tracking" not in throttle_priority[:2]:
+                        try:
+                            logging.debug("[PIPELINE] Running object tracking")
+                            frame, _ = tracker.update_tracking(frame)
+                        except Exception as e:
+                            logging.warning(f"[PIPELINE] Tracking error: {e}")
+                            _metrics["errors_total"] += 1
+
+            elif mode == 3:
+                # Face Recognition
+                if face_recognizer is not None and face_recognizer.active:
+                    if not should_throttle or "face_detection" not in throttle_priority[:4]:
+                        try:
+                            logging.debug("[PIPELINE] Running face recognition")
+                            frame, _ = face_recognizer.annotate(frame)
+                        except Exception as e:
+                            logging.warning(f"[PIPELINE] Face recognition error: {e}")
+                            _metrics["errors_total"] += 1
+
+            elif mode == 4:
+                # ArUco Detection (rate-limited to ARUCO_INTERVAL)
+                if aruco_detector is not None and aruco_detector.active:
+                    if not should_throttle or "aruco" not in throttle_priority[:3]:
+                        _now_aruco = time.time()
+                        if (_now_aruco - _last_aruco_run) >= ARUCO_INTERVAL:
+                            try:
+                                logging.debug("[PIPELINE] Running ArUco detection")
+                                frame, detections = aruco_detector.annotate(frame)
+                                if detections and hybrid_system_manager:
+                                    for det in detections:
+                                        if hasattr(det, 'marker_id'):
+                                            aruco_markers.append(ArUcoMarker(
+                                                marker_id=det.marker_id,
+                                                corners=[[float(c[0]), float(c[1])] for c in det.corners],
+                                                centre=[float(det.centre[0]), float(det.centre[1])],
+                                                pose=getattr(det, 'pose', None),
+                                            ))
+                            except Exception as e:
+                                logging.warning(f"[PIPELINE] ArUco detection error: {e}")
+                                _metrics["errors_total"] += 1
+                            _last_aruco_run = _now_aruco
+
+            elif mode == 5:
+                pass  # Pi Recording — frame recorded below, no overlays applied
+
+            elif mode in (6, 7):
+                pass  # YOLO / Autonomy — Orin handles all perception locally
+
+            # ── Hybrid system publish ────────────────────────────────────────
             if hybrid_system_manager and motion_detected:
                 hybrid_system_manager.publish_motion_event(motion_detected, motion_regions)
-
-            # Tracker overlay — mode 2 only
-            tracking_bbox = None
-            if _vision_mode == 2 and tracking_enabled and tracker is not None:
-                if not should_throttle or "tracking" not in throttle_priority[:2]:  # Only throttle if priority allows
-                    try:
-                        frame, tracking_info = tracker.update_tracking(frame)
-                        # Extract tracking bbox for hybrid system
-                        if tracking_info and hybrid_system_manager:
-                            # TODO: Extract bbox from tracker
-                            pass
-                    except Exception as e:
-                        logging.warning(f"⚠️ Tracking error: {e}")
-                        _metrics["errors_total"] += 1
-
-            # Publish tracking bbox to Orin (hybrid system)
             if hybrid_system_manager and tracking_bbox:
                 hybrid_system_manager.publish_tracking_bbox(tracking_bbox)
-
-            # Face recognition — mode 3 only
-            if _vision_mode == 3 and FACE_RECOGNITION_ENABLED and face_recognizer and face_recognizer.active:
-                if not should_throttle or "face_detection" not in throttle_priority[:4]:  # Lowest priority
-                    try:
-                        frame, _ = face_recognizer.annotate(frame)
-                    except Exception as e:
-                        logging.warning(f"⚠️ Face recognition error: {e}")
-                        _metrics["errors_total"] += 1
-
-            # ArUco detection (10 fps max) — mode 4 only
-            aruco_markers = []
-            if _vision_mode == 4 and ARUCO_DETECTION_ENABLED and aruco_detector and aruco_detector.active:
-                if not should_throttle or "aruco" not in throttle_priority[:3]:
-                    _now_aruco = time.time()
-                    if (_now_aruco - _last_aruco_run) >= ARUCO_INTERVAL:
-                        try:
-                            frame, detections = aruco_detector.annotate(frame)
-                            if detections and hybrid_system_manager:
-                                for det in detections:
-                                    if hasattr(det, 'marker_id'):
-                                        marker = ArUcoMarker(
-                                            marker_id=det.marker_id,
-                                            corners=[[float(c[0]), float(c[1])] for c in det.corners],
-                                            centre=[float(det.centre[0]), float(det.centre[1])],
-                                            pose=getattr(det, 'pose', None)
-                                        )
-                                        aruco_markers.append(marker)
-                        except Exception as e:
-                            logging.warning(f"⚠️ ArUco detection error: {e}")
-                            _metrics["errors_total"] += 1
-                        _last_aruco_run = _now_aruco
-            
-            # Publish ArUco markers to Orin (hybrid system)
             if hybrid_system_manager and aruco_markers:
                 hybrid_system_manager.publish_aruco_markers(aruco_markers)
 
-            # TODO: Capture timestamp for latency measurement
-            # Capture timestamp for latency measurement
-            import time
-            try:
-                from time import time_ns
-            except ImportError:
-                def time_ns():
-                    return int(time.time() * 1e9)
-            capture_timestamp_ns = time_ns()
-            
+            capture_timestamp_ns = time.time_ns() if hasattr(time, 'time_ns') else int(time.time() * 1e9)
+
             # Frame overlays (timestamp, FPS, telemetry).
-            # Skip in Raw (0) and Pi-Recording (5) — those modes must deliver clean frames.
-            if ENABLE_OVERLAYS and frame_overlay is not None and _vision_mode not in (0, 5):
+            # Skip in Raw (0) and Pi-Recording (5) — those modes must deliver zero-overlay frames.
+            if ENABLE_OVERLAYS and frame_overlay is not None and mode not in (0, 5):
                 try:
                     frame = frame_overlay.add_overlays(frame, capture_timestamp_ns=capture_timestamp_ns)
                 except Exception as e:
@@ -834,10 +876,7 @@ def generate_frames():
 
             # Encode JPEG with quality setting (hardware-optimized)
             import cv2 as _cv2  # type: ignore
-            
-            # TODO: Record encode timestamps for latency measurement
-            # Record encode start time for latency measurement
-            encode_start_ns = time_ns()
+            encode_start_ns = time.time_ns() if hasattr(time, 'time_ns') else int(time.time() * 1e9)
             
             # Adaptive quality based on hardware load (for Pi 4B)
             quality = JPEG_QUALITY
@@ -855,12 +894,9 @@ def generate_frames():
             
             encode_params = [_cv2.IMWRITE_JPEG_QUALITY, quality]
             ok, buf = _cv2.imencode(".jpg", frame, encode_params)
-            
-            # Record encode end time for latency measurement
-            encode_end_ns = time_ns()
-            
-            # TODO: Update frame overlay with encode timestamps for latency reporting
-            # Update frame overlay with encode timestamps
+
+            encode_end_ns = time.time_ns() if hasattr(time, 'time_ns') else int(time.time() * 1e9)
+
             if frame_overlay is not None:
                 try:
                     frame_overlay.set_encode_timestamps(encode_start_ns, encode_end_ns)
@@ -1014,16 +1050,18 @@ def start_tracking():
 def set_vision_mode():
     """
     Set the active vision mode for this process.
-    Called by FastAPI system_mode_routes on every UI mode change (IPC bridge).
+    ONLY called by FastAPI system_mode_routes (IPC bridge — not the UI directly).
     JSON body: {"mode": 0-7}
+    Mode map: 0=Raw, 1=Motion, 2=Tracking, 3=Face, 4=ArUco, 5=PiRec, 6=YOLO, 7=Nav
     """
     global _vision_mode
     data = request.get_json(force=True, silent=True) or {}
     mode = data.get("mode")
     if mode is None or not isinstance(mode, int) or not (0 <= mode <= 7):
         return jsonify({"ok": False, "error": "mode must be int 0-7"}), 400
+    prev = _vision_mode
     _vision_mode = mode
-    logging.info(f"Vision mode → {_vision_mode}")
+    logging.info(f"[VISION_MODE] Changed to {mode} (was {prev})")
     return jsonify({"ok": True, "mode": _vision_mode})
 
 
@@ -1487,7 +1525,8 @@ def _schedule_watchdog(resp):
 if __name__ == "__main__":
     _log_startup()
     logging.info(f"🚀 Video server listening on {BIND_HOST}:{PORT}")
-    _create_camera()  # first attempt (non-fatal if it fails)
+    _sync_mode_from_fastapi()   # pull persisted mode before first frame is served
+    _create_camera()            # first attempt (non-fatal if it fails)
     try:
         if SSL_ENABLED:
             logging.info("🔒 SSL enabled")
