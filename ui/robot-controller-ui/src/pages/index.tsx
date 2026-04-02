@@ -32,7 +32,7 @@ import ServoTelemetryPanel from '../components/control/ServoTelemetryPanel';
 import PerformanceDashboard from '../components/PerformanceDashboard';
 import EnhancedServoTelemetryPanel from '../components/control/EnhancedServoTelemetryPanel';
 import AutonomyPanel from '../components/control/AutonomyModal';
-import SystemModeDashboard from '../components/SystemModeDashboard';
+import SystemStatusPanel from '../components/SystemStatusPanel';
 import VisionModePanel from '../components/VisionModePanel';
 import LatencyDashboard from '../components/LatencyDashboard';
 import { useCommand } from '../context/CommandContext';
@@ -286,7 +286,7 @@ export default function Home() {
           {/* Zone 3: System Mode + Latency side by side */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 xl:gap-6">
             <ErrorBoundary>
-              <SystemModeDashboard />
+              <SystemStatusPanel />
             </ErrorBoundary>
             <ErrorBoundary>
               <LatencyDashboard />

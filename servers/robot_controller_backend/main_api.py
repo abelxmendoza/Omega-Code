@@ -15,6 +15,39 @@ import os
 logger = logging.getLogger(__name__)
 
 
+_VIDEO_SERVER_URL = os.getenv("VIDEO_SERVER_URL", "http://127.0.0.1:5000")
+
+
+def _push_mode_to_video_server() -> None:
+    """Push current mode from system_state to video_server on FastAPI startup."""
+    import json as _json
+    import urllib.request as _urllib_req
+    import time as _time
+    try:
+        from video.system_state import get_system_state
+        mode = get_system_state().get_current_mode()
+    except Exception as exc:
+        logger.warning("[STARTUP_SYNC] Could not read system_state mode: %s", exc)
+        return
+    body = _json.dumps({"mode": mode}).encode()
+    for attempt in range(1, 4):
+        try:
+            req = _urllib_req.Request(
+                f"{_VIDEO_SERVER_URL}/mode/set",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            _urllib_req.urlopen(req, timeout=2)
+            logger.info("[STARTUP_SYNC] Pushed mode=%d to video_server", mode)
+            return
+        except Exception as exc:
+            logger.warning("[STARTUP_SYNC] Attempt %d failed: %s", attempt, exc)
+            if attempt < 3:
+                _time.sleep(1)
+    logger.warning("[STARTUP_SYNC] Could not reach video_server after 3 attempts — will sync on first mode-set")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ROS publish bridge (movement, lighting, system commands)
@@ -27,6 +60,9 @@ async def lifespan(app: FastAPI):
     sensor_bridge = OmegaSensorBridge.create(loop)
     app.state.sensor_bridge = sensor_bridge
     logger.info('Sensor bridge active=%s', sensor_bridge.is_active)
+
+    # Push current mode to video_server so both processes stay in sync after restarts
+    loop.run_in_executor(None, _push_mode_to_video_server)
 
     yield
 

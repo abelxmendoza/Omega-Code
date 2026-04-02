@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useSystemMode } from '@/hooks/useSystemMode';
 import {
   Video, Activity, Crosshair, User, QrCode,
   Circle, Zap, Map, Shield, Compass, Camera, Eye,
@@ -215,51 +216,12 @@ function CpuBar({ level }: { level: 0 | 1 | 2 | 3 }) {
 /* ------------------------------------------------------------------ */
 
 export default function VisionModePanel() {
-  const [currentMode, setCurrentMode] = useState<number | null>(null);
-  const [orinAvailable, setOrinAvailable] = useState(false);
+  // Single shared polling source — no independent poll loop here.
+  const { mode: currentMode, orinAvailable, description: backendDescription, refresh } = useSystemMode();
+
   const [setting, setSetting] = useState(false);
   const [showCombos, setShowCombos] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const fetchStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/system/mode/status');
-      if (!res.ok) return;
-      const data = await res.json();
-      setCurrentMode(data.mode ?? null);
-      setOrinAvailable(!!data.orin_available);
-    } catch {
-      /* robot offline — silent */
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchStatus();
-    // 15s interval (was 3s). Circuit breaker: 3 failures → 60s back-off.
-    let failCount = 0;
-    const guardedFetch = async () => {
-      try {
-        const res = await fetch('/api/system/mode/status');
-        if (res.ok) {
-          failCount = 0;
-          const data = await res.json();
-          setCurrentMode(data.mode ?? null);
-          setOrinAvailable(!!data.orin_available);
-        } else {
-          failCount += 1;
-        }
-      } catch {
-        failCount += 1;
-      }
-      if (failCount === 3 && pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = setInterval(guardedFetch, 60_000);
-      }
-    };
-    pollRef.current = setInterval(guardedFetch, 15_000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [fetchStatus]);
 
   const setMode = useCallback(async (modeId: number) => {
     if (setting) return;
@@ -272,14 +234,15 @@ export default function VisionModePanel() {
         body: JSON.stringify({ mode: modeId }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (data.mode !== undefined) setCurrentMode(data.mode);
+      // Trigger immediate re-fetch so the UI reflects the new mode without
+      // waiting for the next 15 s poll cycle.
+      refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to set mode');
     } finally {
       setSetting(false);
     }
-  }, [setting]);
+  }, [setting, refresh]);
 
   const activeMode = MODES.find(m => m.id === currentMode);
 
@@ -359,12 +322,12 @@ export default function VisionModePanel() {
           })}
         </div>
 
-        {/* Active mode description */}
+        {/* Active mode description — sourced from backend (blueprint §10) */}
         <div className="mt-2.5 min-h-[18px]">
           {activeMode && (
             <p className="text-xs text-white/60 leading-snug">
               <span className={`font-semibold ${activeMode.accent}`}>{activeMode.name}:</span>{' '}
-              {activeMode.description}
+              {backendDescription || activeMode.description}
             </p>
           )}
         </div>
