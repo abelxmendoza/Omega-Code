@@ -1,13 +1,12 @@
+'use client';
+
 /**
- * ServiceLogs Component
- * 
- * Real-time log viewer for a specific service.
- * Auto-scrolls with tailing behavior.
+ * ServiceLogs — real-time log tail for a single service.
+ * Auto-scrolls, auto-refreshes, and shows stdout/stderr separately.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
-import { X, RefreshCw, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { X, RefreshCw, Loader2, Terminal } from 'lucide-react';
 import { robotFetch } from '@/utils/network';
 import { ROBOT_ENABLED } from '@/utils/env';
 
@@ -28,44 +27,35 @@ export function ServiceLogs({
   autoRefresh = true,
   refreshInterval = 10000,
 }: ServiceLogsProps) {
-  const [logs, setLogs] = useState<{ stdout: string[]; stderr: string[] } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const stdoutEndRef = useRef<HTMLDivElement>(null);
-  const stderrEndRef = useRef<HTMLDivElement>(null);
+  const [logs, setLogs]         = useState<{ stdout: string[]; stderr: string[] } | null>(null);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState<string | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
-  const fetchLogs = async () => {
-    if (!ROBOT_ENABLED) return;
+  const stdoutEndRef = useRef<HTMLDivElement>(null);
+  const stderrEndRef = useRef<HTMLDivElement>(null);
 
+  const fetchLogs = useCallback(async () => {
+    if (!ROBOT_ENABLED) return;
     setLoading(true);
     setError(null);
-
     try {
-      const response = await robotFetch(`/api/services/logs/${serviceName}?lines=${lines}`);
-      
-      if (response.offline) {
-        setError('Robot is offline');
-        return;
-      }
-
-      const data = await response.json();
-      
+      const res = await robotFetch(`/api/services/logs/${serviceName}?lines=${lines}`);
+      if ('offline' in res && res.offline) { setError('Robot is offline'); return; }
+      const data = await res.json();
       if (data.ok && data.logs) {
         setLogs(data.logs);
-        setError(null);
       } else {
         setError('Failed to load logs');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch logs');
-      console.error('Failed to fetch logs:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [serviceName, lines]);
 
-  // Auto-scroll to bottom when logs update
+  // Auto-scroll when logs update
   useEffect(() => {
     if (autoScroll && logs) {
       stdoutEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -73,127 +63,118 @@ export function ServiceLogs({
     }
   }, [logs, autoScroll]);
 
-  // Initial fetch and auto-refresh
+  // Initial fetch + interval
   useEffect(() => {
     fetchLogs();
-
     if (!autoRefresh) return;
-
-    const intervalId = setInterval(fetchLogs, refreshInterval);
-    return () => clearInterval(intervalId);
-  }, [serviceName, autoRefresh, refreshInterval]);
+    const id = setInterval(fetchLogs, refreshInterval);
+    return () => clearInterval(id);
+  }, [fetchLogs, autoRefresh, refreshInterval]);
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 space-y-4">
+    <div>
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-white">
-            Logs: {serviceDisplayName || serviceName}
-          </h3>
-          <p className="text-xs text-gray-400 mt-1">
-            {autoRefresh ? `Auto-refreshing every ${refreshInterval / 1000}s` : 'Manual refresh'}
-          </p>
+      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-800 border-b border-white/10">
+        <div className="flex items-center gap-2">
+          <Terminal size={13} className="text-emerald-400" />
+          <span className="text-sm font-bold text-white">{serviceDisplayName || serviceName}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/40">
+            {autoRefresh ? `auto ${refreshInterval / 1000}s` : 'manual'}
+          </span>
         </div>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-white/50 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={autoScroll}
+              onChange={e => setAutoScroll(e.target.checked)}
+              className="w-3 h-3 rounded border-white/20 bg-white/5 accent-emerald-500"
+            />
+            Auto-scroll
+          </label>
+          <button
             onClick={fetchLogs}
             disabled={loading}
-            className="border-gray-600 text-gray-300 hover:bg-gray-700"
+            className="flex items-center gap-1 px-2 py-1 rounded text-[11px] border border-white/10 text-white/50 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-40"
           >
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )}
-          </Button>
+            {loading
+              ? <Loader2 size={11} className="animate-spin" />
+              : <RefreshCw size={11} />
+            }
+            Refresh
+          </button>
           {onClose && (
-            <Button
-              size="sm"
-              variant="ghost"
+            <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white"
+              className="p-1 rounded text-white/40 hover:text-white hover:bg-white/5 transition-colors"
+              aria-label="Close logs"
             >
-              <X className="w-4 h-4" />
-            </Button>
+              <X size={13} />
+            </button>
           )}
         </div>
       </div>
 
-      {/* Auto-scroll toggle */}
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="auto-scroll"
-          checked={autoScroll}
-          onChange={(e) => setAutoScroll(e.target.checked)}
-          className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-green-500"
-        />
-        <label htmlFor="auto-scroll" className="text-sm text-gray-300">
-          Auto-scroll
-        </label>
+      <div className="p-4 space-y-3">
+        {/* Error */}
+        {error && (
+          <div className="px-3 py-2 rounded border border-rose-500/40 bg-rose-600/10 text-rose-400 text-xs">
+            {error}
+          </div>
+        )}
+
+        {/* Initial loading */}
+        {loading && logs === null && (
+          <div className="py-8 text-center">
+            <Loader2 size={20} className="animate-spin mx-auto text-white/30" />
+            <p className="text-xs text-white/40 mt-2">Loading logs…</p>
+          </div>
+        )}
+
+        {/* Logs */}
+        {logs && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <LogPane label="Stdout" lines={logs.stdout} colorClass="text-emerald-400" endRef={stdoutEndRef} />
+            <LogPane label="Stderr" lines={logs.stderr} colorClass="text-rose-400"    endRef={stderrEndRef} />
+          </div>
+        )}
       </div>
-
-      {/* Error state */}
-      {error && (
-        <div className="bg-red-900/20 border border-red-500/50 rounded p-3 text-red-400 text-sm">
-          {error}
-        </div>
-      )}
-
-      {/* Logs */}
-      {logs && (
-        <div className="space-y-4">
-          {/* Stdout */}
-          <div>
-            <h4 className="text-sm font-semibold text-gray-300 mb-2">Stdout</h4>
-            <div className="bg-black rounded p-4 font-mono text-xs text-green-400 max-h-64 overflow-y-auto">
-              {logs.stdout.length > 0 ? (
-                <>
-                  {logs.stdout.map((line, i) => (
-                    <div key={i} className="whitespace-pre-wrap break-words">
-                      {line}
-                    </div>
-                  ))}
-                  <div ref={stdoutEndRef} />
-                </>
-              ) : (
-                <div className="text-gray-500">No stdout logs</div>
-              )}
-            </div>
-          </div>
-
-          {/* Stderr */}
-          <div>
-            <h4 className="text-sm font-semibold text-gray-300 mb-2">Stderr</h4>
-            <div className="bg-black rounded p-4 font-mono text-xs text-red-400 max-h-64 overflow-y-auto">
-              {logs.stderr.length > 0 ? (
-                <>
-                  {logs.stderr.map((line, i) => (
-                    <div key={i} className="whitespace-pre-wrap break-words">
-                      {line}
-                    </div>
-                  ))}
-                  <div ref={stderrEndRef} />
-                </>
-              ) : (
-                <div className="text-gray-500">No stderr logs</div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Loading state */}
-      {loading && logs === null && (
-        <div className="text-center py-8">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto text-gray-400" />
-          <p className="text-gray-400 mt-2">Loading logs...</p>
-        </div>
-      )}
     </div>
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Log pane                                                            */
+/* ------------------------------------------------------------------ */
+
+function LogPane({
+  label,
+  lines,
+  colorClass,
+  endRef,
+}: {
+  label: string;
+  lines: string[];
+  colorClass: string;
+  endRef: React.RefObject<HTMLDivElement>;
+}) {
+  return (
+    <div>
+      <div className="text-[11px] font-semibold text-white/40 uppercase tracking-wider mb-1.5">{label}</div>
+      <div className="bg-black/60 border border-white/8 rounded-lg p-3 font-mono text-xs max-h-64 overflow-y-auto">
+        {lines.length > 0 ? (
+          <>
+            {lines.map((line, i) => (
+              <div key={i} className={`whitespace-pre-wrap break-words leading-5 ${colorClass}`}>
+                {line}
+              </div>
+            ))}
+            <div ref={endRef} />
+          </>
+        ) : (
+          <div className="text-white/20 italic">No {label.toLowerCase()} output</div>
+        )}
+      </div>
+    </div>
+  );
+}

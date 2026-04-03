@@ -1,248 +1,278 @@
+'use client';
+
 /**
- * ServiceTable Component
- * 
- * Displays a table of all services with their status, health, and actions.
+ * ServiceTable — displays all services with status, health, and action buttons.
+ *
+ * Data is provided by the parent (services.tsx) via props — no independent
+ * polling inside this component.
  */
 
-import React from 'react';
-import { Play, Square, RotateCw, CheckCircle, XCircle, AlertCircle, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { useServiceStatus, ServiceStatus } from '@/hooks/useServiceStatus';
+import React, { useState } from 'react';
+import {
+  Play, Square, RotateCw, CheckCircle, XCircle,
+  AlertCircle, Loader2, Terminal,
+} from 'lucide-react';
+import { ServiceStatus } from '@/hooks/useServiceStatus';
 import { robotFetch } from '@/utils/network';
 import { ROBOT_ENABLED } from '@/utils/env';
 
 interface ServiceTableProps {
+  services: ServiceStatus[];
+  loading: boolean;
+  selectedService?: string | null;
   onServiceSelect?: (serviceName: string) => void;
   onActionComplete?: () => void;
 }
 
-export function ServiceTable({ onServiceSelect, onActionComplete }: ServiceTableProps) {
-  const { services, loading, refresh } = useServiceStatus({ interval: 2000 });
-  const [actionLoading, setActionLoading] = React.useState<string | null>(null);
+const STATUS_COLOR: Record<string, string> = {
+  running:  'text-emerald-400',
+  stopped:  'text-white/40',
+  crashed:  'text-rose-400',
+  starting: 'text-amber-400',
+  stopping: 'text-orange-400',
+};
+
+const POLICY_COLOR: Record<string, string> = {
+  always:     'border-emerald-500/50 text-emerald-400',
+  'on-failure': 'border-amber-500/50 text-amber-400',
+  never:      'border-white/20 text-white/40',
+};
+
+function StatusIcon({ status }: { status: string }) {
+  switch (status) {
+    case 'running':  return <CheckCircle size={14} className="text-emerald-400" />;
+    case 'stopped':  return <XCircle     size={14} className="text-white/30" />;
+    case 'crashed':  return <AlertCircle size={14} className="text-rose-400" />;
+    case 'starting':
+    case 'stopping': return <Loader2     size={14} className="text-amber-400 animate-spin" />;
+    default:         return <AlertCircle size={14} className="text-white/30" />;
+  }
+}
+
+export function ServiceTable({
+  services,
+  loading,
+  selectedService,
+  onServiceSelect,
+  onActionComplete,
+}: ServiceTableProps) {
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const performAction = async (action: 'start' | 'stop' | 'restart', name: string) => {
-    if (!ROBOT_ENABLED) return;
-
-    setActionLoading(name);
+    if (!ROBOT_ENABLED || actionLoading) return;
+    setActionLoading(`${action}:${name}`);
     try {
-      const response = await robotFetch(`/api/services/${action}/${name}`, {
-        method: 'POST',
-      });
-      
-      if (response.offline) return;
-      
-      const data = await response.json();
-      if (data.ok) {
-        await refresh();
-        onActionComplete?.();
-      }
-    } catch (error) {
-      console.error(`Failed to ${action} service ${name}:`, error);
+      const res = await robotFetch(`/api/services/${action}/${name}`, { method: 'POST' });
+      if ('offline' in res && res.offline) return;
+      const data = await res.json();
+      if (data.ok) onActionComplete?.();
+    } catch (err) {
+      console.error(`Failed to ${action} service ${name}:`, err);
     } finally {
       setActionLoading(null);
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'running':
-        return <CheckCircle className="w-5 h-5 text-green-400" />;
-      case 'stopped':
-        return <XCircle className="w-5 h-5 text-gray-400" />;
-      case 'crashed':
-        return <AlertCircle className="w-5 h-5 text-red-400" />;
-      case 'starting':
-      case 'stopping':
-        return <Loader2 className="w-5 h-5 text-yellow-400 animate-spin" />;
-      default:
-        return <AlertCircle className="w-5 h-5 text-gray-400" />;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'running':
-        return 'text-green-400';
-      case 'stopped':
-        return 'text-gray-400';
-      case 'crashed':
-        return 'text-red-400';
-      case 'starting':
-        return 'text-yellow-400';
-      case 'stopping':
-        return 'text-orange-400';
-      default:
-        return 'text-gray-400';
-    }
-  };
-
   if (!ROBOT_ENABLED) {
     return (
-      <div className="text-center py-8 text-gray-400">
-        Robot is offline. Service management features are disabled.
+      <div className="px-4 py-8 text-center text-sm text-white/40">
+        Robot is offline — service management unavailable.
       </div>
     );
   }
 
   if (loading && services.length === 0) {
     return (
-      <div className="text-center py-8">
-        <Loader2 className="w-8 h-8 animate-spin mx-auto text-gray-400" />
-        <p className="text-gray-400 mt-2">Loading services...</p>
+      <div className="px-4 py-10 text-center">
+        <Loader2 size={24} className="animate-spin mx-auto text-white/30" />
+        <p className="text-sm text-white/40 mt-2">Loading services…</p>
+      </div>
+    );
+  }
+
+  if (services.length === 0) {
+    return (
+      <div className="px-4 py-8 text-center text-sm text-white/40">
+        No services found.
       </div>
     );
   }
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse">
+      <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b border-gray-700">
-            <th className="text-left p-3 text-sm font-semibold text-gray-300">Service</th>
-            <th className="text-left p-3 text-sm font-semibold text-gray-300">Status</th>
-            <th className="text-left p-3 text-sm font-semibold text-gray-300">Health</th>
-            <th className="text-left p-3 text-sm font-semibold text-gray-300">PID</th>
-            <th className="text-left p-3 text-sm font-semibold text-gray-300">Policy</th>
-            <th className="text-left p-3 text-sm font-semibold text-gray-300">Actions</th>
+          <tr className="border-b border-white/8 text-left">
+            <th className="px-4 py-2.5 text-xs font-semibold text-white/40 uppercase tracking-wider">Service</th>
+            <th className="px-4 py-2.5 text-xs font-semibold text-white/40 uppercase tracking-wider">Status</th>
+            <th className="px-4 py-2.5 text-xs font-semibold text-white/40 uppercase tracking-wider">Health</th>
+            <th className="px-4 py-2.5 text-xs font-semibold text-white/40 uppercase tracking-wider">PID</th>
+            <th className="px-4 py-2.5 text-xs font-semibold text-white/40 uppercase tracking-wider">Policy</th>
+            <th className="px-4 py-2.5 text-xs font-semibold text-white/40 uppercase tracking-wider">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {services.map((service) => (
-            <tr
-              key={service.name}
-              className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors"
-            >
-              <td className="p-3">
-                <div>
-                  <div className="font-medium text-white">{service.display_name}</div>
-                  <div className="text-xs text-gray-400">{service.description}</div>
-                  <div className="flex gap-2 mt-1">
-                    {service.autostart && (
-                      <Badge variant="outline" className="text-xs border-blue-500 text-blue-400">
-                        Autostart
-                      </Badge>
+          {services.map((svc) => {
+            const isSelected  = selectedService === svc.name;
+            const isActing    = actionLoading?.endsWith(`:${svc.name}`) ?? false;
+            const isRunning   = svc.status === 'running';
+            const policyClass = POLICY_COLOR[svc.restart_policy] ?? POLICY_COLOR.never;
+
+            return (
+              <tr
+                key={svc.name}
+                className={`border-b border-white/5 transition-colors ${isSelected ? 'bg-emerald-900/10' : 'hover:bg-white/3'}`}
+              >
+                {/* Service name */}
+                <td className="px-4 py-3">
+                  <div className="font-semibold text-white">{svc.display_name}</div>
+                  <div className="text-xs text-white/40 mt-0.5">{svc.description}</div>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {svc.autostart && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded border border-sky-500/50 text-sky-400 font-medium">
+                        autostart
+                      </span>
                     )}
-                    <Badge variant="outline" className="text-xs border-gray-600 text-gray-400">
-                      {service.type}
-                    </Badge>
-                    {service.port && (
-                      <Badge variant="outline" className="text-xs border-gray-600 text-gray-400">
-                        :{service.port}
-                      </Badge>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded border border-white/15 text-white/40 font-medium">
+                      {svc.type}
+                    </span>
+                    {svc.port != null && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded border border-white/15 text-white/40 font-mono">
+                        :{svc.port}
+                      </span>
                     )}
                   </div>
-                </div>
-              </td>
-              <td className="p-3">
-                <div className="flex items-center gap-2">
-                  {getStatusIcon(service.status)}
-                  <span className={`text-sm font-medium ${getStatusColor(service.status)}`}>
-                    {service.status.toUpperCase()}
-                  </span>
-                </div>
-              </td>
-              <td className="p-3">
-                {service.health ? (
-                  <Badge
-                    variant={service.health.healthy ? 'default' : 'destructive'}
-                    className={service.health.healthy ? 'bg-green-600' : 'bg-red-600'}
-                  >
-                    {service.health.healthy ? 'Healthy' : 'Unhealthy'}
-                  </Badge>
-                ) : (
-                  <span className="text-xs text-gray-500">N/A</span>
-                )}
-              </td>
-              <td className="p-3">
-                {service.pid ? (
-                  <span className="text-sm font-mono text-gray-300">{service.pid}</span>
-                ) : (
-                  <span className="text-xs text-gray-500">-</span>
-                )}
-              </td>
-              <td className="p-3">
-                <Badge variant="outline" className="text-xs border-purple-500 text-purple-400">
-                  {service.restart_policy}
-                </Badge>
-              </td>
-              <td className="p-3">
-                <div className="flex gap-2">
-                  {service.status === 'running' ? (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => performAction('stop', service.name)}
-                        disabled={actionLoading === service.name}
-                        className="border-gray-600 text-gray-300 hover:bg-gray-700"
-                      >
-                        {actionLoading === service.name ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <>
-                            <Square className="w-4 h-4 mr-1" />
-                            Stop
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => performAction('restart', service.name)}
-                        disabled={actionLoading === service.name}
-                        className="border-gray-600 text-gray-300 hover:bg-gray-700"
-                      >
-                        {actionLoading === service.name ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <>
-                            <RotateCw className="w-4 h-4 mr-1" />
-                            Restart
-                          </>
-                        )}
-                      </Button>
-                    </>
+                </td>
+
+                {/* Status */}
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <StatusIcon status={svc.status} />
+                    <span className={`text-xs font-semibold uppercase ${STATUS_COLOR[svc.status] ?? 'text-white/40'}`}>
+                      {svc.status}
+                    </span>
+                  </div>
+                  {svc.crash_count > 0 && (
+                    <div className="text-[10px] text-rose-400 mt-0.5">{svc.crash_count} crash{svc.crash_count !== 1 ? 'es' : ''}</div>
+                  )}
+                </td>
+
+                {/* Health */}
+                <td className="px-4 py-3">
+                  {svc.health ? (
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
+                      svc.health.healthy
+                        ? 'border-emerald-500/50 text-emerald-400'
+                        : 'border-rose-500/50 text-rose-400'
+                    }`}>
+                      {svc.health.healthy ? 'Healthy' : 'Unhealthy'}
+                    </span>
                   ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => performAction('start', service.name)}
-                      disabled={actionLoading === service.name}
-                      className="border-gray-600 text-gray-300 hover:bg-gray-700"
-                    >
-                      {actionLoading === service.name ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <>
-                          <Play className="w-4 h-4 mr-1" />
-                          Start
-                        </>
-                      )}
-                    </Button>
+                    <span className="text-xs text-white/20">—</span>
                   )}
-                  {onServiceSelect && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onServiceSelect(service.name)}
-                      className="border-gray-600 text-gray-300 hover:bg-gray-700"
-                    >
-                      Logs
-                    </Button>
+                </td>
+
+                {/* PID */}
+                <td className="px-4 py-3">
+                  {svc.pid != null ? (
+                    <span className="text-xs font-mono text-white/60">{svc.pid}</span>
+                  ) : (
+                    <span className="text-xs text-white/20">—</span>
                   )}
-                </div>
-              </td>
-            </tr>
-          ))}
+                </td>
+
+                {/* Policy */}
+                <td className="px-4 py-3">
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${policyClass}`}>
+                    {svc.restart_policy}
+                  </span>
+                </td>
+
+                {/* Actions */}
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {isRunning ? (
+                      <>
+                        <ActionBtn
+                          label="Stop"
+                          icon={<Square size={11} />}
+                          onClick={() => performAction('stop', svc.name)}
+                          loading={isActing && actionLoading?.startsWith('stop:')}
+                          danger
+                        />
+                        <ActionBtn
+                          label="Restart"
+                          icon={<RotateCw size={11} />}
+                          onClick={() => performAction('restart', svc.name)}
+                          loading={isActing && actionLoading?.startsWith('restart:')}
+                        />
+                      </>
+                    ) : (
+                      <ActionBtn
+                        label="Start"
+                        icon={<Play size={11} />}
+                        onClick={() => performAction('start', svc.name)}
+                        loading={isActing && actionLoading?.startsWith('start:')}
+                        primary
+                      />
+                    )}
+                    {onServiceSelect && (
+                      <ActionBtn
+                        label="Logs"
+                        icon={<Terminal size={11} />}
+                        onClick={() => onServiceSelect(isSelected ? '' : svc.name)}
+                        active={isSelected}
+                      />
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
-      {services.length === 0 && !loading && (
-        <div className="text-center py-8 text-gray-400">
-          No services found.
-        </div>
-      )}
     </div>
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Action button                                                       */
+/* ------------------------------------------------------------------ */
+
+function ActionBtn({
+  label,
+  icon,
+  onClick,
+  loading = false,
+  primary = false,
+  danger = false,
+  active = false,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  loading?: boolean;
+  primary?: boolean;
+  danger?: boolean;
+  active?: boolean;
+}) {
+  const base = 'inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold border transition-colors disabled:opacity-40';
+  const color = active
+    ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300'
+    : primary
+    ? 'bg-emerald-600/10 border-emerald-500/40 text-emerald-400 hover:bg-emerald-600/20'
+    : danger
+    ? 'bg-rose-600/10 border-rose-500/40 text-rose-400 hover:bg-rose-600/20'
+    : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white';
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className={`${base} ${color}`}
+    >
+      {loading ? <Loader2 size={11} className="animate-spin" /> : icon}
+      {label}
+    </button>
+  );
+}

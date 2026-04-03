@@ -139,14 +139,19 @@ async def start_service(name: str) -> Dict[str, Any]:
 async def stop_service(name: str, force: bool = Query(False, description="Force stop")) -> Dict[str, Any]:
     """
     Stop a service.
-    
+
     Args:
         name: Service name
         force: Force stop (kill instead of terminate)
-    
+
     Returns:
         Success status and message
     """
+    from api.input_validators import validate_and_sanitize_input
+    try:
+        name = validate_and_sanitize_input(name, str, "service name", max_length=100)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     try:
         manager = get_manager()
         result = manager.stop_service(name, force=force)
@@ -171,22 +176,20 @@ async def stop_service(name: str, force: bool = Query(False, description="Force 
 
 @router.post("/restart/{name}")
 async def restart_service(name: str) -> Dict[str, Any]:
-    """Restart a service."""
-    # Validate service name
+    """
+    Restart a service.
+
+    Args:
+        name: Service name
+
+    Returns:
+        Success status and message
+    """
     from api.input_validators import validate_and_sanitize_input
     try:
         name = validate_and_sanitize_input(name, str, "service name", max_length=100)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    """
-    Restart a service.
-    
-    Args:
-        name: Service name
-    
-    Returns:
-        Success status and message
-    """
     try:
         manager = get_manager()
         result = manager.restart_service(name)
