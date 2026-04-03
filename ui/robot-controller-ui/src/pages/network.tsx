@@ -19,7 +19,6 @@ import {
   Users, RefreshCw, Loader2, Monitor,
 } from 'lucide-react';
 import { NetworkConfigEditor } from '@/components/settings/NetworkConfigEditor';
-import NetworkProfileSelector from '@/components/NetworkProfileSelector';
 import MobileConnectionTest from '@/components/MobileConnectionTest';
 import { robotFetch } from '@/utils/network';
 
@@ -152,11 +151,10 @@ function ApClientsPanel() {
 /* ------------------------------------------------------------------ */
 
 const TABS = [
-  { id: 'live',     label: 'Live',     icon: Monitor },
-  { id: 'ap',       label: 'Access Point', icon: Radio },
-  { id: 'config',   label: 'Config',   icon: SlidersHorizontal },
-  { id: 'profiles', label: 'Profiles', icon: Wifi },
-  { id: 'test',     label: 'Test',     icon: FlaskConical },
+  { id: 'live',        label: 'Live Control',  icon: Monitor },
+  { id: 'ap',          label: 'AP / Hotspot',  icon: Radio },
+  { id: 'startup',     label: 'Startup Config', icon: SlidersHorizontal },
+  { id: 'diagnostics', label: 'Diagnostics',   icon: FlaskConical },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -217,6 +215,9 @@ export default function NetworkPage() {
 
           {tab === 'live' && (
             <div className="space-y-4">
+              <div className="text-xs text-white/50 px-1">
+                Change the robot&apos;s active network connection right now — switch modes, scan for Wi-Fi, or toggle the hotspot.
+              </div>
               <OmegaNetworkWizard />
             </div>
           )}
@@ -224,46 +225,29 @@ export default function NetworkPage() {
           {tab === 'ap' && (
             <div className="space-y-4">
               <div className="text-xs text-white/50 px-1">
-                Manage the robot&apos;s built-in Wi-Fi Access Point — configure its SSID, password, and IP range, and see which devices are connected.
-              </div>
-              {/* AP config (persistent settings saved to robot) */}
-              <div className="bg-gray-800 border border-white/10 rounded-lg p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  <Radio className="w-4 h-4 text-purple-400" />
-                  <h2 className="text-sm font-semibold text-white">Access Point Configuration</h2>
-                </div>
-                <NetworkConfigEditor />
+                Manage the robot&apos;s built-in Wi-Fi Access Point — see which devices are currently connected.
               </div>
               {/* Connected clients */}
               <ApClientsPanel />
             </div>
           )}
 
-          {tab === 'config' && (
+          {tab === 'startup' && (
             <div className="space-y-4">
               <div className="text-xs text-white/50 px-1">
-                Persistent startup configuration — these settings take effect on next reboot or when you apply them from the robot backend.
+                Persistent startup configuration — these settings take effect on next reboot or when applied from the robot backend.
               </div>
               <div className="bg-gray-800 border border-white/10 rounded-lg p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <SlidersHorizontal className="w-4 h-4 text-yellow-400" />
-                  <h2 className="text-sm font-semibold text-white">Default Mode &amp; Client Settings</h2>
+                  <h2 className="text-sm font-semibold text-white">Startup Network Settings</h2>
                 </div>
                 <NetworkConfigEditor />
               </div>
             </div>
           )}
 
-          {tab === 'profiles' && (
-            <div className="space-y-4">
-              <div className="text-xs text-white/50 px-1">
-                UI-side connection profiles control which IP/hostname the browser uses to reach the robot. Switching profiles does not change the robot&apos;s network — it changes how <em>this browser</em> connects.
-              </div>
-              <NetworkProfileSelector />
-            </div>
-          )}
-
-          {tab === 'test' && (
+          {tab === 'diagnostics' && (
             <div className="space-y-4">
               <div className="text-xs text-white/50 px-1">
                 Test latency, bandwidth, and WebSocket connectivity to all robot services.

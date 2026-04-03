@@ -7,7 +7,7 @@
 import React, { useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { SlidersHorizontal, Loader2, ArrowLeft, Wifi } from 'lucide-react';
+import { SlidersHorizontal, Loader2, ArrowLeft, Wifi, Monitor } from 'lucide-react';
 import { ROBOT_ENABLED } from '@/utils/env';
 import { Card, CardContent } from '@/components/ui/card';
 import { SettingsSection } from '@/components/settings/SettingsSection';
@@ -19,6 +19,7 @@ import { ServiceAutostartEditor } from '@/components/settings/ServiceAutostartEd
 import { HardwareMapViewer } from '@/components/settings/HardwareMapViewer';
 import { ConfigImportExport } from '@/components/settings/ConfigImportExport';
 import { ApplyRestartServices } from '@/components/settings/ApplyRestartServices';
+import NetworkProfileSelector from '@/components/NetworkProfileSelector';
 import { useConfig } from '@/hooks/useConfig';
 import { useConfigSection } from '@/hooks/useConfigSection';
 
@@ -144,16 +145,16 @@ export default function SettingsPage() {
                 </div>
               </SettingsSection>
 
-              {/* Network Settings — moved to dedicated page */}
+              {/* Network Settings — links to dedicated page */}
               <SettingsSection
                 title="Network Settings"
-                description="Wi-Fi, Access Point, and connection profiles"
+                description="Wi-Fi, Access Point, and startup network config"
               >
                 <div className="flex items-center justify-between rounded-lg bg-gray-900 border border-white/10 px-4 py-3">
                   <div className="flex items-center gap-3">
                     <Wifi className="w-4 h-4 text-blue-400 shrink-0" />
                     <p className="text-sm text-white/70">
-                      Network configuration has moved to the dedicated Network Management page.
+                      Live network control and startup configuration are on the Network Management page.
                     </p>
                   </div>
                   <Link
@@ -163,6 +164,20 @@ export default function SettingsPage() {
                     Open Network →
                   </Link>
                 </div>
+              </SettingsSection>
+
+              {/* Connection Profiles */}
+              <SettingsSection
+                title="Connection Profiles"
+                description="Control which IP/hostname this browser uses to reach the robot"
+              >
+                <div className="flex items-start gap-2 mb-3 px-1">
+                  <Monitor className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+                  <p className="text-xs text-white/50">
+                    Switching profiles changes how <em>this browser</em> connects to the robot — it does not affect the robot&apos;s network configuration.
+                  </p>
+                </div>
+                <NetworkProfileSelector />
               </SettingsSection>
 
               {/* Camera Settings */}

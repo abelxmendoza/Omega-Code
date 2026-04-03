@@ -38,6 +38,7 @@ import math
 import threading
 import time
 import logging
+from collections import deque
 from typing import Set, Optional
 
 log = logging.getLogger(__name__)
@@ -58,6 +59,23 @@ try:
     _rclpy_ok = True
 except ImportError as _ie:
     log.info('rclpy not available (%s) -- sensor bridge will be a no-op', _ie)
+
+
+def _safe_put(q: asyncio.Queue, data: dict) -> None:
+    """Drop the oldest item if the queue is full, then enqueue data.
+
+    Called via loop.call_soon_threadsafe(), so it always runs inside the
+    asyncio event loop — no locking needed.
+    """
+    if q.full():
+        try:
+            q.get_nowait()  # drop oldest sample
+        except asyncio.QueueEmpty:
+            pass
+    try:
+        q.put_nowait(data)
+    except asyncio.QueueFull:
+        pass  # extremely unlikely; discard silently
 
 
 def _best_effort_qos(depth: int = 5) -> 'QoSProfile':
@@ -89,6 +107,9 @@ class OmegaSensorBridge:
         self._lock = threading.Lock()
         self._us_queues: Set[asyncio.Queue] = set()
         self._line_queues: Set[asyncio.Queue] = set()
+
+        # Rolling average buffer for ultrasonic smoothing (5-sample window)
+        self._ultra_buffer: deque = deque(maxlen=5)
 
     # ------------------------------------------------------------------
     # Factory
@@ -160,12 +181,16 @@ class OmegaSensorBridge:
 
     def _on_ultrasonic(self, msg: 'Range') -> None:
         r = msg.range
-        dist_m = None if math.isinf(r) or math.isnan(r) else round(r, 3)
+        if math.isinf(r) or math.isnan(r):
+            return  # reject invalid hardware readings
+        raw_cm = r * 100.0
+        smoothed_cm = self._smooth_ultrasonic(raw_cm)
+        dist_m = round(smoothed_cm / 100.0, 3)
         data = {
             'type': 'ultrasonic',
+            'distance_cm': round(smoothed_cm, 1),
             'distance_m': dist_m,
-            'distance_cm': round(dist_m * 100, 1) if dist_m is not None else None,
-            'distance_inch': round(dist_m * 39.3701, 1) if dist_m is not None else None,
+            'distance_inch': round(smoothed_cm * 0.393701, 1),
             'ts': int(time.time() * 1000),
         }
         self._fan_out(self._us_queues, data)
@@ -186,20 +211,44 @@ class OmegaSensorBridge:
         try:
             parsed = json.loads(msg.data)
         except Exception:
-            parsed = {'raw': msg.data}
-        parsed['type'] = 'line_tracking'
-        self._fan_out(self._line_queues, parsed)
+            parsed = {}
+
+        # Normalize to blueprint payload regardless of source shape
+        lt = parsed.get('lineTracking') or parsed.get('sensors') or parsed
+        left   = bool(lt.get('left',   lt.get('Left',   lt.get('IR01', 0))))
+        center = bool(lt.get('center', lt.get('Center', lt.get('IR02', 0))))
+        right  = bool(lt.get('right',  lt.get('Right',  lt.get('IR03', 0))))
+
+        data = {
+            'type': 'line_tracking',
+            'left': left,
+            'center': center,
+            'right': right,
+            'on_line': left or center or right,
+            'ts': int(time.time() * 1000),
+        }
+        self._fan_out(self._line_queues, data)
 
     # ------------------------------------------------------------------
-    # Internal fan-out (called from rclpy thread)
+    # Internal helpers
     # ------------------------------------------------------------------
+
+    def _smooth_ultrasonic(self, dist_cm: float) -> float:
+        """5-sample rolling average to reduce ultrasonic noise."""
+        self._ultra_buffer.append(dist_cm)
+        return sum(self._ultra_buffer) / len(self._ultra_buffer)
 
     def _fan_out(self, queues: Set[asyncio.Queue], data: dict) -> None:
+        """Fan data out to all registered queues (called from sensor thread).
+
+        Uses _safe_put (scheduled into the event loop) so a full queue
+        drops the oldest sample instead of raising QueueFull.
+        """
         with self._lock:
             snapshot = set(queues)
         for q in snapshot:
             try:
-                self._loop.call_soon_threadsafe(q.put_nowait, data)
+                self._loop.call_soon_threadsafe(_safe_put, q, data)
             except Exception:
                 pass
 
@@ -219,15 +268,16 @@ class OmegaSensorBridge:
                 global _bridge_latest_distance_cm
                 try:
                     while True:
-                        dist_cm = sensor.get_distance()
-                        if dist_cm > 0:
-                            _bridge_latest_distance_cm = dist_cm
-                            dist_m = round(dist_cm / 100.0, 3)
+                        raw_cm = sensor.get_distance()
+                        if raw_cm > 0:
+                            _bridge_latest_distance_cm = raw_cm
+                            smoothed_cm = self._smooth_ultrasonic(raw_cm)
+                            dist_m = round(smoothed_cm / 100.0, 3)
                             data = {
                                 'type': 'ultrasonic',
+                                'distance_cm': round(smoothed_cm, 1),
                                 'distance_m': dist_m,
-                                'distance_cm': round(dist_cm, 1),
-                                'distance_inch': round(dist_m * 39.3701, 1),
+                                'distance_inch': round(smoothed_cm * 0.393701, 1),
                                 'ts': int(time.time() * 1000),
                             }
                             self._fan_out(self._us_queues, data)

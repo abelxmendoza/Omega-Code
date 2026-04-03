@@ -84,6 +84,10 @@ def _stop_led_now() -> None:
 log = logging.getLogger(__name__)
 router = APIRouter()
 
+# Maximum sensor frame rate sent to any WebSocket client.
+# Readings that arrive faster than this are silently dropped (latest-wins).
+_SEND_INTERVAL = 0.05  # 20 FPS
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -141,6 +145,7 @@ async def ws_ultrasonic(websocket: WebSocket):
     if sensor_bridge:
         sensor_bridge.add_ultrasonic_queue(q)
 
+    last_send = 0.0
     try:
         while True:
             received, queued = await _ws_race(websocket, q)
@@ -150,7 +155,11 @@ async def ws_ultrasonic(websocket: WebSocket):
                     await websocket.send_json({'type': 'pong', 'ts': received.get('ts')})
 
             if queued is not None:
-                await websocket.send_json(queued)
+                now = time.monotonic()
+                if now - last_send >= _SEND_INTERVAL:
+                    await websocket.send_json(queued)
+                    last_send = now
+                # else: drop sample — client already has a fresh one in-flight
 
     except WebSocketDisconnect:
         log.info('ws_ultrasonic: client disconnected')
@@ -184,6 +193,7 @@ async def ws_line(websocket: WebSocket):
     if sensor_bridge:
         sensor_bridge.add_line_queue(q)
 
+    last_send = 0.0
     try:
         while True:
             received, queued = await _ws_race(websocket, q)
@@ -193,7 +203,10 @@ async def ws_line(websocket: WebSocket):
                     await websocket.send_json({'type': 'pong', 'ts': received.get('ts')})
 
             if queued is not None:
-                await websocket.send_json(queued)
+                now = time.monotonic()
+                if now - last_send >= _SEND_INTERVAL:
+                    await websocket.send_json(queued)
+                    last_send = now
 
     except WebSocketDisconnect:
         log.info('ws_line: client disconnected')
