@@ -1,15 +1,25 @@
+'use client';
+
 /*
 # File: /src/components/PerformanceDashboard.tsx
 # Summary:
-# Real-time performance monitoring dashboard
-# - System metrics (CPU, memory, network)
-# - Application metrics (response times, error rates)
-# - WebSocket connection health
-# - Cache performance statistics
+# Real-time performance monitoring dashboard.
+# Polls /api/performance-proxy/metrics (30s) and /api/performance-proxy/cache (non-blocking).
+# Circuit breaker: 3 failures → 60s backoff.
+# Skips polling when backend is offline (from useSystemHealth).
 */
 
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
+import {
+  Activity, Cpu, HardDrive, Wifi, Server, Shield,
+  Thermometer, Battery, Zap, AlertTriangle, CheckCircle2,
+  Clock, Radio,
+} from 'lucide-react';
 import { useSystemHealth } from '@/context/SystemHealthContext';
+
+/* ------------------------------------------------------------------ */
+/* Types                                                               */
+/* ------------------------------------------------------------------ */
 
 interface PerformanceData {
   timestamp: number;
@@ -40,7 +50,14 @@ interface PerformanceData {
     firmwareVersion: string;
   };
   robotTelemetry: {
-    power: { voltage: number | null; percentage: number | null; charging: boolean; powerSource: string; undervoltage: boolean; powerConsumption: number | null };
+    power: {
+      voltage: number | null;
+      percentage: number | null;
+      charging: boolean;
+      powerSource: string;
+      undervoltage: boolean;
+      powerConsumption: number | null;
+    };
     sensors: {
       camera: { fps: number | null; resolution: string | null; status: string };
       ultrasonic: { distance: number | null; status: string; pins: string };
@@ -53,11 +70,29 @@ interface PerformanceData {
       leftMotor: { speed: number; position: number; temperature: number | null; status: string };
       rightMotor: { speed: number; position: number; temperature: number | null; status: string };
       servoMotors: { id: number; position: number; status: string }[];
-      actuators: any[];
+      actuators: unknown[];
     };
-    network: { wifiSignal: number | null; latency: number | null; throughput: number | null; connectionType: string; ipAddress: string | null };
-    autonomous: { mode: string; navigation: { status: string; target: any; path: any[] }; obstacleAvoidance: { enabled: boolean; detected: boolean }; lineFollowing: { enabled: boolean; onLine: boolean }; mission: { active: boolean; progress: number } };
-    safety: { emergencyStop: boolean; safetyLimits: { enabled: boolean; violations: number }; collisionDetection: { enabled: boolean; detected: boolean }; batteryProtection: { enabled: boolean; lowBattery: boolean }; thermalProtection: { enabled: boolean; overheated: boolean } };
+    network: {
+      wifiSignal: number | null;
+      latency: number | null;
+      throughput: number | null;
+      connectionType: string;
+      ipAddress: string | null;
+    };
+    autonomous: {
+      mode: string;
+      navigation: { status: string; target: unknown; path: unknown[] };
+      obstacleAvoidance: { enabled: boolean; detected: boolean };
+      lineFollowing: { enabled: boolean; onLine: boolean };
+      mission: { active: boolean; progress: number };
+    };
+    safety: {
+      emergencyStop: boolean;
+      safetyLimits: { enabled: boolean; violations: number };
+      collisionDetection: { enabled: boolean; detected: boolean };
+      batteryProtection: { enabled: boolean; lowBattery: boolean };
+      thermalProtection: { enabled: boolean; overheated: boolean };
+    };
   };
 }
 
@@ -68,540 +103,437 @@ interface CacheStats {
   totalRequests: number;
 }
 
-// Circuit breaker thresholds for performance polling
-const PERF_POLL_INTERVAL_MS  = 30_000; // was 2000 — 30s is plenty for a dashboard
-const PERF_BACKOFF_INTERVAL_MS = 60_000;
-const PERF_FAILURE_THRESHOLD = 3;
+/* ------------------------------------------------------------------ */
+/* Constants                                                           */
+/* ------------------------------------------------------------------ */
+
+const POLL_MS      = 30_000;
+const BACKOFF_MS   = 60_000;
+const FAIL_THRESH  = 3;
+
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
+
+function statusColor(value: number, warn: number, crit: number) {
+  if (value >= crit) return 'text-rose-400';
+  if (value >= warn) return 'text-amber-400';
+  return 'text-emerald-400';
+}
+
+function formatBytes(bytes: number) {
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  if (bytes === 0) return '0 B';
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
+}
+
+function formatUptime(seconds: number) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Sub-components                                                      */
+/* ------------------------------------------------------------------ */
+
+function SectionHeader({ icon, label, colorClass }: {
+  icon: React.ReactNode;
+  label: string;
+  colorClass: string;
+}) {
+  return (
+    <div className={`flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider mb-2 ${colorClass}`}>
+      {icon}
+      {label}
+    </div>
+  );
+}
+
+function Row({ label, value, valueClass = 'text-white' }: {
+  label: string;
+  value: React.ReactNode;
+  valueClass?: string;
+}) {
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-white/50 text-xs">{label}</span>
+      <span className={`text-xs font-semibold ${valueClass}`}>{value}</span>
+    </div>
+  );
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="bg-gray-800/60 border border-white/8 rounded-lg p-3 space-y-1.5">
+      {children}
+    </div>
+  );
+}
+
+function ServiceDot({ on, label }: { on: boolean; label: string }) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className={`w-1.5 h-1.5 rounded-full ${on ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+      <span className="text-[11px] capitalize text-white/60">{label}</span>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Component                                                           */
+/* ------------------------------------------------------------------ */
 
 const PerformanceDashboard: React.FC = memo(() => {
   const health = useSystemHealth();
-  const [performanceData, setPerformanceData] = useState<PerformanceData | null>(null);
+  const [perfData, setPerfData] = useState<PerformanceData | null>(null);
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
-  const [isMonitoring, setIsMonitoring] = useState(false);
+  const [monitoring, setMonitoring] = useState(false);
+
+  const fetchRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    // Skip polling when the backend is known-down from the centralized health service.
-    // This prevents hammering a dead endpoint — the health service will flip us back
-    // to connected once /api/health recovers.
     if (!health.connected) {
-      setIsMonitoring(false);
+      setMonitoring(false);
       return;
     }
 
-    const startMonitoring = async () => {
+    let mounted = true;
+    let failCount = 0;
+    let intervalId: ReturnType<typeof setInterval>;
+
+    async function tick() {
+      // Metrics (critical path)
       try {
-        setIsMonitoring(true);
-        let failureCount = 0;
-        let currentInterval = PERF_POLL_INTERVAL_MS;
-
-        const fetchPerformanceData = async () => {
-          try {
-            const response = await fetch('/api/performance-proxy/metrics');
-            if (response.ok) {
-              failureCount = 0;
-              const data = await response.json();
-              setPerformanceData(data);
-            } else {
-              failureCount += 1;
-              console.warn(`Performance API unavailable (${failureCount}/${PERF_FAILURE_THRESHOLD})`);
-            }
-          } catch (error) {
-            failureCount += 1;
-            console.warn(`Performance fetch error (${failureCount}/${PERF_FAILURE_THRESHOLD}):`, error);
+        const res = await fetch('/api/performance-proxy/metrics');
+        if (!mounted) return;
+        if (res.ok) {
+          failCount = 0;
+          setPerfData(await res.json());
+          setMonitoring(true);
+          if (failCount === 0 && intervalId) {
+            // recover to normal interval — reschedule handled below
           }
-        };
-
-        const fetchCacheStats = async () => {
-          try {
-            const response = await fetch('/api/performance-proxy/cache');
-            if (response.ok) {
-              const data = await response.json();
-              setCacheStats(data);
-            }
-          } catch {
-            // cache stats are non-critical — fail silently
-          }
-        };
-
-        // Initial fetch
-        await fetchPerformanceData();
-        await fetchCacheStats();
-
-        // Circuit-breaker interval: backs off to 60s after 3 consecutive failures
-        let intervalId: ReturnType<typeof setInterval>;
-        const tick = () => {
-          fetchPerformanceData();
-          fetchCacheStats();
-          // Escalate to back-off interval after threshold
-          if (failureCount >= PERF_FAILURE_THRESHOLD && currentInterval !== PERF_BACKOFF_INTERVAL_MS) {
-            currentInterval = PERF_BACKOFF_INTERVAL_MS;
-            clearInterval(intervalId);
-            intervalId = setInterval(tick, PERF_BACKOFF_INTERVAL_MS);
-          } else if (failureCount === 0 && currentInterval !== PERF_POLL_INTERVAL_MS) {
-            // Recover: reset to normal interval on success
-            currentInterval = PERF_POLL_INTERVAL_MS;
-            clearInterval(intervalId);
-            intervalId = setInterval(tick, PERF_POLL_INTERVAL_MS);
-          }
-        };
-        intervalId = setInterval(tick, PERF_POLL_INTERVAL_MS);
-
-        return () => clearInterval(intervalId);
-      } catch (error) {
-        console.error('Failed to start performance monitoring:', error);
+        } else {
+          failCount++;
+        }
+      } catch {
+        if (!mounted) return;
+        failCount++;
       }
-    };
 
-    const cleanup = startMonitoring();
+      // Cache stats (non-critical — never affects monitoring state)
+      try {
+        const res = await fetch('/api/performance-proxy/cache');
+        if (mounted && res.ok) setCacheStats(await res.json());
+      } catch { /* silent */ }
+
+      // Circuit breaker escalation
+      if (failCount >= FAIL_THRESH) {
+        setMonitoring(false);
+        clearInterval(intervalId);
+        intervalId = setInterval(tick, BACKOFF_MS);
+      }
+    }
+
+    fetchRef.current = tick;
+    tick();
+    intervalId = setInterval(tick, POLL_MS);
 
     return () => {
-      cleanup.then(cleanupFn => cleanupFn?.());
-      setIsMonitoring(false);
+      mounted = false;
+      clearInterval(intervalId);
     };
   }, [health.connected]);
 
-  const getStatusColor = (value: number, thresholds: { warning: number; critical: number }) => {
-    if (value >= thresholds.critical) return 'text-red-500';
-    if (value >= thresholds.warning) return 'text-yellow-500';
-    return 'text-green-500';
-  };
-
-  const formatBytes = (bytes: number) => {
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    if (bytes === 0) return '0 B';
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
-  };
-
-  if (!performanceData || !cacheStats) {
+  /* Loading / offline state */
+  if (!perfData) {
     return (
-      <div className="bg-gray-800 text-white p-4 rounded-md shadow-md">
-        <h2 className="text-lg font-bold mb-4">Performance Dashboard</h2>
-        <div className="text-center text-gray-400">
+      <div className="bg-gray-900 border border-white/10 rounded-lg overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 border-b border-white/10">
+          <Activity size={14} className="text-emerald-400" />
+          <span className="text-sm font-bold tracking-wide text-white uppercase">Performance</span>
+        </div>
+        <div className="p-6 text-center text-sm text-white/40">
           {!health.connected
             ? 'Backend offline — waiting for connection'
-            : isMonitoring
-              ? 'Starting monitoring...'
-              : 'Monitoring not available'}
+            : 'Fetching metrics…'}
         </div>
       </div>
     );
   }
 
+  /* Alert conditions */
+  const alerts: { msg: string; level: 'critical' | 'warning' }[] = [];
+  if (perfData.cpuUsage > 90)            alerts.push({ msg: 'High CPU usage', level: 'critical' });
+  if (perfData.memoryPercent > 95)       alerts.push({ msg: 'High memory usage', level: 'critical' });
+  if ((perfData.responseTime ?? 0) > 1000) alerts.push({ msg: 'Slow response time', level: 'critical' });
+  if ((perfData.errorRate ?? 0) > 5)    alerts.push({ msg: 'High error rate', level: 'critical' });
+  if (perfData.temperature && perfData.temperature > 70) alerts.push({ msg: 'CPU temperature critical', level: 'critical' });
+  if (cacheStats && cacheStats.hitRate < 60) alerts.push({ msg: 'Low cache hit rate', level: 'warning' });
+
   return (
-    <div className="bg-gray-800 text-white p-4 rounded-md shadow-md w-full max-w-4xl">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-bold">Performance Dashboard</h2>
-          {performanceData && (
-            <div className="flex items-center gap-2 px-2 py-1 bg-blue-600 rounded-full text-xs">
-              <span className="text-blue-200">📱</span>
-              <span className="font-medium">{performanceData.source}</span>
-              <span className="text-blue-200">•</span>
-              <span className="text-blue-200">{performanceData.deviceName}</span>
-            </div>
+    <div className="bg-gray-900 border border-white/10 rounded-lg overflow-hidden">
+
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-800 border-b border-white/10">
+        <div className="flex items-center gap-2">
+          <Activity size={14} className="text-emerald-400" />
+          <span className="text-sm font-bold tracking-wide text-white uppercase">Performance</span>
+          {perfData.piSpecific?.piModel && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/40 font-medium">
+              {perfData.piSpecific.piModel}
+            </span>
           )}
         </div>
-        <div className="flex items-center space-x-2">
-          <div className={`w-2 h-2 rounded-full ${isMonitoring ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className="text-sm text-gray-400">
-            {isMonitoring ? 'Monitoring' : 'Stopped'}
-          </span>
+        <div className="flex items-center gap-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full ${monitoring ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+          <span className="text-[11px] text-white/40">{monitoring ? 'Live' : 'Backoff'}</span>
         </div>
       </div>
 
-      {/* Pi-Specific Information */}
-      {performanceData?.piSpecific && (
-        <div className="mb-4 p-3 bg-gray-700 rounded border border-gray-600">
-          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-orange-300">
-            <span>🤖</span>
-            Raspberry Pi Status
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-            <div>
-              <div className="text-gray-400">Model</div>
-              <div className="font-medium">{performanceData.piSpecific.piModel}</div>
-            </div>
-            <div>
-              <div className="text-gray-400">Temperature</div>
-              <div className="font-medium">
-                {performanceData.temperature ? `${performanceData.temperature.toFixed(1)}°C` : 'N/A'}
-              </div>
-            </div>
-            <div>
-              <div className="text-gray-400">GPIO</div>
-              <div className={`font-medium ${performanceData.piSpecific.gpioStatus.status === 'active' ? 'text-green-400' : 'text-red-400'}`}>
-                {performanceData.piSpecific.gpioStatus.status}
-              </div>
-            </div>
-            <div>
-              <div className="text-gray-400">Camera</div>
-              <div className={`font-medium ${performanceData.piSpecific.cameraStatus.enabled ? 'text-green-400' : 'text-red-400'}`}>
-                {performanceData.piSpecific.cameraStatus.status}
-              </div>
-            </div>
+      <div className="p-3 space-y-3">
+
+        {/* Row 1: System + Network + Application */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+          <Card>
+            <SectionHeader icon={<Cpu size={11} />} label="System" colorClass="text-sky-400" />
+            <Row
+              label="CPU"
+              value={`${perfData.cpuUsage.toFixed(1)}%`}
+              valueClass={statusColor(perfData.cpuUsage, 70, 90)}
+            />
+            <Row
+              label="Memory"
+              value={`${perfData.memoryPercent.toFixed(1)}%`}
+              valueClass={statusColor(perfData.memoryPercent, 80, 95)}
+            />
+            <Row
+              label="Disk"
+              value={`${perfData.diskUsage.toFixed(1)}%`}
+              valueClass={statusColor(perfData.diskUsage, 85, 95)}
+            />
+            {perfData.temperature != null && (
+              <Row
+                label="Temp"
+                value={`${perfData.temperature.toFixed(1)}°C`}
+                valueClass={statusColor(perfData.temperature, 60, 70)}
+              />
+            )}
+          </Card>
+
+          <Card>
+            <SectionHeader icon={<Wifi size={11} />} label="Network I/O" colorClass="text-emerald-400" />
+            <Row label="Sent"      value={formatBytes(perfData.networkIO.bytesSent)} />
+            <Row label="Received"  value={formatBytes(perfData.networkIO.bytesRecv)} />
+            <Row label="WS Conns"  value={String(perfData.websocketConnections)} />
+            {perfData.robotTelemetry?.network?.latency != null && (
+              <Row label="Latency" value={`${perfData.robotTelemetry.network.latency}ms`} />
+            )}
+            {perfData.robotTelemetry?.network?.wifiSignal != null && (
+              <Row
+                label="Signal"
+                value={`${perfData.robotTelemetry.network.wifiSignal}dBm`}
+                valueClass={perfData.robotTelemetry.network.wifiSignal > -60 ? 'text-emerald-400' : 'text-amber-400'}
+              />
+            )}
+          </Card>
+
+          <Card>
+            <SectionHeader icon={<Zap size={11} />} label="Application" colorClass="text-violet-400" />
+            <Row
+              label="Response"
+              value={`${(perfData.responseTime ?? 0).toFixed(1)}ms`}
+              valueClass={statusColor(perfData.responseTime ?? 0, 500, 1000)}
+            />
+            <Row
+              label="Error Rate"
+              value={`${(perfData.errorRate ?? 0).toFixed(2)}%`}
+              valueClass={statusColor(perfData.errorRate ?? 0, 2, 5)}
+            />
+            <Row label="Throughput" value={`${(perfData.throughput ?? 0).toFixed(0)} req/s`} />
+            <Row
+              label="Uptime"
+              value={perfData.uptime > 0 ? formatUptime(perfData.uptime) : '—'}
+            />
+          </Card>
+        </div>
+
+        {/* Row 2: Pi services + Power + Safety */}
+        {(perfData.piSpecific || perfData.robotTelemetry) && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+            {perfData.piSpecific && (
+              <Card>
+                <SectionHeader icon={<Server size={11} />} label="Pi Services" colorClass="text-amber-400" />
+                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
+                  {Object.entries(perfData.piSpecific.robotServices).map(([svc, on]) => (
+                    <ServiceDot key={svc} on={on as boolean} label={svc} />
+                  ))}
+                </div>
+                <div className="pt-1 space-y-1.5">
+                  <Row
+                    label="GPIO"
+                    value={perfData.piSpecific.gpioStatus.status}
+                    valueClass={perfData.piSpecific.gpioStatus.status === 'active' ? 'text-emerald-400' : 'text-rose-400'}
+                  />
+                  <Row
+                    label="Camera"
+                    value={perfData.piSpecific.cameraStatus.status}
+                    valueClass={perfData.piSpecific.cameraStatus.enabled ? 'text-emerald-400' : 'text-rose-400'}
+                  />
+                </div>
+              </Card>
+            )}
+
+            {perfData.robotTelemetry?.power && (
+              <Card>
+                <SectionHeader icon={<Battery size={11} />} label="Power" colorClass="text-yellow-400" />
+                <Row label="Source" value={perfData.robotTelemetry.power.powerSource} />
+                {perfData.robotTelemetry.power.voltage != null && (
+                  <Row
+                    label="Voltage"
+                    value={`${perfData.robotTelemetry.power.voltage}V`}
+                    valueClass={perfData.robotTelemetry.power.undervoltage ? 'text-rose-400' : 'text-emerald-400'}
+                  />
+                )}
+                {perfData.robotTelemetry.power.powerConsumption != null && (
+                  <Row label="Consumption" value={`${perfData.robotTelemetry.power.powerConsumption}W`} />
+                )}
+                {perfData.robotTelemetry.power.undervoltage && (
+                  <div className="flex items-center gap-1 text-rose-400 text-[11px] font-semibold pt-0.5">
+                    <AlertTriangle size={11} />
+                    Undervoltage
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {perfData.robotTelemetry?.safety && (
+              <Card>
+                <SectionHeader icon={<Shield size={11} />} label="Safety" colorClass="text-rose-400" />
+                <Row
+                  label="E-Stop"
+                  value={perfData.robotTelemetry.safety.emergencyStop ? 'ACTIVE' : 'Safe'}
+                  valueClass={perfData.robotTelemetry.safety.emergencyStop ? 'text-rose-400' : 'text-emerald-400'}
+                />
+                <Row
+                  label="Thermal"
+                  value={perfData.robotTelemetry.safety.thermalProtection.overheated ? 'Overheated' : 'Normal'}
+                  valueClass={perfData.robotTelemetry.safety.thermalProtection.overheated ? 'text-rose-400' : 'text-emerald-400'}
+                />
+                <Row
+                  label="Battery"
+                  value={perfData.robotTelemetry.safety.batteryProtection.lowBattery ? 'Low' : 'OK'}
+                  valueClass={perfData.robotTelemetry.safety.batteryProtection.lowBattery ? 'text-amber-400' : 'text-emerald-400'}
+                />
+                <Row
+                  label="Violations"
+                  value={String(perfData.robotTelemetry.safety.safetyLimits.violations)}
+                  valueClass={perfData.robotTelemetry.safety.safetyLimits.violations > 0 ? 'text-amber-400' : 'text-white'}
+                />
+              </Card>
+            )}
           </div>
-          
-          {/* Robot Services Status */}
-          <div className="mt-2">
-            <div className="text-gray-400 mb-1">Robot Services</div>
-            <div className="flex gap-3">
-              {Object.entries(performanceData.piSpecific.robotServices).map(([service, status]) => (
-                <div key={service} className="flex items-center gap-1">
-                  <div className={`w-1.5 h-1.5 rounded-full ${status ? 'bg-green-400' : 'bg-red-400'}`}></div>
-                  <span className="text-xs capitalize">{service}</span>
+        )}
+
+        {/* Row 3: Sensors + Motors + Cache */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+          {perfData.robotTelemetry?.sensors && (
+            <Card>
+              <SectionHeader icon={<Radio size={11} />} label="Sensors" colorClass="text-sky-400" />
+              {(Object.entries(perfData.robotTelemetry.sensors) as [string, { status: string; fps?: number | null; distance?: number | null; value?: number | null }][]).map(([name, s]) => {
+                const display = s.fps != null ? `${s.fps}fps`
+                  : s.distance != null ? `${s.distance}cm`
+                  : s.value != null ? `${s.value}V`
+                  : s.status;
+                const ok = s.status === 'active' || s.status === 'connected';
+                return (
+                  <Row
+                    key={name}
+                    label={name.replace(/([A-Z])/g, ' $1').trim()}
+                    value={display}
+                    valueClass={ok ? 'text-emerald-400' : 'text-white/40'}
+                  />
+                );
+              })}
+            </Card>
+          )}
+
+          {perfData.robotTelemetry?.motors && (
+            <Card>
+              <SectionHeader icon={<Activity size={11} />} label="Motors" colorClass="text-purple-400" />
+              <Row
+                label="Left"
+                value={perfData.robotTelemetry.motors.leftMotor.status}
+                valueClass={perfData.robotTelemetry.motors.leftMotor.status === 'connected' ? 'text-emerald-400' : 'text-rose-400'}
+              />
+              <Row
+                label="Right"
+                value={perfData.robotTelemetry.motors.rightMotor.status}
+                valueClass={perfData.robotTelemetry.motors.rightMotor.status === 'connected' ? 'text-emerald-400' : 'text-rose-400'}
+              />
+              <Row label="Servos" value={`${perfData.robotTelemetry.motors.servoMotors.length} active`} valueClass="text-sky-400" />
+            </Card>
+          )}
+
+          <Card>
+            <SectionHeader icon={<HardDrive size={11} />} label="Cache" colorClass="text-amber-400" />
+            {cacheStats ? (
+              <>
+                <Row
+                  label="Hit Rate"
+                  value={`${cacheStats.hitRate.toFixed(1)}%`}
+                  valueClass={statusColor(100 - cacheStats.hitRate, 20, 40)}
+                />
+                <Row label="Total Reqs" value={String(cacheStats.totalRequests)} />
+                <Row label="Hits"       value={String(cacheStats.hits)} />
+                <Row label="Misses"     value={String(cacheStats.misses)} />
+              </>
+            ) : (
+              <p className="text-xs text-white/30 italic">Unavailable</p>
+            )}
+          </Card>
+        </div>
+
+        {/* Alerts */}
+        <div className="bg-gray-800/60 border border-white/8 rounded-lg p-3">
+          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider mb-2 text-white/50">
+            <AlertTriangle size={11} />
+            Alerts
+          </div>
+          {alerts.length === 0 ? (
+            <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold">
+              <CheckCircle2 size={12} />
+              All systems normal
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {alerts.map((a, i) => (
+                <div key={i} className={`flex items-center gap-1.5 text-xs font-semibold ${a.level === 'critical' ? 'text-rose-400' : 'text-amber-400'}`}>
+                  <AlertTriangle size={11} />
+                  {a.msg}
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Robot Telemetry Sections */}
-      {performanceData?.robotTelemetry && (
-        <div className="mb-4 space-y-4">
-          {/* Power & Safety Status */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-gray-700 p-3 rounded border border-gray-600">
-              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-yellow-300">
-                <span>🔋</span>
-                Power Status
-              </h3>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Source:</span>
-                  <span className="font-medium capitalize">{performanceData.robotTelemetry.power.powerSource}</span>
-                </div>
-                {performanceData.robotTelemetry.power.voltage && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Voltage:</span>
-                    <span className={`font-medium ${performanceData.robotTelemetry.power.undervoltage ? 'text-red-400' : 'text-green-400'}`}>
-                      {performanceData.robotTelemetry.power.voltage}V
-                    </span>
-                  </div>
-                )}
-                {performanceData.robotTelemetry.power.powerConsumption && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Power:</span>
-                    <span className="font-medium">{performanceData.robotTelemetry.power.powerConsumption}W</span>
-                  </div>
-                )}
-                {performanceData.robotTelemetry.power.undervoltage && (
-                  <div className="text-red-400 text-xs">⚠️ Undervoltage Warning</div>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-gray-700 p-3 rounded border border-gray-600">
-              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-red-300">
-                <span>🛡️</span>
-                Safety Systems
-              </h3>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Emergency Stop:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.safety.emergencyStop ? 'text-red-400' : 'text-green-400'}`}>
-                    {performanceData.robotTelemetry.safety.emergencyStop ? 'ACTIVE' : 'Safe'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Thermal:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.safety.thermalProtection.overheated ? 'text-red-400' : 'text-green-400'}`}>
-                    {performanceData.robotTelemetry.safety.thermalProtection.overheated ? 'Overheated' : 'Normal'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Battery:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.safety.batteryProtection.lowBattery ? 'text-red-400' : 'text-green-400'}`}>
-                    {performanceData.robotTelemetry.safety.batteryProtection.lowBattery ? 'Low Battery' : 'OK'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Sensors & Motors */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-gray-700 p-3 rounded border border-gray-600">
-              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-blue-300">
-                <span>📡</span>
-                Sensors
-              </h3>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Camera:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.sensors.camera.status === 'active' ? 'text-green-400' : 'text-red-400'}`}>
-                    {performanceData.robotTelemetry.sensors.camera.fps ? `${performanceData.robotTelemetry.sensors.camera.fps}fps` : performanceData.robotTelemetry.sensors.camera.status}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Ultrasonic:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.sensors.ultrasonic.status === 'active' ? 'text-green-400' : 'text-red-400'}`}>
-                    {performanceData.robotTelemetry.sensors.ultrasonic.distance ? `${performanceData.robotTelemetry.sensors.ultrasonic.distance}cm` : performanceData.robotTelemetry.sensors.ultrasonic.status}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Line Tracking:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.sensors.lineTracking.status === 'active' ? 'text-green-400' : 'text-red-400'}`}>
-                    {performanceData.robotTelemetry.sensors.lineTracking.status}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Voltage:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.sensors.voltage.status === 'connected' ? 'text-green-400' : 'text-red-400'}`}>
-                    {performanceData.robotTelemetry.sensors.voltage.value ? `${performanceData.robotTelemetry.sensors.voltage.value}V` : performanceData.robotTelemetry.sensors.voltage.status}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Buzzer:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.sensors.buzzer.status === 'active' ? 'text-green-400' : 'text-red-400'}`}>
-                    {performanceData.robotTelemetry.sensors.buzzer.status}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">LEDs:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.sensors.leds.status === 'active' ? 'text-green-400' : 'text-red-400'}`}>
-                    {performanceData.robotTelemetry.sensors.leds.status}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-700 p-3 rounded border border-gray-600">
-              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-purple-300">
-                <span>⚙️</span>
-                Motors
-              </h3>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Left Motor:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.motors.leftMotor.status === 'connected' ? 'text-green-400' : 'text-red-400'}`}>
-                    {performanceData.robotTelemetry.motors.leftMotor.status}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Right Motor:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.motors.rightMotor.status === 'connected' ? 'text-green-400' : 'text-red-400'}`}>
-                    {performanceData.robotTelemetry.motors.rightMotor.status}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Servos:</span>
-                  <span className="font-medium text-blue-400">
-                    {performanceData.robotTelemetry.motors.servoMotors.length} active
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Network & Autonomous */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-gray-700 p-3 rounded border border-gray-600">
-              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-green-300">
-                <span>🌐</span>
-                Network
-              </h3>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Type:</span>
-                  <span className="font-medium capitalize">{performanceData.robotTelemetry.network.connectionType}</span>
-                </div>
-                {performanceData.robotTelemetry.network.ipAddress && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">IP:</span>
-                    <span className="font-medium">{performanceData.robotTelemetry.network.ipAddress}</span>
-                  </div>
-                )}
-                {performanceData.robotTelemetry.network.latency && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Latency:</span>
-                    <span className="font-medium">{performanceData.robotTelemetry.network.latency}ms</span>
-                  </div>
-                )}
-                {performanceData.robotTelemetry.network.wifiSignal && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Signal:</span>
-                    <span className={`font-medium ${performanceData.robotTelemetry.network.wifiSignal > -60 ? 'text-green-400' : 'text-yellow-400'}`}>
-                      {performanceData.robotTelemetry.network.wifiSignal}dBm
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-gray-700 p-3 rounded border border-gray-600">
-              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-cyan-300">
-                <span>🤖</span>
-                Autonomous
-              </h3>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Mode:</span>
-                  <span className={`font-medium capitalize ${performanceData.robotTelemetry.autonomous.mode === 'autonomous' ? 'text-green-400' : 'text-blue-400'}`}>
-                    {performanceData.robotTelemetry.autonomous.mode}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Navigation:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.autonomous.navigation.status === 'active' ? 'text-green-400' : 'text-gray-400'}`}>
-                    {performanceData.robotTelemetry.autonomous.navigation.status}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Obstacle Avoid:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.autonomous.obstacleAvoidance.enabled ? 'text-green-400' : 'text-gray-400'}`}>
-                    {performanceData.robotTelemetry.autonomous.obstacleAvoidance.enabled ? 'Enabled' : 'Disabled'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Line Follow:</span>
-                  <span className={`font-medium ${performanceData.robotTelemetry.autonomous.lineFollowing.enabled ? 'text-green-400' : 'text-gray-400'}`}>
-                    {performanceData.robotTelemetry.autonomous.lineFollowing.enabled ? 'Enabled' : 'Disabled'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* System Metrics */}
-        <div className="bg-gray-700 p-3 rounded">
-          <h3 className="text-sm font-semibold text-blue-300 mb-2">System Metrics</h3>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-gray-400">CPU Usage:</span>
-              <span className={getStatusColor(performanceData.cpuUsage, { warning: 70, critical: 90 })}>
-                {performanceData.cpuUsage.toFixed(1)}%
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Memory:</span>
-              <span className={getStatusColor(performanceData.memoryPercent, { warning: 80, critical: 95 })}>
-                {performanceData.memoryPercent.toFixed(1)}%
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Disk Usage:</span>
-              <span className={getStatusColor(performanceData.diskUsage, { warning: 85, critical: 95 })}>
-                {performanceData.diskUsage.toFixed(1)}%
-              </span>
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Network Metrics */}
-        <div className="bg-gray-700 p-3 rounded">
-          <h3 className="text-sm font-semibold text-green-300 mb-2">Network</h3>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Bytes Sent:</span>
-              <span className="text-white font-mono">{formatBytes(performanceData.networkIO.bytesSent)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Bytes Received:</span>
-              <span className="text-white font-mono">{formatBytes(performanceData.networkIO.bytesRecv)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">WS Connections:</span>
-              <span className="text-white font-mono">{performanceData.websocketConnections}</span>
-            </div>
+        {/* Footer */}
+        <div className="flex items-center justify-between text-[11px] text-white/25 px-0.5">
+          <div className="flex items-center gap-1">
+            <Clock size={10} />
+            Updated {new Date(perfData.timestamp).toLocaleTimeString()}
           </div>
+          {perfData.source && <span>{perfData.source} · {perfData.deviceName}</span>}
         </div>
 
-        {/* Application Metrics */}
-        <div className="bg-gray-700 p-3 rounded">
-          <h3 className="text-sm font-semibold text-purple-300 mb-2">Application</h3>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Response Time:</span>
-              <span className={getStatusColor(performanceData.responseTime || 0, { warning: 500, critical: 1000 })}>
-                {(performanceData.responseTime || 0).toFixed(1)}ms
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Error Rate:</span>
-              <span className={getStatusColor(performanceData.errorRate || 0, { warning: 2, critical: 5 })}>
-                {(performanceData.errorRate || 0).toFixed(2)}%
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Throughput:</span>
-              <span className="text-white font-mono">{(performanceData.throughput || 0).toFixed(0)} req/s</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Cache Performance */}
-        <div className="bg-gray-700 p-3 rounded">
-          <h3 className="text-sm font-semibold text-yellow-300 mb-2">Cache Performance</h3>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Hit Rate:</span>
-              <span className={getStatusColor(100 - cacheStats.hitRate, { warning: 20, critical: 40 })}>
-                {cacheStats.hitRate.toFixed(1)}%
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Total Requests:</span>
-              <span className="text-white font-mono">{cacheStats.totalRequests}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Cache Hits:</span>
-              <span className="text-white font-mono">{cacheStats.hits}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Performance Alerts */}
-        <div className="bg-gray-700 p-3 rounded">
-          <h3 className="text-sm font-semibold text-red-300 mb-2">Alerts</h3>
-          <div className="space-y-1 text-xs">
-            {performanceData.cpuUsage > 90 && (
-              <div className="text-red-400">⚠️ High CPU usage</div>
-            )}
-            {performanceData.memoryPercent > 95 && (
-              <div className="text-red-400">⚠️ High memory usage</div>
-            )}
-            {(performanceData.responseTime || 0) > 1000 && (
-              <div className="text-red-400">⚠️ Slow response time</div>
-            )}
-            {(performanceData.errorRate || 0) > 5 && (
-              <div className="text-red-400">⚠️ High error rate</div>
-            )}
-            {cacheStats.hitRate < 60 && (
-              <div className="text-yellow-400">⚠️ Low cache hit rate</div>
-            )}
-            {!performanceData.cpuUsage && !performanceData.memoryPercent && (
-              <div className="text-green-400">✅ All systems normal</div>
-            )}
-          </div>
-        </div>
-
-        {/* System Info */}
-        <div className="bg-gray-700 p-3 rounded">
-          <h3 className="text-sm font-semibold text-cyan-300 mb-2">System Info</h3>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Uptime:</span>
-              <span className="text-white font-mono">
-                {Math.floor((Date.now() - performanceData.timestamp) / 1000)}s
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Last Update:</span>
-              <span className="text-white font-mono">
-                {new Date(performanceData.timestamp).toLocaleTimeString()}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Status:</span>
-              <span className="text-green-400">Online</span>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
