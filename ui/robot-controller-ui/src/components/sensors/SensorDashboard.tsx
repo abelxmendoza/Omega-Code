@@ -20,8 +20,13 @@ import {
 } from '@/utils/connectLineTrackerWs';
 import { resolveWsCandidates } from '@/utils/resolveWsUrl';
 import { Button } from '@/components/ui/button';
-import { Radar } from 'lucide-react';
+import { Radar, Power, Loader2 } from 'lucide-react';
 import UltrasonicVisualization from './UltrasonicVisualization';
+
+// ----------- Config -----------
+
+const API_BASE =
+  (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '') || 'http://localhost:8000';
 
 // ----------- Types -----------
 
@@ -128,6 +133,10 @@ const SensorDashboard: React.FC = () => {
   const [lineOffline, setLineOffline] = useState(false);
   const [showUltraVisualization, setShowUltraVisualization] = useState(false);
 
+  // Sensor power gate — mirrors backend _streaming_enabled flag
+  const [sensorEnabled, setSensorEnabled] = useState<boolean>(false);
+  const [sensorPowerLoading, setSensorPowerLoading] = useState<boolean>(false);
+
   // WS refs
   const lineWs = useRef<WebSocket | null>(null);
   const stopLineHeartbeat = useRef<null | (() => void)>(null);
@@ -136,17 +145,68 @@ const SensorDashboard: React.FC = () => {
   // Smoothing + rate-limit refs (no re-render on write)
   const emaRef = useRef<number | null>(null);        // EMA state; null = uninitialized
   const lastUiUpdateRef = useRef<number>(0);         // epoch ms of last setState call
+  const sensorEnabledRef = useRef<boolean>(false);  // mirror of sensorEnabled for WS closure
 
   // Offline detection: epoch ms of last valid data frame (0 = never)
   const lastUltraDataRef = useRef<number>(0);
   const lastLineDataRef = useRef<number>(0);
+
+  // Keep ref in sync so the WS message handler (stale closure) can read it
+  useEffect(() => { sensorEnabledRef.current = sensorEnabled; }, [sensorEnabled]);
+
+  // ── Sensor power: fetch state on mount, expose toggle ───────────────
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/api/sensors/power`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setSensorEnabled(!!d.enabled); })
+      .catch(() => { /* backend unreachable — leave at false */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleToggleSensorPower = async () => {
+    setSensorPowerLoading(true);
+    const want = !sensorEnabled;
+    // Optimistic
+    setSensorEnabled(want);
+    if (!want) {
+      setUltrasonicData({ distance_cm: 0, distance_m: 0, distance_inch: 0, distance_feet: 0 });
+      emaRef.current = null;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/sensors/power`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: want }),
+      });
+      const d = await res.json();
+      setSensorEnabled(!!d.enabled);
+      if (!d.enabled) {
+        setUltrasonicData({ distance_cm: 0, distance_m: 0, distance_inch: 0, distance_feet: 0 });
+        emaRef.current = null;
+      }
+    } catch {
+      // rollback on network error
+      setSensorEnabled(!want);
+    } finally {
+      setSensorPowerLoading(false);
+    }
+  };
 
   // ── Offline watchdog: check every 200ms, declare offline after 500ms ─
   useEffect(() => {
     const STALE_MS = 500;
     const id = setInterval(() => {
       const now = Date.now();
-      setUltraOffline(lastUltraDataRef.current > 0 && now - lastUltraDataRef.current > STALE_MS);
+      const ultraNowOffline = lastUltraDataRef.current > 0 && now - lastUltraDataRef.current > STALE_MS;
+      setUltraOffline(prev => {
+        if (ultraNowOffline && !prev) {
+          // Sensor just went offline — clear stale reading back to zero
+          setUltrasonicData({ distance_cm: 0, distance_m: 0, distance_inch: 0, distance_feet: 0 });
+          emaRef.current = null;
+        }
+        return ultraNowOffline;
+      });
       setLineOffline(lastLineDataRef.current > 0 && now - lastLineDataRef.current > STALE_MS);
     }, 200);
     return () => clearInterval(id);
@@ -257,6 +317,8 @@ const SensorDashboard: React.FC = () => {
           setUltraStatus('connected');
           setUltraError(null);
           emaRef.current = null; // reset smoothing on reconnect
+          // Always reset to 0 on (re)connect — live data will repopulate if enabled
+          setUltrasonicData({ distance_cm: 0, distance_m: 0, distance_inch: 0, distance_feet: 0 });
           candidateIdx = 0;
         };
 
@@ -274,8 +336,9 @@ const SensorDashboard: React.FC = () => {
               return;
             }
 
-            // Sensor reading
+            // Sensor reading — blocked by power gate
             if (data.distance_cm === undefined) return;
+            if (!sensorEnabledRef.current) return; // sensor powered off
 
             const raw = Number(data.distance_cm);
             if (raw < 2 || raw > 400) return; // reject out-of-range
@@ -312,6 +375,8 @@ const SensorDashboard: React.FC = () => {
         ws.onclose = (ev) => {
           if (destroyed) return;
           setUltraStatus('disconnected');
+          setUltrasonicData({ distance_cm: 0, distance_m: 0, distance_inch: 0, distance_feet: 0 });
+          emaRef.current = null;
           if (!ev.wasClean && ev.code !== 1000) {
             setUltraError(`Connection closed (code ${ev.code})`);
           }
@@ -388,16 +453,37 @@ const SensorDashboard: React.FC = () => {
           <div className="flex items-center justify-between mb-2">
             <strong className="text-sm">Ultrasonic Distance</strong>
             <div className="flex items-center gap-2">
-              {ultraOffline && (
+              {/* Sensor power toggle */}
+              <button
+                onClick={handleToggleSensorPower}
+                disabled={sensorPowerLoading}
+                className={[
+                  'flex items-center gap-1 px-2 h-7 rounded-full text-[11px] font-bold uppercase',
+                  'tracking-wide border transition-all duration-200 select-none',
+                  'disabled:cursor-not-allowed disabled:opacity-60',
+                  sensorEnabled
+                    ? 'bg-rose-600 border-rose-400/80 text-white shadow-[0_0_10px_rgba(225,29,72,0.45)] hover:bg-rose-500 active:scale-95'
+                    : 'bg-emerald-900/60 border-emerald-500/50 text-emerald-300 hover:bg-emerald-800/70 active:scale-95',
+                ].join(' ')}
+                title={sensorEnabled ? 'Disable sensor' : 'Enable sensor'}
+              >
+                {sensorPowerLoading
+                  ? <Loader2 size={10} className="animate-spin" />
+                  : <Power size={10} />}
+                <span>{sensorEnabled ? 'Off' : 'On'}</span>
+              </button>
+              {ultraOffline && sensorEnabled && (
                 <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/40 animate-pulse">
                   OFFLINE
                 </span>
               )}
-              <StatusDot status={ultraError ? 'disconnected' : ultraStatus} title={ultraTitle} />
+              <StatusDot status={!sensorEnabled ? 'disconnected' : ultraError ? 'disconnected' : ultraStatus} title={ultraTitle} />
             </div>
           </div>
 
-          {ultraError ? (
+          {!sensorEnabled ? (
+            <p className="text-sm text-gray-500 italic mt-1">Sensor off — enable to read distance</p>
+          ) : ultraError ? (
             <p className="text-xs text-rose-400 italic mt-1">{ultraError}</p>
           ) : (
             <div className="space-y-0.5 mt-1">
@@ -447,7 +533,7 @@ const SensorDashboard: React.FC = () => {
                       </button>
                       <UltrasonicVisualization
                         data={ultrasonicData}
-                        isConnected={ultraStatus === 'connected'}
+                        isConnected={ultraStatus === 'connected' && !ultraOffline}
                       />
                     </div>
                   </div>

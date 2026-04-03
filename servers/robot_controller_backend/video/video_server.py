@@ -147,6 +147,12 @@ _vision_mode: int = 0
 # Frame counter for periodic debug logging (not every frame)
 _frame_log_counter: int = 0
 
+# Camera power singleton — single source of truth for on/off state.
+try:
+    from .camera_power import camera_power
+except ImportError:
+    from camera_power import camera_power
+
 # Local imports - try relative first, then absolute
 try:
     from .aruco_detection import ArucoDetector
@@ -678,7 +684,7 @@ def generate_frames():
     global tracking_enabled, camera, _frame_skip_counter, _last_motion_run, _last_aruco_run, _last_telemetry_publish, _frame_log_counter
     _last_frame_time = 0.0
 
-    while True:
+    while camera_power.is_enabled():
         try:
             if not camera_present():
                 if PLACEHOLDER_WHEN_NO_CAMERA:
@@ -919,6 +925,7 @@ def generate_frames():
             jpg = buf.tobytes()
             _metrics["frames_served"] += 1
             _metrics["last_frame_time"] = time.time()
+            camera_power.mark_frame()
             yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n")
         
         except Exception as e:
@@ -935,7 +942,11 @@ def video_feed():
     """
     _metrics["requests_total"] += 1
     _metrics["clients_connected"] += 1
-    
+
+    if not camera_power.is_enabled():
+        _metrics["clients_connected"] = max(0, _metrics["clients_connected"] - 1)
+        return jsonify({"ok": False, "disabled": True, "error": "camera_disabled"}), 503
+
     # If there's no camera yet and placeholder is disabled, tell the client to try later
     if not camera_present() and not PLACEHOLDER_WHEN_NO_CAMERA:
         _metrics["clients_connected"] = max(0, _metrics["clients_connected"] - 1)
@@ -963,8 +974,18 @@ def video_feed():
 def health():
     """
     Liveness/readiness for UI.
-    200 when actually streaming frames, 503 otherwise (down/connecting/absent).
+    200 when actually streaming frames, 503 otherwise (down/connecting/absent/disabled).
     """
+    if not camera_power.is_enabled():
+        return jsonify({
+            "service": "video",
+            "status": "disabled",
+            "ok": False,
+            "disabled": True,
+            "camera_enabled": False,
+            "ts": int(time.time() * 1000),
+        }), 503
+
     present = camera_present()
     connected = camera_connected()
     connecting = (not present) or (present and not connected)
@@ -994,8 +1015,9 @@ def health():
             "memory_gb": round(_hardware_profile.get("memory_gb", 0), 1),
         },
         "ts": int(time.time() * 1000),
+        "camera_enabled": camera_power.is_enabled(),
     }
-    
+
     # Add optional features if available
     if video_recorder:
         payload["recording"] = video_recorder.get_status()
@@ -1081,6 +1103,49 @@ def reload_face_recognition():
 
     count = face_recognizer.reload_known_faces()
     return jsonify({"ok": True, "faces": count}), 200
+
+
+@app.route("/camera/power", methods=["GET", "POST"])
+def camera_power_endpoint():
+    """
+    GET  → returns {"enabled": bool, "healthy": bool}
+    POST → {"enabled": bool} starts or stops the camera hardware.
+    """
+    global camera
+
+    if request.method == "GET":
+        return jsonify({
+            "ok": True,
+            **camera_power.status_dict(),
+        })
+
+    # POST
+    data = request.get_json(force=True, silent=True) or {}
+    if "enabled" not in data or not isinstance(data["enabled"], bool):
+        return jsonify({"ok": False, "error": 'body must be {"enabled": bool}'}), 400
+
+    want_enabled: bool = data["enabled"]
+
+    if want_enabled:
+        if camera_power.is_enabled():
+            return jsonify({"ok": True, "changed": False, **camera_power.status_dict()})
+        ok = camera_power.enable(create_fn=_create_camera)
+        return jsonify({"ok": ok, "changed": True, **camera_power.status_dict()})
+    else:
+        if not camera_power.is_enabled():
+            return jsonify({"ok": True, "changed": False, **camera_power.status_dict()})
+
+        def _stop():
+            global camera
+            if camera is not None:
+                try:
+                    camera.stop()
+                except Exception as exc:
+                    logging.warning("[CAMERA_POWER] stop error: %s", exc)
+                camera = None
+
+        camera_power.disable(stop_fn=_stop)
+        return jsonify({"ok": True, "changed": True, **camera_power.status_dict()})
 
 
 @app.post("/camera/switch")
@@ -1491,6 +1556,10 @@ def _watchdog_tick():
     """Periodic camera init/restart logic."""
     global _last_init_attempt, camera
 
+    # Never touch the camera when it has been intentionally disabled.
+    if not camera_power.is_enabled():
+        return
+
     # Retry init if none
     if not camera_present():
         if (time.time() - _last_init_attempt) >= STARTUP_RETRY_SEC:
@@ -1525,8 +1594,8 @@ def _schedule_watchdog(resp):
 if __name__ == "__main__":
     _log_startup()
     logging.info(f"🚀 Video server listening on {BIND_HOST}:{PORT}")
-    _sync_mode_from_fastapi()   # pull persisted mode before first frame is served
-    _create_camera()            # first attempt (non-fatal if it fails)
+    _sync_mode_from_fastapi()               # pull persisted mode before first frame is served
+    camera_power.enable(create_fn=_create_camera)  # first attempt (non-fatal if it fails)
     try:
         if SSL_ENABLED:
             logging.info("🔒 SSL enabled")

@@ -150,6 +150,14 @@ class Camera:
             self._picam.stop()
         except Exception:
             pass
+        try:
+            # close() returns the camera to Available state so it can be
+            # re-acquired later without "Camera in Configured state" errors.
+            self._picam.close()
+        except Exception:
+            pass
+        self._picam = None
+        time.sleep(0.5)  # brief settle before any re-acquire attempt
 
     def _run_opencv_loop(self):
         _fps_t0 = time.time()

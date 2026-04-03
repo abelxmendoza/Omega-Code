@@ -46,7 +46,7 @@
       "display_name": "Ultrasonic Sensor Server",
       "type": "go",
       "cmd": "go",
-      "args": ["run", "sensors/main_ultrasonic.go"],
+      "args": ["run", "main_ultrasonic.go"],
       "working_dir": "sensors",
       "autostart": true,
       "restart_policy": "on-failure",

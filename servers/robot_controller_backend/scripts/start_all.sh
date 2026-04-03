@@ -112,4 +112,8 @@ else
   echo "[lighting] Skipped (go not installed)."
 fi
 
+# 5) Video server (Flask MJPEG, port 5000)
+start_cmd "video_server" "$ROOT/video" \
+  "'$PY' video_server.py"
+
 echo "[all] Done. Use scripts/status.sh to check; scripts/stop_all.sh to stop."

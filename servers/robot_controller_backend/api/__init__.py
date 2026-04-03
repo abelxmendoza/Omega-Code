@@ -11,6 +11,7 @@ from .service_routes import router as service_router
 from .config_routes import router as config_router
 from .movement_routes import router as movement_router
 from .sensor_ws_routes import router as sensor_ws_router
+from .sensor_power_routes import router as sensor_power_router
 
 # Import unified network routes from network module
 import sys
@@ -21,6 +22,7 @@ from network.api.network_routes import router as network_router
 router = APIRouter()
 router.include_router(movement_router, tags=["Movement"])
 router.include_router(sensor_ws_router, tags=["Sensors"])
+router.include_router(sensor_power_router)
 router.include_router(lighting_router, prefix="/lighting", tags=["Lighting"])
 router.include_router(autonomy_router)
 router.include_router(ros_router)

@@ -106,6 +106,10 @@ class OmegaSensorBridge:
         self._thread = executor_thread
         self._enabled = node is not None
 
+        # Streaming gate: disabled by default so the UI shows 0 until the user
+        # (or some control path) explicitly turns the sensor on.
+        self._streaming_enabled: bool = False
+
         self._lock = threading.Lock()
         self._us_queues: Set[asyncio.Queue] = set()
         self._line_queues: Set[asyncio.Queue] = set()
@@ -273,12 +277,32 @@ class OmegaSensorBridge:
         self._ultra_buffer.append(dist_cm)
         return sum(self._ultra_buffer) / len(self._ultra_buffer)
 
+    # ------------------------------------------------------------------
+    # Streaming gate (power on/off for the data fan-out)
+    # ------------------------------------------------------------------
+
+    def enable_streaming(self) -> None:
+        """Allow sensor data to flow to WebSocket clients."""
+        self._streaming_enabled = True
+        log.info('Sensor streaming enabled')
+
+    def disable_streaming(self) -> None:
+        """Stop sending sensor data to WebSocket clients (readings still polled)."""
+        self._streaming_enabled = False
+        log.info('Sensor streaming disabled')
+
+    def is_streaming(self) -> bool:
+        return self._streaming_enabled
+
     def _fan_out(self, queues: Set[asyncio.Queue], data: dict) -> None:
         """Fan data out to all registered queues (called from sensor thread).
 
+        Blocked by the streaming gate — no data leaves when disabled.
         Uses _safe_put (scheduled into the event loop) so a full queue
         drops the oldest sample instead of raising QueueFull.
         """
+        if not self._streaming_enabled:
+            return
         with self._lock:
             snapshot = set(queues)
         for q in snapshot:
