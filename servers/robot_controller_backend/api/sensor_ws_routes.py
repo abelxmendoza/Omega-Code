@@ -141,7 +141,7 @@ async def ws_ultrasonic(websocket: WebSocket):
         'type': 'welcome', 'service': 'ultrasonic', 'status': 'connected',
     })
 
-    q: asyncio.Queue = asyncio.Queue(maxsize=20)
+    q: asyncio.Queue = asyncio.Queue(maxsize=5)
     if sensor_bridge:
         sensor_bridge.add_ultrasonic_queue(q)
 
@@ -189,7 +189,7 @@ async def ws_line(websocket: WebSocket):
         'type': 'welcome', 'service': 'line', 'status': 'connected',
     })
 
-    q: asyncio.Queue = asyncio.Queue(maxsize=20)
+    q: asyncio.Queue = asyncio.Queue(maxsize=5)
     if sensor_bridge:
         sensor_bridge.add_line_queue(q)
 

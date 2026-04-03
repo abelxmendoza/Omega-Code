@@ -124,6 +124,8 @@ const SensorDashboard: React.FC = () => {
   const [lineLatencyMs, setLineLatencyMs] = useState<number | null>(null);
   const [ultraStatus, setUltraStatus] = useState<ServerStatus>('disconnected');
   const [ultraError, setUltraError] = useState<string | null>(null);
+  const [ultraOffline, setUltraOffline] = useState(false);
+  const [lineOffline, setLineOffline] = useState(false);
   const [showUltraVisualization, setShowUltraVisualization] = useState(false);
 
   // WS refs
@@ -134,6 +136,21 @@ const SensorDashboard: React.FC = () => {
   // Smoothing + rate-limit refs (no re-render on write)
   const emaRef = useRef<number | null>(null);        // EMA state; null = uninitialized
   const lastUiUpdateRef = useRef<number>(0);         // epoch ms of last setState call
+
+  // Offline detection: epoch ms of last valid data frame (0 = never)
+  const lastUltraDataRef = useRef<number>(0);
+  const lastLineDataRef = useRef<number>(0);
+
+  // ── Offline watchdog: check every 200ms, declare offline after 500ms ─
+  useEffect(() => {
+    const STALE_MS = 500;
+    const id = setInterval(() => {
+      const now = Date.now();
+      setUltraOffline(lastUltraDataRef.current > 0 && now - lastUltraDataRef.current > STALE_MS);
+      setLineOffline(lastLineDataRef.current > 0 && now - lastLineDataRef.current > STALE_MS);
+    }, 200);
+    return () => clearInterval(id);
+  }, []);
 
   // ── Line tracker WS ─────────────────────────────────────────────────
   useEffect(() => {
@@ -168,6 +185,7 @@ const SensorDashboard: React.FC = () => {
 
             // Handle normalized blueprint format (from FastAPI /ws/line)
             if (data?.type === 'line_tracking' && data?.left !== undefined) {
+              lastLineDataRef.current = Date.now();
               setLineTrackingData({
                 IR01: data.left   ? 1 : 0,
                 IR02: data.center ? 1 : 0,
@@ -178,7 +196,10 @@ const SensorDashboard: React.FC = () => {
 
             // Handle standalone line-tracker server format
             const normalized = parseLineTrackingPayload(data);
-            if (normalized) setLineTrackingData(normalized);
+            if (normalized) {
+              lastLineDataRef.current = Date.now();
+              setLineTrackingData(normalized);
+            }
           } catch {
             /* ignore */
           }
@@ -268,6 +289,7 @@ const SensorDashboard: React.FC = () => {
 
             // Rate-limit UI updates to UI_INTERVAL_MS
             const now = Date.now();
+            lastUltraDataRef.current = now;  // stamp on every valid frame
             if (now - lastUiUpdateRef.current < UI_INTERVAL_MS) return;
             lastUiUpdateRef.current = now;
 
@@ -344,7 +366,14 @@ const SensorDashboard: React.FC = () => {
         <div className="bg-gray-900 p-4 rounded-lg shadow-lg overflow-hidden">
           <div className="flex items-center justify-between mb-2">
             <strong className="text-sm">Line Tracking</strong>
-            <StatusDot status={lineStatus} title={lineTitle} />
+            <div className="flex items-center gap-2">
+              {lineOffline && (
+                <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/40 animate-pulse">
+                  OFFLINE
+                </span>
+              )}
+              <StatusDot status={lineStatus} title={lineTitle} />
+            </div>
           </div>
           <LineTrackerDots data={lineTrackingData} />
           <div className="mt-3 grid grid-cols-3 gap-1 text-xs text-gray-500 font-mono">
@@ -358,7 +387,14 @@ const SensorDashboard: React.FC = () => {
         <div className="bg-gray-900 p-4 rounded-lg shadow-lg overflow-hidden">
           <div className="flex items-center justify-between mb-2">
             <strong className="text-sm">Ultrasonic Distance</strong>
-            <StatusDot status={ultraError ? 'disconnected' : ultraStatus} title={ultraTitle} />
+            <div className="flex items-center gap-2">
+              {ultraOffline && (
+                <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/40 animate-pulse">
+                  OFFLINE
+                </span>
+              )}
+              <StatusDot status={ultraError ? 'disconnected' : ultraStatus} title={ultraTitle} />
+            </div>
           </div>
 
           {ultraError ? (

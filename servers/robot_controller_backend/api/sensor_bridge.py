@@ -43,8 +43,10 @@ from typing import Set, Optional
 
 log = logging.getLogger(__name__)
 
-# Latest ultrasonic reading shared with obstacle avoidance (avoids opening sensor twice)
+# Latest ultrasonic reading shared with obstacle avoidance (avoids opening sensor twice).
+# _bridge_latest_ultra_ts is the monotonic time of the last VALID reading; 0.0 = never.
 _bridge_latest_distance_cm: float | None = None
+_bridge_latest_ultra_ts: float = 0.0
 
 _rclpy_ok = False
 try:
@@ -111,6 +113,13 @@ class OmegaSensorBridge:
         # Rolling average buffer for ultrasonic smoothing (5-sample window)
         self._ultra_buffer: deque = deque(maxlen=5)
 
+        # Spike rejection: last accepted raw reading (cm)
+        self._last_valid_cm: float | None = None
+
+        # Health tracking: monotonic timestamps of last valid reading (0 = never)
+        self._last_valid_ultra_ts: float = 0.0
+        self._last_valid_line_ts: float = 0.0
+
     # ------------------------------------------------------------------
     # Factory
     # ------------------------------------------------------------------
@@ -168,6 +177,18 @@ class OmegaSensorBridge:
             return cls(loop, None, None)
 
     # ------------------------------------------------------------------
+    # Sensor health (monotonic seconds; 0.0 = never received)
+    # ------------------------------------------------------------------
+
+    @property
+    def last_valid_ultra_ts(self) -> float:
+        return self._last_valid_ultra_ts
+
+    @property
+    def last_valid_line_ts(self) -> float:
+        return self._last_valid_line_ts
+
+    # ------------------------------------------------------------------
     # Ultrasonic subscriptions
     # ------------------------------------------------------------------
 
@@ -184,6 +205,19 @@ class OmegaSensorBridge:
         if math.isinf(r) or math.isnan(r):
             return  # reject invalid hardware readings
         raw_cm = r * 100.0
+
+        # Range validation: reject out-of-spec readings
+        if raw_cm <= 0 or raw_cm > 400:
+            return
+
+        # Spike rejection: discard implausible jumps (> 100 cm in one step)
+        if self._last_valid_cm is not None and abs(raw_cm - self._last_valid_cm) > 100:
+            log.debug('Ultrasonic spike rejected: %.1f → %.1f cm', self._last_valid_cm, raw_cm)
+            return
+
+        self._last_valid_cm = raw_cm
+        self._last_valid_ultra_ts = time.monotonic()
+
         smoothed_cm = self._smooth_ultrasonic(raw_cm)
         dist_m = round(smoothed_cm / 100.0, 3)
         data = {
@@ -219,6 +253,7 @@ class OmegaSensorBridge:
         center = bool(lt.get('center', lt.get('Center', lt.get('IR02', 0))))
         right  = bool(lt.get('right',  lt.get('Right',  lt.get('IR03', 0))))
 
+        self._last_valid_line_ts = time.monotonic()
         data = {
             'type': 'line_tracking',
             'left': left,
@@ -265,22 +300,38 @@ class OmegaSensorBridge:
             log.info('Sensor bridge: direct hardware polling started (ultrasonic)')
 
             def _poll():
-                global _bridge_latest_distance_cm
+                global _bridge_latest_distance_cm, _bridge_latest_ultra_ts
                 try:
                     while True:
                         raw_cm = sensor.get_distance()
-                        if raw_cm > 0:
-                            _bridge_latest_distance_cm = raw_cm
-                            smoothed_cm = self._smooth_ultrasonic(raw_cm)
-                            dist_m = round(smoothed_cm / 100.0, 3)
-                            data = {
-                                'type': 'ultrasonic',
-                                'distance_cm': round(smoothed_cm, 1),
-                                'distance_m': dist_m,
-                                'distance_inch': round(smoothed_cm * 0.393701, 1),
-                                'ts': int(time.time() * 1000),
-                            }
-                            self._fan_out(self._us_queues, data)
+
+                        # Validate range
+                        if raw_cm <= 0 or raw_cm > 400:
+                            time.sleep(0.1)
+                            continue
+
+                        # Spike rejection
+                        if (self._last_valid_cm is not None
+                                and abs(raw_cm - self._last_valid_cm) > 100):
+                            log.debug('Poll spike rejected: %.1f cm', raw_cm)
+                            time.sleep(0.1)
+                            continue
+
+                        self._last_valid_cm = raw_cm
+                        _bridge_latest_distance_cm = raw_cm
+                        _bridge_latest_ultra_ts = time.monotonic()
+                        self._last_valid_ultra_ts = _bridge_latest_ultra_ts
+
+                        smoothed_cm = self._smooth_ultrasonic(raw_cm)
+                        dist_m = round(smoothed_cm / 100.0, 3)
+                        data = {
+                            'type': 'ultrasonic',
+                            'distance_cm': round(smoothed_cm, 1),
+                            'distance_m': dist_m,
+                            'distance_inch': round(smoothed_cm * 0.393701, 1),
+                            'ts': int(time.time() * 1000),
+                        }
+                        self._fan_out(self._us_queues, data)
                         time.sleep(0.1)  # 10 Hz
                 except Exception as exc:
                     log.warning('Sensor hardware poll error: %s', exc)

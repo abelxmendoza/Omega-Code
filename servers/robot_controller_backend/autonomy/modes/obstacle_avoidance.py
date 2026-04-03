@@ -9,6 +9,12 @@ State machine:
   MOVING   — path clear, pass through any commanded motion (or drive forward)
   WARN     — obstacle within warn_cm, slow down / stop
   PIVOTING — obstacle within stop_cm, pivot until clear
+  SENSOR_OFFLINE — no valid ultrasonic reading for > SENSOR_TIMEOUT_S → STOP
+
+Safety guarantees:
+  - Invalid readings (< 0) are NEVER treated as "clear path".
+  - If the sensor goes offline for > 500ms the robot stops until it recovers.
+  - Sensor offline during autonomy → robot remains stopped until sensor returns.
 
 Parameters (all optional, passed via /autonomy/start):
   warn_cm         float  default 50   warn-zone threshold (cm)
@@ -32,6 +38,10 @@ from typing import Any, Mapping
 from ..base import AutonomyModeHandler, AutonomyError
 
 log = logging.getLogger("autonomy.obstacle_avoidance")
+
+# How long (seconds) without a valid sensor reading before we treat the
+# sensor as offline and halt all motion.
+SENSOR_TIMEOUT_S = 0.5
 
 
 class ObstacleAvoidanceMode(AutonomyModeHandler):
@@ -108,14 +118,23 @@ class ObstacleAvoidanceMode(AutonomyModeHandler):
             self.logger.error("Failed to open ultrasonic sensor: %s", e, exc_info=True)
             return None
 
-    def _get_distance_from_bridge(self) -> float:
-        """Try to read latest distance from the sensor bridge shared state."""
+    def _get_distance_from_bridge(self) -> float | None:
+        """Read latest distance from the sensor bridge shared state.
+
+        Returns the distance in cm, or None if unavailable / stale.
+        """
         try:
-            from api.sensor_bridge import _bridge_latest_distance_cm
+            from api.sensor_bridge import _bridge_latest_distance_cm, _bridge_latest_ultra_ts
             v = _bridge_latest_distance_cm
-            return v if v is not None and v > 0 else -1.0
+            ts = _bridge_latest_ultra_ts
+            if v is None or v <= 0:
+                return None
+            # Treat bridge reading as stale if it's older than SENSOR_TIMEOUT_S
+            if ts > 0 and (time.monotonic() - ts) > SENSOR_TIMEOUT_S:
+                return None
+            return v
         except Exception:
-            return -1.0
+            return None
 
     def _loop(self):
         # Prefer bridge shared reading to avoid opening GPIO twice.
@@ -141,6 +160,7 @@ class ObstacleAvoidanceMode(AutonomyModeHandler):
 
         period = 1.0 / self._poll_hz
         self._state = "moving"
+        last_valid_ts = time.monotonic()  # tracks when we last got a good reading
         self.logger.info("Avoidance loop running at %.0f Hz", self._poll_hz)
 
         try:
@@ -151,10 +171,32 @@ class ObstacleAvoidanceMode(AutonomyModeHandler):
                     dist = self._get_distance_from_bridge()
                 else:
                     dist = sensor.get_distance()
-                if dist < 0:
-                    dist = 999.0
-                self._distance_cm = dist
 
+                # --- Sensor validation ---
+                # NEVER treat invalid/no-echo as "path clear".
+                # dist < 0 means no echo or hardware error — we do NOT substitute 999.
+                if dist is not None and 2 <= dist <= 400:
+                    last_valid_ts = time.monotonic()
+                    self._distance_cm = dist
+                else:
+                    dist = None  # mark as invalid for decision logic
+
+                # Sensor offline check: no valid reading for > SENSOR_TIMEOUT_S → STOP
+                sensor_age = time.monotonic() - last_valid_ts
+                if sensor_age > SENSOR_TIMEOUT_S:
+                    if self._state != "sensor_offline":
+                        self.logger.warning(
+                            "Ultrasonic offline (no valid reading for %.1fs) — halting",
+                            sensor_age,
+                        )
+                        self._state = "sensor_offline"
+                    if bridge:
+                        bridge.stop()
+                    elapsed = time.monotonic() - t0
+                    self._stop_event.wait(max(0.0, period - elapsed))
+                    continue
+
+                # --- Normal decision (dist is valid here) ---
                 if dist <= self._stop_cm:
                     if self._state != "pivoting":
                         self.logger.warning("Obstacle at %.1f cm — pivoting", dist)
