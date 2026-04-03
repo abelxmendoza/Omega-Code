@@ -1,11 +1,13 @@
 /**
- * useServiceStatus Hook
- * 
- * Shared hook for polling service status from the API.
- * Provides real-time service status updates.
+ * useServiceStatus
+ *
+ * Single polling source for service status.
+ * - In-flight guard: skips fetch if one is already running (prevents overlap on slow networks)
+ * - Circuit breaker: 3 consecutive failures → 60s backoff
+ * - Exposes lastUpdated timestamp and immediate refresh()
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { robotFetch } from '@/utils/network';
 import { ROBOT_ENABLED } from '@/utils/env';
 
@@ -29,95 +31,115 @@ export interface ServiceStatus {
 }
 
 interface UseServiceStatusOptions {
-  /** Polling interval in milliseconds (default: 5000) */
+  /** Polling interval in ms (default: 5000) */
   interval?: number;
-  /** Whether to start polling immediately (default: true) */
-  autoStart?: boolean;
 }
 
 interface UseServiceStatusReturn {
   services: ServiceStatus[];
   loading: boolean;
   error: Error | null;
-  refresh: () => Promise<void>;
-  startPolling: () => void;
-  stopPolling: () => void;
+  lastUpdated: number;       // epoch ms of last successful fetch (0 = never)
+  refresh: () => void;       // triggers an immediate fetch (no-op if one is in flight)
 }
+
+const BACKOFF_MS      = 60_000;
+const FAIL_THRESHOLD  = 3;
 
 export function useServiceStatus(
   options: UseServiceStatusOptions = {}
 ): UseServiceStatusReturn {
-  const { interval = 5000, autoStart = true } = options;
+  const { interval = 5000 } = options;
 
-  const [services, setServices] = useState<ServiceStatus[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  const [polling, setPolling] = useState(autoStart);
+  const [services,    setServices]    = useState<ServiceStatus[]>([]);
+  const [loading,     setLoading]     = useState(false);
+  const [error,       setError]       = useState<Error | null>(null);
+  const [lastUpdated, setLastUpdated] = useState(0);
 
-  const fetchServices = useCallback(async () => {
+  // Stable refs — never trigger re-renders, never become stale in closures
+  const isFetchingRef = useRef(false);
+  const fetchFnRef    = useRef<() => void>(() => {});
+  const mountedRef    = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
     if (!ROBOT_ENABLED) {
       setServices([]);
       setError(null);
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    let failCount  = 0;
+    let intervalId: ReturnType<typeof setInterval>;
 
-    try {
-      const response = await robotFetch('/api/services/list');
-      
-      if (response.offline) {
-        setServices([]);
-        setError(null);
-        return;
+    async function fetchServices() {
+      // In-flight guard — skip if a fetch is already running
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
+      setLoading(true);
+
+      try {
+        const res = await robotFetch('/api/services/list');
+        if (!mountedRef.current) return;
+
+        if ('offline' in res && res.offline) {
+          // Treat offline the same as a fetch failure
+          failCount++;
+        } else if (res.ok) {
+          const data = await res.json();
+          if (!mountedRef.current) return;
+
+          if (data.ok && Array.isArray(data.services)) {
+            failCount = 0;
+            setServices(data.services);
+            setLastUpdated(Date.now());
+            setError(null);
+
+            // Recover from backoff if we were in it
+            if (failCount === 0) {
+              clearInterval(intervalId);
+              intervalId = setInterval(fetchServices, interval);
+            }
+          } else {
+            failCount++;
+            setError(new Error('Invalid response format'));
+          }
+        } else {
+          failCount++;
+          setError(new Error(`HTTP ${res.status}`));
+        }
+      } catch (err) {
+        if (!mountedRef.current) return;
+        failCount++;
+        setError(err instanceof Error ? err : new Error('Failed to fetch services'));
+      } finally {
+        if (mountedRef.current) setLoading(false);
+        isFetchingRef.current = false;
       }
 
-      const data = await response.json();
-      
-      if (data.ok && Array.isArray(data.services)) {
-        setServices(data.services);
-        setError(null);
-      } else {
-        throw new Error('Invalid response format');
+      // Circuit breaker: escalate to backoff after threshold
+      if (failCount >= FAIL_THRESHOLD) {
+        clearInterval(intervalId);
+        intervalId = setInterval(fetchServices, BACKOFF_MS);
       }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to fetch services');
-      setError(error);
-      console.error('Failed to fetch services:', error);
-    } finally {
-      setLoading(false);
     }
-  }, []);
 
-  // Polling effect
-  useEffect(() => {
-    if (!polling) return;
+    fetchFnRef.current = fetchServices;
 
-    // Initial fetch
     fetchServices();
-
-    // Set up interval
-    const intervalId = setInterval(fetchServices, interval);
+    intervalId = setInterval(fetchServices, interval);
 
     return () => clearInterval(intervalId);
-  }, [polling, interval, fetchServices]);
+  }, [interval]);
 
-  const startPolling = useCallback(() => {
-    setPolling(true);
+  // Stable refresh — triggers an immediate fetch regardless of interval
+  const refresh = useCallback(() => {
+    fetchFnRef.current();
   }, []);
 
-  const stopPolling = useCallback(() => {
-    setPolling(false);
-  }, []);
-
-  return {
-    services,
-    loading,
-    error,
-    refresh: fetchServices,
-    startPolling,
-    stopPolling,
-  };
+  return { services, loading, error, lastUpdated, refresh };
 }
-
