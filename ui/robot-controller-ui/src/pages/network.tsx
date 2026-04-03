@@ -175,27 +175,24 @@ export default function NetworkPage() {
         <meta name="description" content="Manage all network connections for Omega-1" />
       </Head>
 
-      <div className="min-h-screen bg-gray-900 text-white p-4">
-        <div className="max-w-4xl mx-auto space-y-5">
-
-          {/* ── Page header ───────────────────────────────────── */}
+      <div className="min-h-screen bg-gray-950 text-white">
+        {/* Sticky top bar */}
+        <div className="sticky top-0 z-10 bg-gray-900 border-b border-white/10 px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link
               href="/"
-              className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              Back
+              Dashboard
             </Link>
-            <div className="w-px h-4 bg-white/15" />
-            <Wifi className="w-6 h-6 text-blue-400" />
-            <div>
-              <h1 className="text-2xl font-bold text-white">Network Management</h1>
-              <p className="text-sm text-white/50 mt-0.5">
-                All network configuration in one place
-              </p>
-            </div>
+            <span className="text-white/20">|</span>
+            <Wifi className="w-4 h-4 text-blue-400" />
+            <span className="text-sm font-bold tracking-wide text-white uppercase">Network Management</span>
           </div>
+        </div>
+
+        <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
 
           {/* ── Tab bar ──────────────────────────────────────── */}
           <div className="flex gap-1 bg-gray-800 border border-white/10 rounded-lg p-1 overflow-x-auto">

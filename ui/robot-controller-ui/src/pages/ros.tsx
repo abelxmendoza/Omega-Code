@@ -8,6 +8,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { ROSManagementPanel, TelemetryVisualization } from '@/components/ros';
 import { getROSStatus, controlROSContainer, listROSTopics } from '@/utils/rosApi';
 import { buildGatewayUrl } from '@/config/gateway';
@@ -286,26 +287,26 @@ export default function ROSDashboard() {
         <meta name="description" content="ROS 2 Docker Management and Telemetry Dashboard" />
       </Head>
 
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white p-4">
-        <div className="max-w-7xl mx-auto">
-          {/* Header */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <h1 className="text-3xl font-bold mb-2">ROS 2 Infrastructure Dashboard</h1>
-                <p className="text-gray-400">Manage Docker containers, monitor topics, and view telemetry logs</p>
-              </div>
-              <Link 
-                href="/" 
-                className="text-sm text-blue-400 hover:text-blue-300 underline flex items-center gap-1 px-3 py-2 bg-gray-800 rounded hover:bg-gray-700"
-              >
-                ← Autonomy Settings
-              </Link>
-            </div>
-            <div className="mt-2 p-3 bg-blue-900/20 border border-blue-500/50 rounded text-sm">
-              <strong className="text-blue-300">💡 Note:</strong> This dashboard manages ROS <strong>infrastructure</strong> (containers, topics, logs). 
-              To configure which ROS <strong>features</strong> are used during autonomy, visit the <Link href="/" className="text-blue-400 hover:text-blue-300 underline font-semibold">Autonomy Settings</Link>.
-            </div>
+      <div className="min-h-screen bg-gray-950 text-white">
+        {/* Sticky top bar */}
+        <div className="sticky top-0 z-10 bg-gray-900 border-b border-white/10 px-4 py-2.5 flex items-center gap-3">
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Dashboard
+          </Link>
+          <span className="text-white/20">|</span>
+          <span className="text-sm font-bold tracking-wide text-white uppercase">ROS 2 Dashboard</span>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className="mb-4 p-3 bg-sky-900/20 border border-sky-500/30 rounded-lg text-xs text-sky-300">
+            This dashboard manages ROS <strong>infrastructure</strong> (containers, topics, logs).
+            Autonomy behavior is configured in the{' '}
+            <Link href="/" className="underline hover:text-sky-200">Autonomy Control</Link> modal on the dashboard.
+          </div>
             <div className="mt-4 flex items-center gap-4 text-sm">
               <label className="flex items-center gap-2">
                 <input
@@ -346,7 +347,6 @@ export default function ROSDashboard() {
                 )}
               </div>
             </div>
-          </div>
 
           {/* Error Banner */}
           {error && (

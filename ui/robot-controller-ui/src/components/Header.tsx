@@ -23,6 +23,7 @@ import { useHttpStatus, HttpStatus } from '../hooks/useHttpStatus';
 import { net } from '@/utils/netProfile';
 import { toHealthUrl } from '@/utils/urlHelpers';
 import { CapabilityInfoModal } from './capability/CapabilityInfoModal';
+import { useServiceSafety } from '@/hooks/useServiceSafety';
 
 // Install button component for PWA
 const InstallButton: React.FC = () => {
@@ -377,6 +378,7 @@ function useLatencyMetrics(intervalMs = LATENCY_BASE_INTERVAL) {
 const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false, gamepadName = '', gamepadPaused = false }) => {
   const router = useRouter();
   const [showServers, setShowServers] = useState(true);
+  const { readinessLevel, blockedReason } = useServiceSafety();
 
   // Resolve endpoints defensively (never throw during render)
   const { MOVE_URL, ULTRA_URL, LINE_URL, LIGHT_URL, VIDEO_URL } = useMemo(() => {
@@ -485,6 +487,28 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false,
               <SlidersHorizontal className="w-3 xl4:w-4 h-3 xl4:h-4" />
               <span>Settings</span>
             </Link>
+          </div>
+
+          {/* System readiness indicator */}
+          <div
+            title={
+              readinessLevel === 'ready'    ? 'All critical services running' :
+              readinessLevel === 'degraded' ? 'Some non-critical services offline' :
+              blockedReason ?? 'Critical services offline'
+            }
+            className={`
+              hidden xl4:flex items-center gap-1 text-[10px] xl4:text-sm px-1.5 xl4:px-2.5 py-0.5 xl4:py-1 rounded border font-semibold
+              ${readinessLevel === 'ready'    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' :
+                readinessLevel === 'degraded' ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' :
+                'bg-rose-500/15 border-rose-500/40 text-rose-300'}
+            `}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              readinessLevel === 'ready'    ? 'bg-emerald-400' :
+              readinessLevel === 'degraded' ? 'bg-amber-400 animate-pulse' :
+              'bg-rose-400 animate-pulse'
+            }`} />
+            {readinessLevel === 'ready' ? 'Ready' : readinessLevel === 'degraded' ? 'Degraded' : 'Critical'}
           </div>
         </div>
 

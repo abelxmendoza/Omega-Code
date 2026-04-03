@@ -54,15 +54,13 @@ export default function SettingsPage() {
 
   if (!ROBOT_ENABLED) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white p-4">
+      <div className="min-h-screen bg-gray-950 text-white">
         <Head>
-          <title>Settings - Robot Controller</title>
+          <title>Settings — Robot Controller</title>
         </Head>
-        <Card className="bg-gray-800 border-gray-700">
-          <CardContent className="p-6">
-            <p className="text-gray-400">Robot is offline. Settings are unavailable.</p>
-          </CardContent>
-        </Card>
+        <div className="p-6 text-center text-white/40 text-sm">
+          Robot is offline. Settings are unavailable.
+        </div>
       </div>
     );
   }
@@ -70,28 +68,26 @@ export default function SettingsPage() {
   return (
     <>
       <Head>
-        <title>Settings - Robot Controller</title>
+        <title>Settings — Robot Controller</title>
         <meta name="description" content="Configure Omega-1 robot settings" />
       </Head>
 
-      <div className="min-h-screen bg-gray-900 text-white p-4">
-        <div className="max-w-6xl mx-auto space-y-6">
-          {/* Header */}
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80 transition-colors"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Back
-            </Link>
-            <div className="w-px h-4 bg-white/15" />
-            <SlidersHorizontal className="w-7 h-7 text-yellow-400" />
-            <div>
-              <h1 className="text-2xl font-bold text-white">Robot Settings</h1>
-              <p className="text-gray-400 mt-0.5 text-sm">Configure Omega-1 robot settings</p>
-            </div>
-          </div>
+      <div className="min-h-screen bg-gray-950 text-white">
+        {/* Sticky top bar */}
+        <div className="sticky top-0 z-10 bg-gray-900 border-b border-white/10 px-4 py-2.5 flex items-center gap-3">
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Dashboard
+          </Link>
+          <span className="text-white/20">|</span>
+          <SlidersHorizontal className="w-4 h-4 text-yellow-400" />
+          <span className="text-sm font-bold tracking-wide text-white uppercase">Robot Settings</span>
+        </div>
+
+        <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
 
           {configLoading ? (
             <div className="flex items-center justify-center py-12">

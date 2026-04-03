@@ -16,6 +16,7 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, Package, Network, Activity, Layers, Code, CheckCircle2, Lock, Clock, AlertTriangle, CheckCircle, UserCheck } from 'lucide-react';
+import { useServiceSafety } from '@/hooks/useServiceSafety';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -228,6 +229,10 @@ export default function AutonomyModal({
   const [visionModeLabel, setVisionModeLabel] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Safety: derived from live service status
+  const { movementReady, sensorsReady, blockedReason } = useServiceSafety();
+  const safetyBlocked = !movementReady || !sensorsReady;
+
   // Fetch current vision mode label for status row
   useEffect(() => {
     if (!open) return;
@@ -306,6 +311,7 @@ export default function AutonomyModal({
   /* -------------------------------- Handlers -------------------------------- */
 
   async function handleStart() {
+    if (safetyBlocked) return; // critical services down — refuse to start
     setBusy(true);
     try { await onStart?.(canonicalizeMode(mode), params); }
     catch (e) { console.warn('autonomy start failed:', e); }
@@ -529,6 +535,24 @@ export default function AutonomyModal({
             </div>
           </div>
 
+          {/* Safety gate — shown when critical services are down */}
+          {safetyBlocked && (
+            <div className="mx-5 mb-3 flex items-start gap-2 px-3 py-2.5 rounded-md bg-rose-600/15 border border-rose-500/40 flex-shrink-0" role="alert">
+              <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-bold text-rose-300">Cannot start autonomy</p>
+                <p className="text-[11px] text-rose-400 mt-0.5">{blockedReason}</p>
+                <p className="text-[10px] text-rose-500 mt-1">
+                  Start the required services in{' '}
+                  <Link href="/services" className="underline hover:text-rose-300 transition-colors">
+                    Service Management
+                  </Link>{' '}
+                  before launching autonomy.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="px-5 pb-5 grid grid-cols-1 gap-3 overflow-y-auto flex-1 min-h-0">
             {/* BASIC: Mode + Start/Stop */}
             <Card className="bg-neutral-900/80 border-neutral-800">
@@ -612,12 +636,15 @@ export default function AutonomyModal({
                     </Select>
                   </div>
                   <div className="flex gap-2">
-                    <Button 
-                      disabled={busy || !connected || isViewer} 
-                      onClick={handleStart} 
-                      className="gap-2 flex-1" 
+                    <Button
+                      disabled={busy || !connected || isViewer || safetyBlocked}
+                      onClick={handleStart}
+                      className="gap-2 flex-1"
                       aria-busy={busy}
-                      title={isViewer ? 'Viewer role cannot start autonomy' : undefined}
+                      title={
+                        safetyBlocked ? blockedReason ?? 'Critical services offline' :
+                        isViewer ? 'Viewer role cannot start autonomy' : undefined
+                      }
                     >
                       <Play className="h-4 w-4" /> Start
                     </Button>
