@@ -41,7 +41,7 @@ class PiMotorDriver(BaseMotorDriver):
     def __init__(self, trim_left: int = 0, trim_right: int = 0):
         super().__init__(trim_left, trim_right)
         self.pca9685 = PCA9685()
-        self.pca9685.set_pwm_freq(50)
+        self.pca9685.set_pwm_freq(500)  # 500 Hz for smooth DC motor control (was 50 Hz)
         # Signed duty per wheel (positive = forward): FL, RL, FR, RR
         self._duty = {"frontLeft": 0, "rearLeft": 0, "frontRight": 0, "rearRight": 0}
 
@@ -139,6 +139,14 @@ class PiMotorDriver(BaseMotorDriver):
         left  = max(-_MAX_DUTY, min(_MAX_DUTY, -left_pwm  + self.trim_left))
         right = max(-_MAX_DUTY, min(_MAX_DUTY, -right_pwm + self.trim_right))
         self.set_motor_model(left, left, right, right)
+
+    def set_pwm_all(self, pwm: int) -> None:
+        """Set all four wheels to the same signed duty. Positive = forward."""
+        self.set_pwm(pwm, pwm)
+
+    def set_left_right(self, left_pwm: int, right_pwm: int) -> None:
+        """Differential steering — independent signed duty per side."""
+        self.set_pwm(left_pwm, right_pwm)
 
     def get_telemetry(self) -> dict:
         """

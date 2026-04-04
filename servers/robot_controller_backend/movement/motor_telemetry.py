@@ -249,6 +249,24 @@ class MotorTelemetryController:
                 'rearRight': default_telemetry.copy()
             }
     
+    def set_pwm_all(self, pwm: int) -> None:
+        """Set all four wheels to the same signed duty and update telemetry."""
+        duty = int(pwm)
+        self._update_telemetry(duty, duty)
+        if hasattr(self.motor, 'driver') and hasattr(self.motor.driver, 'set_pwm_all'):
+            self.motor.driver.set_pwm_all(duty)
+        else:
+            self.motor.setMotors(duty)
+
+    def set_left_right(self, left_pwm: int, right_pwm: int) -> None:
+        """Differential steering with telemetry update."""
+        left, right = int(left_pwm), int(right_pwm)
+        self._update_telemetry(left, right)
+        if hasattr(self.motor, 'driver') and hasattr(self.motor.driver, 'set_left_right'):
+            self.motor.driver.set_left_right(left, right)
+        else:
+            self.motor.setMotors(max(abs(left), abs(right)))
+
     def stop(self):
         """Stop all motors and reset telemetry"""
         self.motor.stop()

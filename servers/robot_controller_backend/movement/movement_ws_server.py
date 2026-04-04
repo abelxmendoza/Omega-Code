@@ -147,6 +147,15 @@ except Exception as e:  # pragma: no cover - fallback for script execution
             from motor_telemetry import MotorTelemetryController
         except Exception:
             logger.warning(f"MotorTelemetryController not available - telemetry disabled: {repr(e)}")
+
+# Import MotorController (new stable control layer)
+try:
+    from .motor_controller import MotorController, motor_loop as _motor_loop
+except ImportError:
+    try:
+        from servers.robot_controller_backend.movement.motor_controller import MotorController, motor_loop as _motor_loop
+    except ImportError:
+        from motor_controller import MotorController, motor_loop as _motor_loop
             MotorTelemetryController = None
 
 # Import optimization utilities
@@ -439,6 +448,10 @@ else:
     def get_cached_motor_telemetry():
         return {}  # Return empty dict if telemetry not available
 
+# ── MotorController (dead-zone, ramp, 500 Hz PCA9685 layer) ──────────────
+MOTOR_CTRL = MotorController(motor)
+log(f"[MOVE][INIT] MotorController ready — MIN={MOTOR_CTRL.MIN_PWM} MAX={MOTOR_CTRL.MAX_PWM} RAMP={MOTOR_CTRL.RAMP_STEP}/tick")
+
 # Initialize Movement V2 system
 MOVEMENT_V2_ENABLED = _env("MOVEMENT_V2_ENABLED", "1") == "1" and MOVEMENT_V2_AVAILABLE
 
@@ -693,7 +706,8 @@ async def do_stop():
     global current_speed, _last_direction
     async with motor_lock:
         try:
-            motor.stop()
+            MOTOR_CTRL.stop()   # resets ramp + writes stop immediately
+            motor.stop()        # belt-and-suspenders: also stop the raw driver
         except Exception as e:
             elog("motor stop failed:", repr(e))
     await buzz_off_safe()
@@ -827,8 +841,9 @@ async def do_move(fn_name: str, speed: int):
                 logger.warning(f"PID correction failed: {e}, using safe speed")
                 final_speed = safe_speed
         
-        log(f"[MOVE] Calling motor.{actual_method}({final_speed}) [V2 pipeline: {speed} -> {profiled_speed} -> {ramped_speed} -> {safe_speed} -> {final_speed}]")
-        _call_motor(fn, final_speed)
+        pct = final_speed / 4095.0
+        log(f"[MOVE] MOTOR_CTRL.set_speed({pct:.2f}, '{fn_name}') [V2 pipeline: {speed} -> {profiled_speed} -> {ramped_speed} -> {safe_speed} -> {final_speed}]")
+        MOTOR_CTRL.set_speed(pct, fn_name)
 
 def norm_cmd_name(raw: str) -> str:
     s = (raw or "").strip().lower()
@@ -1468,6 +1483,10 @@ async def main():
         
         logger.info("Optimization systems started")
     
+    # Start MotorController background loop (50 Hz ramp + hardware writes)
+    asyncio.create_task(_motor_loop(MOTOR_CTRL))
+    log("[MOVE][INIT] MotorController loop started at 50 Hz")
+
     # Start Movement V2 watchdog background task
     if MOVEMENT_WATCHDOG and MOVEMENT_WATCHDOG.enabled:
         asyncio.create_task(watchdog_background_task())
