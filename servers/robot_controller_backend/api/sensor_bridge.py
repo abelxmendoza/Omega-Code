@@ -374,7 +374,73 @@ class OmegaSensorBridge:
             thread.start()
 
         except Exception as exc:
-            log.warning('Direct hardware polling unavailable: %s', exc)
+            log.warning('Direct hardware polling unavailable: %s -- trying Go WS bridge', exc)
+            self._start_go_ws_polling()
+
+    def _start_go_ws_polling(self) -> None:
+        """Subscribe to the Go ultrasonic WS server (ws://127.0.0.1:8080) when
+        direct GPIO access is blocked (e.g. 'GPIO busy' from the Go process)."""
+        _GO_WS_URL = 'ws://127.0.0.1:8080'
+        try:
+            import websocket as _ws_lib  # websocket-client
+        except ImportError:
+            log.warning('Sensor bridge: websocket-client not installed — cannot subscribe to Go WS')
+            return
+
+        self._enabled = True
+        log.info('Sensor bridge: subscribing to Go ultrasonic WS at %s', _GO_WS_URL)
+
+        def _run():
+            global _bridge_latest_distance_cm, _bridge_latest_ultra_ts
+            while True:
+                try:
+                    ws = _ws_lib.create_connection(_GO_WS_URL, timeout=5)
+                    log.info('Sensor bridge: Go WS connected')
+                    while True:
+                        raw = ws.recv()
+                        try:
+                            payload = json.loads(raw)
+                        except Exception:
+                            continue
+
+                        # Ignore welcome/pong frames
+                        if payload.get('type') in ('welcome', 'pong'):
+                            continue
+
+                        raw_cm = payload.get('distance_cm')
+                        if raw_cm is None:
+                            continue
+                        raw_cm = float(raw_cm)
+
+                        if raw_cm <= 0 or raw_cm > 400:
+                            continue
+                        if (self._last_valid_cm is not None
+                                and abs(raw_cm - self._last_valid_cm) > 100):
+                            log.debug('Go WS spike rejected: %.1f cm', raw_cm)
+                            continue
+
+                        self._last_valid_cm = raw_cm
+                        _bridge_latest_distance_cm = raw_cm
+                        _bridge_latest_ultra_ts = time.monotonic()
+                        self._last_valid_ultra_ts = _bridge_latest_ultra_ts
+
+                        smoothed_cm = self._smooth_ultrasonic(raw_cm)
+                        self.latest_ultrasonic = round(smoothed_cm, 1)
+                        dist_m = round(smoothed_cm / 100.0, 3)
+                        data = {
+                            'type': 'ultrasonic',
+                            'distance_cm': round(smoothed_cm, 1),
+                            'distance_m': dist_m,
+                            'distance_inch': round(smoothed_cm * 0.393701, 1),
+                            'ts': int(time.time() * 1000),
+                        }
+                        self._fan_out(self._us_queues, data)
+                except Exception as exc:
+                    log.debug('Sensor bridge Go WS error: %s — reconnecting in 2s', exc)
+                    time.sleep(2)
+
+        thread = threading.Thread(target=_run, daemon=True, name='sensor_go_ws')
+        thread.start()
 
     # ------------------------------------------------------------------
     # Lifecycle
