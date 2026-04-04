@@ -106,18 +106,18 @@ class MovementProfile:
 class SmoothProfile(MovementProfile):
     """
     Smooth movement profile: gentle acceleration and soft steering.
-    
+
     Best for:
     - Indoor navigation
     - Smooth video recording
     - Precise positioning
     """
-    
+
     def __init__(self):
         config = ProfileConfig(
             name="smooth",
-            accel_rate=100.0,      # Slow acceleration
-            decel_rate=150.0,      # Moderate deceleration
+            accel_rate=2000.0,     # ~0.9s 0→1800 PWM at real-time dt
+            decel_rate=3000.0,
             max_speed=3000.0,      # Moderate max speed
             turn_ratio=0.6,        # Gentle turns
             pivot_enabled=False,   # No sharp pivots
@@ -139,8 +139,8 @@ class AggressiveProfile(MovementProfile):
     def __init__(self):
         config = ProfileConfig(
             name="aggressive",
-            accel_rate=300.0,      # Fast acceleration
-            decel_rate=400.0,      # Fast deceleration
+            accel_rate=8192.0,     # Effectively instant (< 0.25s 0→full)
+            decel_rate=8192.0,
             max_speed=4095.0,      # Full speed
             turn_ratio=0.3,        # Sharp turns
             pivot_enabled=True,    # Allow pivots
@@ -166,8 +166,8 @@ class PrecisionProfile(MovementProfile):
     def __init__(self):
         config = ProfileConfig(
             name="precision",
-            accel_rate=50.0,       # Very slow acceleration
-            decel_rate=75.0,       # Very slow deceleration
+            accel_rate=1000.0,     # ~1.5s 0→1500 PWM — deliberate but not sluggish
+            decel_rate=2000.0,
             max_speed=1500.0,      # Low max speed
             turn_ratio=0.8,        # Very gentle turns
             pivot_enabled=False,   # No pivots

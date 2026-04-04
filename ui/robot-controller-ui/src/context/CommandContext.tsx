@@ -304,6 +304,25 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
     [addCommand],
   );
 
+  // ---- Periodic status poll (telemetry refresh) ----
+  const statusPollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startStatusPoll = React.useCallback(() => {
+    if (statusPollTimer.current) clearInterval(statusPollTimer.current);
+    statusPollTimer.current = setInterval(() => {
+      if (ws.current?.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({ command: 'status' }));
+      }
+    }, 2000);
+  }, []);
+
+  const stopStatusPoll = React.useCallback(() => {
+    if (statusPollTimer.current) {
+      clearInterval(statusPollTimer.current);
+      statusPollTimer.current = null;
+    }
+  }, []);
+
   // ---- Heartbeat helpers (JSON ping/pong) ----
   const cleanupHeartbeat = React.useCallback(() => {
     if (hbTimer.current) {
@@ -368,8 +387,9 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
           }
         }, 3000);
         
-        // Start heartbeat which will also help verify the connection
+        // Start heartbeat and status poll
         startHeartbeat();
+        startStatusPoll();
         requestStatus('auto');
       };
 
@@ -492,6 +512,7 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         setStatus('disconnected');
         addCommand('WebSocket disconnected');
         cleanupHeartbeat();
+        stopStatusPoll();
 
         if (shouldReconnect.current) {
           // Exponential backoff + jitter: prevents reconnect storms when multiple
@@ -550,12 +571,13 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         verificationTimeout.current = null;
       }
       cleanupHeartbeat();
+      stopStatusPoll();
       if (ws.current) {
         try { ws.current.close(); } catch {}
         addCommand('WebSocket connection closed during cleanup');
       }
     };
-  }, [addCommand, applyServoTelemetry, cleanupHeartbeat, requestStatus, startHeartbeat]);
+  }, [addCommand, applyServoTelemetry, cleanupHeartbeat, requestStatus, startHeartbeat, startStatusPoll, stopStatusPoll]);
 
   return (
     <CommandContext.Provider

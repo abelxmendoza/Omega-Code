@@ -13,8 +13,8 @@ from dataclasses import dataclass, asdict
 class MovementV2Config:
     """Movement V2 configuration"""
     # Ramping
-    accel_rate: float = 150.0
-    decel_rate: float = 200.0
+    accel_rate: float = 2000.0
+    decel_rate: float = 3000.0
     ramp_type: str = "linear"  # linear, exponential, s_curve
     
     # Profiles

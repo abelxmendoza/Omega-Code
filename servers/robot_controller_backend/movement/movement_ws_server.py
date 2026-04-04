@@ -755,8 +755,8 @@ async def do_move(fn_name: str, speed: int):
         if MOVEMENT_RAMP:
             try:
                 MOVEMENT_RAMP.set_target(float(profiled_speed))
-                dt = 1.0 / MOVEMENT_V2_CONFIG.ramp_update_rate_hz if MOVEMENT_V2_CONFIG else 0.02
-                ramped_speed = int(MOVEMENT_RAMP.update(dt))
+                # Use actual elapsed time so ramp speed is independent of command rate
+                ramped_speed = int(MOVEMENT_RAMP.update(dt=None))
                 # Check for ramp stall (no progress)
                 if MOVEMENT_RAMP._is_ramping and abs(MOVEMENT_RAMP.current_pwm - MOVEMENT_RAMP.target_pwm) > 10:
                     elapsed = time.monotonic() - MOVEMENT_RAMP._ramp_start_time
