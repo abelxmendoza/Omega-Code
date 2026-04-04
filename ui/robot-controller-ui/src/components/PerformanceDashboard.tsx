@@ -272,9 +272,29 @@ const PerformanceDashboard: React.FC = memo(() => {
         const res = await fetch('/api/performance-proxy/metrics');
         if (!mounted) return;
         if (res.ok) {
-          const data = await res.json();
+          const raw = await res.json();
           failCount = 0;
-          setPerfData(data);
+          // Merge over DEFAULT_DATA so missing backend fields never crash
+          setPerfData({
+            ...DEFAULT_DATA,
+            ...raw,
+            networkIO:      { ...DEFAULT_DATA.networkIO,      ...(raw.networkIO      ?? {}) },
+            piSpecific:     { ...DEFAULT_DATA.piSpecific,     ...(raw.piSpecific     ?? {}),
+              gpioStatus:     { ...DEFAULT_DATA.piSpecific.gpioStatus,     ...(raw.piSpecific?.gpioStatus     ?? {}) },
+              cameraStatus:   { ...DEFAULT_DATA.piSpecific.cameraStatus,   ...(raw.piSpecific?.cameraStatus   ?? {}) },
+              robotServices:  { ...DEFAULT_DATA.piSpecific.robotServices,  ...(raw.piSpecific?.robotServices  ?? {}) },
+            },
+            robotTelemetry: {
+              ...DEFAULT_DATA.robotTelemetry,
+              ...(raw.robotTelemetry ?? {}),
+              power:      { ...DEFAULT_DATA.robotTelemetry.power,      ...(raw.robotTelemetry?.power      ?? {}) },
+              sensors:    { ...DEFAULT_DATA.robotTelemetry.sensors,    ...(raw.robotTelemetry?.sensors    ?? {}) },
+              motors:     { ...DEFAULT_DATA.robotTelemetry.motors,     ...(raw.robotTelemetry?.motors     ?? {}) },
+              network:    { ...DEFAULT_DATA.robotTelemetry.network,    ...(raw.robotTelemetry?.network    ?? {}) },
+              autonomous: { ...DEFAULT_DATA.robotTelemetry.autonomous, ...(raw.robotTelemetry?.autonomous ?? {}) },
+              safety:     { ...DEFAULT_DATA.robotTelemetry.safety,     ...(raw.robotTelemetry?.safety     ?? {}) },
+            },
+          });
           setLive(true);
           setLastFetched(Date.now());
           // Reset to normal interval on recovery
