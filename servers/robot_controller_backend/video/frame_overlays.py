@@ -253,6 +253,78 @@ class FrameOverlay:
         }
 
 
+def draw_obstacle_visualization(frame: np.ndarray, distance_cm: Optional[float]) -> np.ndarray:
+    """
+    Mode 8 full obstacle visualization:
+    - Central box sized inversely to distance (closer → bigger)
+    - Color-coded: green (clear) / yellow (near) / orange (caution) / red (danger)
+    - Red border flash around entire frame when obstacle < 20 cm
+    - Distance label inside box, status label above
+    """
+    if cv2 is None or frame is None:
+        return frame
+
+    h, w = frame.shape[:2]
+
+    if distance_cm is None:
+        cv2.putText(frame, "SENSOR OFFLINE", (w // 2 - 130, h // 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (128, 128, 128), 2, cv2.LINE_AA)
+        cv2.putText(frame, "OBSTACLE DETECT", (10, h - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 128, 128), 1, cv2.LINE_AA)
+        return frame
+
+    # Threshold-based color and status
+    if distance_cm < 20:
+        color = (0, 0, 255)      # red
+        status = "DANGER"
+        border_width = 8
+    elif distance_cm < 40:
+        color = (0, 100, 255)    # orange
+        status = "CAUTION"
+        border_width = 0
+    elif distance_cm < 60:
+        color = (0, 255, 255)    # yellow
+        status = "NEAR"
+        border_width = 0
+    else:
+        color = (0, 255, 0)      # green
+        status = "CLEAR"
+        border_width = 0
+
+    # Full-frame border flash on danger
+    if border_width:
+        cv2.rectangle(frame, (2, 2), (w - 2, h - 2), color, border_width)
+
+    # Central warning box — grows as obstacle approaches
+    max_dist = 200.0
+    frac = max(0.0, 1.0 - (min(distance_cm, max_dist) / max_dist))
+    min_frac, max_frac = 0.06, 0.72
+    box_frac = min_frac + (max_frac - min_frac) * frac
+    bw = int(w * box_frac)
+    bh = int(h * box_frac)
+    cx, cy = w // 2, h // 2
+    x1, y1 = cx - bw // 2, cy - bh // 2
+    x2, y2 = cx + bw // 2, cy + bh // 2
+    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
+
+    # Distance text centred inside box
+    dist_text = f"{distance_cm:.0f} cm"
+    fs = 1.6
+    (tw, th), _ = cv2.getTextSize(dist_text, cv2.FONT_HERSHEY_SIMPLEX, fs, 3)
+    cv2.putText(frame, dist_text, (cx - tw // 2, cy + th // 2),
+                cv2.FONT_HERSHEY_SIMPLEX, fs, color, 3, cv2.LINE_AA)
+
+    # Status label above box
+    cv2.putText(frame, status, (max(x1, 4), max(y1 - 8, 20)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2, cv2.LINE_AA)
+
+    # Corner HUD tag
+    cv2.putText(frame, "OBSTACLE DETECT", (10, h - 15),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+
+    return frame
+
+
 def add_obstacle_overlay(frame: np.ndarray, distance_cm: Optional[float]) -> np.ndarray:
     """
     Stamp the current ultrasonic distance onto the frame.

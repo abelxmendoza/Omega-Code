@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 
 class SystemMode(IntEnum):
-    """System operation modes (0-7)."""
+    """System operation modes (0-8)."""
     CAMERA_ONLY = 0
     MOTION_DETECTION = 1
     TRACKING = 2
@@ -22,6 +22,7 @@ class SystemMode(IntEnum):
     RECORDING_ONLY = 5
     ORIN_ENHANCED_DETECTION = 6
     ORIN_NAVIGATION_MODE = 7
+    OBSTACLE_DETECTION = 8
 
 
 # System mode descriptions
@@ -34,6 +35,7 @@ MODE_DESCRIPTIONS = {
     5: "Recording Only - Record video without processing",
     6: "Orin-Enhanced Detection - Hybrid mode with YOLOv8 (requires Orin)",
     7: "Orin Navigation Mode - Full navigation with Orin AI brain (requires Orin)",
+    8: "Obstacle Detection - Ultrasonic distance overlay with proximity warning box",
 }
 
 
@@ -67,7 +69,7 @@ class SystemState:
         Returns:
             True if mode was set successfully
         """
-        if mode < 0 or mode > 7:
+        if mode < 0 or mode > 8:
             log.error(f"Invalid mode: {mode}. Must be 0-7")
             return False
         
@@ -115,12 +117,12 @@ class SystemState:
             Dict mapping mode numbers to mode info
         """
         modes = {}
-        for mode_num in range(8):
+        for mode_num in range(9):
             modes[mode_num] = {
                 "mode": mode_num,
-                "name": SystemMode(mode_num).name if mode_num in SystemMode.__members__.values() else "UNKNOWN",
+                "name": SystemMode(mode_num).name if mode_num in [m.value for m in SystemMode] else "UNKNOWN",
                 "description": MODE_DESCRIPTIONS.get(mode_num, "Unknown mode"),
-                "available": True,  # TODO: Check if mode is available based on hardware
+                "available": True,
             }
         return modes
     

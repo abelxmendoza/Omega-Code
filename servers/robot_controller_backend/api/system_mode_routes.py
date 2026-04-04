@@ -60,7 +60,7 @@ router = APIRouter(prefix="/api/system/mode", tags=["System Mode"])
 
 class SetModeRequest(BaseModel):
     """Request model for setting system mode."""
-    mode: int = Field(..., ge=0, le=7, description="System mode (0-7)")
+    mode: int = Field(..., ge=0, le=8, description="System mode (0-8)")
 
 
 @router.get("/list")
@@ -137,7 +137,7 @@ async def set_system_mode(request: SetModeRequest = Body(...)) -> Dict[str, Any]
         system_state = get_system_state()
         
         # Validate mode
-        if request.mode < 0 or request.mode > 7:
+        if request.mode < 0 or request.mode > 8:
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid mode: {request.mode}. Must be 0-7"

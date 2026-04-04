@@ -158,6 +158,9 @@ _vision_mode: int = 0
 # Frame counter for periodic debug logging (not every frame)
 _frame_log_counter: int = 0
 
+# Flag: set by /mode/set when switching to mode 2 so generate_frames auto-inits the tracker
+_tracking_init_pending: bool = False
+
 # ── Obstacle avoidance ───────────────────────────────────────────────────────
 # Latest ultrasonic distance polled from FastAPI (cm), shared with frame loop.
 _latest_distance: Optional[float] = None
@@ -780,7 +783,7 @@ def generate_frames():
     MJPEG generator: reads frames, overlays motion (and tracker if enabled).
     If no camera yet, yields placeholder frames (when enabled).
     """
-    global tracking_enabled, camera, _frame_skip_counter, _last_motion_run, _last_aruco_run, _last_telemetry_publish, _frame_log_counter
+    global tracking_enabled, camera, _frame_skip_counter, _last_motion_run, _last_aruco_run, _last_telemetry_publish, _frame_log_counter, _tracking_init_pending
     _last_frame_time = 0.0
 
     while camera_power.is_enabled():
@@ -870,6 +873,19 @@ def generate_frames():
 
             elif mode == 2:
                 # Object Tracking
+                # Auto-init with center ROI when mode is first entered
+                if _tracking_init_pending and tracker is not None:
+                    try:
+                        h_f, w_f = frame.shape[:2]
+                        roi = min(w_f, h_f) // 4
+                        bbox = (w_f // 2 - roi // 2, h_f // 2 - roi // 2, roi, roi)
+                        tracking_enabled = tracker.start_tracking(frame, bbox)
+                        _tracking_init_pending = False
+                        logging.info("[PIPELINE] Tracker auto-initialized with center ROI")
+                    except Exception as e:
+                        logging.warning(f"[PIPELINE] Tracker auto-init failed: {e}")
+                        _tracking_init_pending = False
+
                 if tracking_enabled and tracker is not None:
                     if not should_throttle or "tracking" not in throttle_priority[:2]:
                         try:
@@ -878,6 +894,12 @@ def generate_frames():
                         except Exception as e:
                             logging.warning(f"[PIPELINE] Tracking error: {e}")
                             _metrics["errors_total"] += 1
+                elif tracker is not None and not _tracking_init_pending:
+                    # Tracker lost — show guidance text
+                    if cv2 is not None:
+                        cv2.putText(frame, "TRACKING LOST — reinitializing...", (20, 60),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2, cv2.LINE_AA)
+                        _tracking_init_pending = True  # attempt re-init on next frame
 
             elif mode == 3:
                 # Face Recognition
@@ -914,10 +936,34 @@ def generate_frames():
                             _last_aruco_run = _now_aruco
 
             elif mode == 5:
-                pass  # Pi Recording — frame recorded below, no overlays applied
+                pass  # Pi Recording — raw frame is saved below, no CV overlays applied
 
             elif mode in (6, 7):
-                pass  # YOLO / Autonomy — Orin handles all perception locally
+                # Orin-only modes — show informational overlay on Pi
+                if cv2 is not None:
+                    h_f, w_f = frame.shape[:2]
+                    msg = "Requires Jetson Orin"
+                    sub = "YOLO" if mode == 6 else "Full Autonomy"
+                    (tw, _), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)
+                    cv2.putText(frame, sub, (w_f // 2 - 60, h_f // 2 - 30),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (100, 100, 255), 2, cv2.LINE_AA)
+                    cv2.putText(frame, msg, (w_f // 2 - tw // 2, h_f // 2 + 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (100, 100, 255), 2, cv2.LINE_AA)
+                    cv2.putText(frame, "Connect Orin to enable", (w_f // 2 - 130, h_f // 2 + 45),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (80, 80, 200), 1, cv2.LINE_AA)
+
+            elif mode == 8:
+                # Obstacle Detection — full proximity visualization from ultrasonic
+                try:
+                    with _distance_lock:
+                        _dist_obs = _latest_distance
+                    try:
+                        from .frame_overlays import draw_obstacle_visualization
+                    except ImportError:
+                        from frame_overlays import draw_obstacle_visualization
+                    frame = draw_obstacle_visualization(frame, _dist_obs)
+                except Exception as e:
+                    logging.warning(f"[PIPELINE] Obstacle visualization error: {e}")
 
             # ── Hybrid system publish ────────────────────────────────────────
             if hybrid_system_manager and motion_detected:
@@ -970,6 +1016,16 @@ def generate_frames():
             # Add to video recorder if recording
             if ENABLE_RECORDING and video_recorder is not None and video_recorder.is_recording:
                 video_recorder.add_frame(frame)
+
+            # Mode 5: stamp REC indicator AFTER recording so the indicator is
+            # only visible in the live MJPEG stream, not in the saved file.
+            if mode == 5 and cv2 is not None:
+                try:
+                    cv2.circle(frame, (30, 30), 10, (0, 0, 255), -1)
+                    cv2.putText(frame, "REC", (46, 36),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2, cv2.LINE_AA)
+                except Exception:
+                    pass
 
             # Publish to ROS2 if enabled
             if ENABLE_ROS2 and ros2_publisher is not None:
@@ -1197,17 +1253,37 @@ def set_vision_mode():
     """
     Set the active vision mode for this process.
     ONLY called by FastAPI system_mode_routes (IPC bridge — not the UI directly).
-    JSON body: {"mode": 0-7}
-    Mode map: 0=Raw, 1=Motion, 2=Tracking, 3=Face, 4=ArUco, 5=PiRec, 6=YOLO, 7=Nav
+    JSON body: {"mode": 0-8}
+    Mode map: 0=Raw, 1=Motion, 2=Tracking, 3=Face, 4=ArUco, 5=PiRec, 6=YOLO, 7=Nav, 8=Obstacle
     """
-    global _vision_mode
+    global _vision_mode, _tracking_init_pending
     data = request.get_json(force=True, silent=True) or {}
     mode = data.get("mode")
-    if mode is None or not isinstance(mode, int) or not (0 <= mode <= 7):
-        return jsonify({"ok": False, "error": "mode must be int 0-7"}), 400
+    if mode is None or not isinstance(mode, int) or not (0 <= mode <= 8):
+        return jsonify({"ok": False, "error": "mode must be int 0-8"}), 400
     prev = _vision_mode
     _vision_mode = mode
     logging.info(f"[VISION_MODE] Changed to {mode} (was {prev})")
+
+    # Mode 2: arm tracker auto-init so generate_frames can initialize it on next frame
+    if mode == 2 and prev != 2:
+        _tracking_init_pending = True
+
+    # Mode 5: start recording on entry, stop on exit
+    if ENABLE_RECORDING and video_recorder is not None:
+        if mode == 5 and prev != 5:
+            try:
+                video_recorder.start_recording()
+                logging.info("[VISION_MODE] Recording started (mode 5)")
+            except Exception as exc:
+                logging.warning(f"[VISION_MODE] Failed to start recording: {exc}")
+        elif mode != 5 and prev == 5:
+            try:
+                video_recorder.stop_recording()
+                logging.info("[VISION_MODE] Recording stopped (left mode 5)")
+            except Exception as exc:
+                logging.warning(f"[VISION_MODE] Failed to stop recording: {exc}")
+
     return jsonify({"ok": True, "mode": _vision_mode})
 
 

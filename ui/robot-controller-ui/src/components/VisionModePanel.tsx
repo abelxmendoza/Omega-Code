@@ -5,7 +5,7 @@ import { useSystemMode } from '@/hooks/useSystemMode';
 import {
   Video, Activity, Crosshair, User, QrCode,
   Circle, Zap, Map, Shield, Compass, Camera, Eye,
-  ChevronDown, ChevronUp, ScanEye,
+  ChevronDown, ChevronUp, ScanEye, AlertTriangle,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -127,6 +127,18 @@ const MODES: ModeSpec[] = [
     accent: 'text-fuchsia-400',
     activeRing: 'ring-fuchsia-500 border-fuchsia-500',
     activeBg: 'bg-fuchsia-900/40',
+  },
+  {
+    id: 8,
+    name: 'Obstacle Detect',
+    short: 'Obstacle',
+    icon: AlertTriangle,
+    cpu: 0,
+    piSafe: true,
+    description: 'Ultrasonic proximity box — color-coded distance warning with danger flash',
+    accent: 'text-orange-400',
+    activeRing: 'ring-orange-500 border-orange-500',
+    activeBg: 'bg-orange-900/40',
   },
 ];
 
