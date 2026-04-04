@@ -34,10 +34,16 @@ class PiMotorDriver(BaseMotorDriver):
     Real PCA9685 motor control on Raspberry Pi — mirrors Freenove Ordinary_Car.
     """
 
+    # Estimated max RPM and wattage at full duty (empirical, 6V motors)
+    _MAX_RPM = 250.0
+    _MAX_WATTS = 5.0
+
     def __init__(self, trim_left: int = 0, trim_right: int = 0):
         super().__init__(trim_left, trim_right)
         self.pca9685 = PCA9685()
         self.pca9685.set_pwm_freq(50)
+        # Signed duty per wheel (positive = forward): FL, RL, FR, RR
+        self._duty = {"frontLeft": 0, "rearLeft": 0, "frontRight": 0, "rearRight": 0}
 
     # ------------------------------------------------------------------ #
     # Per-wheel methods (Freenove Ordinary_Car style)                     #
@@ -47,6 +53,7 @@ class PiMotorDriver(BaseMotorDriver):
         # Freenove spec: forward=ch1, backward=ch0.
         # Previous code had these inverted (overcorrected swap), causing FL to
         # run backward when commanded forward.
+        self._duty["frontLeft"] = duty
         if duty > 0:
             self.pca9685.set_motor_pwm(0, 0)
             self.pca9685.set_motor_pwm(1, duty)
@@ -58,6 +65,7 @@ class PiMotorDriver(BaseMotorDriver):
             self.pca9685.set_motor_pwm(1, 4095)
 
     def left_lower_wheel(self, duty: int) -> None:
+        self._duty["rearLeft"] = duty
         if duty > 0:
             self.pca9685.set_motor_pwm(3, 0)
             self.pca9685.set_motor_pwm(2, duty)
@@ -71,6 +79,7 @@ class PiMotorDriver(BaseMotorDriver):
     def right_upper_wheel(self, duty: int) -> None:
         # ch6/ch7 are physically swapped on this wheel — mirror of the ch0/ch1
         # fix applied to left_upper_wheel.  Forward = ch6, backward = ch7.
+        self._duty["frontRight"] = duty
         if duty > 0:
             self.pca9685.set_motor_pwm(7, 0)
             self.pca9685.set_motor_pwm(6, duty)
@@ -82,6 +91,7 @@ class PiMotorDriver(BaseMotorDriver):
             self.pca9685.set_motor_pwm(7, 4095)
 
     def right_lower_wheel(self, duty: int) -> None:
+        self._duty["rearRight"] = duty
         if duty > 0:
             self.pca9685.set_motor_pwm(4, 0)
             self.pca9685.set_motor_pwm(5, duty)
@@ -129,6 +139,25 @@ class PiMotorDriver(BaseMotorDriver):
         left  = max(-_MAX_DUTY, min(_MAX_DUTY, -left_pwm  + self.trim_left))
         right = max(-_MAX_DUTY, min(_MAX_DUTY, -right_pwm + self.trim_right))
         self.set_motor_model(left, left, right, right)
+
+    def get_telemetry(self) -> dict:
+        """
+        Return estimated per-wheel telemetry based on last commanded duty.
+        Values are approximations — no real current/RPM sensors on this hardware.
+        """
+        def _ch(duty: int) -> dict:
+            frac = abs(duty) / _MAX_DUTY
+            return {
+                "speed": round(frac * self._MAX_RPM, 1),
+                "power": round(frac * self._MAX_WATTS, 2),
+                "pwm":   abs(duty),
+            }
+        return {
+            "frontLeft":  _ch(self._duty["frontLeft"]),
+            "frontRight": _ch(self._duty["frontRight"]),
+            "rearLeft":   _ch(self._duty["rearLeft"]),
+            "rearRight":  _ch(self._duty["rearRight"]),
+        }
 
     def stop(self) -> None:
         """Stop all four wheels immediately (both channels → 4095)."""
