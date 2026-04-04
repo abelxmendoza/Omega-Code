@@ -30,6 +30,22 @@ interface ServoTelemetry {
   source: ServoTelemetrySource | null;
 }
 
+// Per-motor telemetry (from backend status.motors)
+export interface MotorChannelData {
+  speed: number;  // RPM
+  power: number;  // Watts
+  pwm: number;
+  current?: number;    // Amperes (simulated)
+  temperature?: number; // °C (simulated)
+}
+
+export interface MotorTelemetryData {
+  frontLeft: MotorChannelData;
+  frontRight: MotorChannelData;
+  rearLeft: MotorChannelData;
+  rearRight: MotorChannelData;
+}
+
 // Movement V2 data structure
 export interface MovementV2Data {
   enabled: boolean;
@@ -96,6 +112,8 @@ interface CommandContextType {
   
   // Movement V2 data
   movementV2: MovementV2Data | null;
+  // Motor telemetry (RPM / power / PWM per motor, from status.motors)
+  motorTelemetry: MotorTelemetryData | null;
 }
 
 // Create the CommandContext with an undefined default value
@@ -164,6 +182,9 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
   
   // Movement V2 data
   const [movementV2, setMovementV2] = useState<MovementV2Data | null>(null);
+
+  // Motor telemetry
+  const [motorTelemetry, setMotorTelemetry] = useState<MotorTelemetryData | null>(null);
 
   const ws = useRef<WebSocket | null>(null);
 
@@ -414,6 +435,17 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
                 pid: data.pid
               });
             }
+            // Extract motor telemetry from status.motors
+            if (data.motors && typeof data.motors === 'object') {
+              const m = data.motors;
+              const zero = { speed: 0, power: 0, pwm: 0 };
+              setMotorTelemetry({
+                frontLeft:  { ...zero, ...m.frontLeft  },
+                frontRight: { ...zero, ...m.frontRight },
+                rearLeft:   { ...zero, ...m.rearLeft   },
+                rearRight:  { ...zero, ...m.rearRight  },
+              });
+            }
             return;
           }
 
@@ -540,6 +572,7 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         speed,
         speedPct,
         movementV2,
+        motorTelemetry,
       }}
     >
       {children}

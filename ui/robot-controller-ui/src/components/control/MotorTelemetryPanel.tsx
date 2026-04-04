@@ -1,52 +1,22 @@
 /*
 # File: /src/components/control/MotorTelemetryPanel.tsx
 # Summary:
-# Standalone motor telemetry display component showing all 4 motors
-# - Front Left, Front Right, Rear Left, Rear Right
-# - Displays speed (RPM), power (W), and PWM for each motor
-# - Real-time WebSocket connection for live data
-# - Color-coded motor cards for easy identification
+# Motor telemetry display — Front Left, Front Right, Rear Left, Rear Right.
+# Reads live data from CommandContext (which polls via the shared movement WS).
+# Displays speed (RPM), power (W), and PWM for each motor.
 */
 
-import React, { useState, memo, useMemo, useEffect } from 'react';
-import { useRobustWebSocket } from '@/utils/RobustWebSocket';
-import { handleWebSocketError, handleComponentError } from '@/utils/errorHandling';
-import { unifiedNetworkManager, addNetworkChangeListener } from '@/utils/unifiedNetworkManager';
+import React, { useState, memo, useMemo } from 'react';
 import { useCommand } from '@/context/CommandContext';
-import { COMMAND } from '@/control_definitions';
 import MovementV2Modal from './MovementV2Modal';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
-interface MotorData {
-  frontLeft: {
-    speed: number;
-    power: number;
-    pwm: number;
-  };
-  frontRight: {
-    speed: number;
-    power: number;
-    pwm: number;
-  };
-  rearLeft: {
-    speed: number;
-    power: number;
-    pwm: number;
-  };
-  rearRight: {
-    speed: number;
-    power: number;
-    pwm: number;
-  };
-}
-
-// Optimized StatusDot component
 const StatusDot = memo(({ status, title }: { status: ServerStatus; title: string }) => {
   const color =
-    status === 'connected' ? 'bg-emerald-500'
+    status === 'connected'    ? 'bg-emerald-500'
     : status === 'connecting' ? 'bg-slate-500'
-    : status === 'error' ? 'bg-red-600'
+    : status === 'error'      ? 'bg-red-600'
     : 'bg-black/20 backdrop-blur-sm border border-black/30';
   return (
     <span
@@ -57,300 +27,133 @@ const StatusDot = memo(({ status, title }: { status: ServerStatus; title: string
     />
   );
 });
+StatusDot.displayName = 'StatusDot';
 
-const MotorTelemetryPanel: React.FC = memo(() => {
-  // Get Movement V2 data and sendCommand from context
-  const { movementV2, sendCommand } = useCommand();
-  
-  // Modal state
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
-  
-  // Motor telemetry data
-  const [motorData, setMotorData] = useState<MotorData>({
-    frontLeft: { speed: 0, power: 0, pwm: 0 },
-    frontRight: { speed: 0, power: 0, pwm: 0 },
-    rearLeft: { speed: 0, power: 0, pwm: 0 },
-    rearRight: { speed: 0, power: 0, pwm: 0 }
-  });
+interface MotorCardProps {
+  label: string;
+  accent: string;
+  speed: number;
+  power: number;
+  pwm: number;
+}
 
-  // Get current network profile for WebSocket URL
-  const [currentProfile, setCurrentProfile] = useState<any>(null);
-
-  useEffect(() => {
-    const unsubscribe = addNetworkChangeListener((profile) => {
-      setCurrentProfile(profile);
-    });
-
-    // Set initial profile
-    const initialProfile = unifiedNetworkManager.getCurrentProfile();
-    if (initialProfile) {
-      setCurrentProfile(initialProfile);
-    }
-
-    return unsubscribe;
-  }, []);
-
-  // Memoized motor cards for better performance
-  const motorCards = useMemo(() => [
-    // Front Left Motor
-    <div key="frontLeft" className="bg-gray-700 p-1.5 rounded">
-      <div className="text-xs font-medium text-blue-300 mb-1">Front Left</div>
-      <div className="space-y-1 text-xs">
-        <div className="flex justify-between">
-          <span className="text-gray-400">Speed:</span>
-          <span className="text-white font-mono">{motorData.frontLeft.speed.toFixed(1)} RPM</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-400">Power:</span>
-          <span className="text-white font-mono">{motorData.frontLeft.power.toFixed(1)}W</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-400">PWM:</span>
-          <span className="text-white font-mono">{motorData.frontLeft.pwm}</span>
-        </div>
+const MotorCard = memo(({ label, accent, speed, power, pwm }: MotorCardProps) => (
+  <div className="bg-gray-700 p-1.5 rounded">
+    <div className={`text-xs font-medium ${accent} mb-1`}>{label}</div>
+    <div className="space-y-1 text-xs">
+      <div className="flex justify-between">
+        <span className="text-gray-400">Speed:</span>
+        <span className="text-white font-mono">{speed.toFixed(1)} RPM</span>
       </div>
-    </div>,
-
-    // Front Right Motor
-    <div key="frontRight" className="bg-gray-700 p-1.5 rounded">
-      <div className="text-xs font-medium text-green-300 mb-1">Front Right</div>
-      <div className="space-y-1 text-xs">
-        <div className="flex justify-between">
-          <span className="text-gray-400">Speed:</span>
-          <span className="text-white font-mono">{motorData.frontRight.speed.toFixed(1)} RPM</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-400">Power:</span>
-          <span className="text-white font-mono">{motorData.frontRight.power.toFixed(1)}W</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-400">PWM:</span>
-          <span className="text-white font-mono">{motorData.frontRight.pwm}</span>
-        </div>
+      <div className="flex justify-between">
+        <span className="text-gray-400">Power:</span>
+        <span className="text-white font-mono">{power.toFixed(1)}W</span>
       </div>
-    </div>,
-
-    // Rear Left Motor
-    <div key="rearLeft" className="bg-gray-700 p-1.5 rounded">
-      <div className="text-xs font-medium text-purple-300 mb-1">Rear Left</div>
-      <div className="space-y-1 text-xs">
-        <div className="flex justify-between">
-          <span className="text-gray-400">Speed:</span>
-          <span className="text-white font-mono">{motorData.rearLeft.speed.toFixed(1)} RPM</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-400">Power:</span>
-          <span className="text-white font-mono">{motorData.rearLeft.power.toFixed(1)}W</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-400">PWM:</span>
-          <span className="text-white font-mono">{motorData.rearLeft.pwm}</span>
-        </div>
-      </div>
-    </div>,
-
-    // Rear Right Motor
-    <div key="rearRight" className="bg-gray-700 p-1.5 rounded">
-      <div className="text-xs font-medium text-orange-300 mb-1">Rear Right</div>
-      <div className="space-y-1 text-xs">
-        <div className="flex justify-between">
-          <span className="text-gray-400">Speed:</span>
-          <span className="text-white font-mono">{motorData.rearRight.speed.toFixed(1)} RPM</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-400">Power:</span>
-          <span className="text-white font-mono">{motorData.rearRight.power.toFixed(1)}W</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-400">PWM:</span>
-          <span className="text-white font-mono">{motorData.rearRight.pwm}</span>
-        </div>
+      <div className="flex justify-between">
+        <span className="text-gray-400">PWM:</span>
+        <span className="text-white font-mono">{pwm}</span>
       </div>
     </div>
-  ], [motorData]);
+  </div>
+));
+MotorCard.displayName = 'MotorCard';
 
-  // WebSocket connection for motor telemetry
-  const motorTelemetryWs = useRobustWebSocket({
-    url: currentProfile?.wsEndpoints?.movement || 'ws://omegaone:8000/ws/movement',
-    onMessage: (data) => {
-      try {
-        // Parse motor telemetry data for 4 motors
-        if (data?.motors) {
-          setMotorData({
-            frontLeft: {
-              speed: data.motors.frontLeft?.speed || data.motors.fl?.speed || 0,
-              power: data.motors.frontLeft?.power || data.motors.fl?.power || 0,
-              pwm: data.motors.frontLeft?.pwm || data.motors.fl?.pwm || 0
-            },
-            frontRight: {
-              speed: data.motors.frontRight?.speed || data.motors.fr?.speed || 0,
-              power: data.motors.frontRight?.power || data.motors.fr?.power || 0,
-              pwm: data.motors.frontRight?.pwm || data.motors.fr?.pwm || 0
-            },
-            rearLeft: {
-              speed: data.motors.rearLeft?.speed || data.motors.rl?.speed || 0,
-              power: data.motors.rearLeft?.power || data.motors.rl?.power || 0,
-              pwm: data.motors.rearLeft?.pwm || data.motors.rl?.pwm || 0
-            },
-            rearRight: {
-              speed: data.motors.rearRight?.speed || data.motors.rr?.speed || 0,
-              power: data.motors.rearRight?.power || data.motors.rr?.power || 0,
-              pwm: data.motors.rearRight?.pwm || data.motors.rr?.pwm || 0
-            }
-          });
-        } else if (data?.frontLeftMotor || data?.frontRightMotor || data?.rearLeftMotor || data?.rearRightMotor) {
-          // Alternative data format
-          setMotorData({
-            frontLeft: {
-              speed: data.frontLeftMotor?.speed || 0,
-              power: data.frontLeftMotor?.power || 0,
-              pwm: data.frontLeftMotor?.pwm || 0
-            },
-            frontRight: {
-              speed: data.frontRightMotor?.speed || 0,
-              power: data.frontRightMotor?.power || 0,
-              pwm: data.frontRightMotor?.pwm || 0
-            },
-            rearLeft: {
-              speed: data.rearLeftMotor?.speed || 0,
-              power: data.rearLeftMotor?.power || 0,
-              pwm: data.rearLeftMotor?.pwm || 0
-            },
-            rearRight: {
-              speed: data.rearRightMotor?.speed || 0,
-              power: data.rearRightMotor?.power || 0,
-              pwm: data.rearRightMotor?.pwm || 0
-            }
-          });
-        }
-      } catch (error) {
-        handleComponentError(error as Error, 'MotorTelemetryPanel', 'process-message');
-      }
-    },
-    onError: (error) => {
-      handleWebSocketError(error, { component: 'MotorTelemetryPanel' });
-    }
-  });
+const ZERO = { speed: 0, power: 0, pwm: 0 };
+
+const MotorTelemetryPanel: React.FC = memo(() => {
+  const { motorTelemetry, movementV2, sendCommand, status } = useCommand();
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const fl = motorTelemetry?.frontLeft  ?? ZERO;
+  const fr = motorTelemetry?.frontRight ?? ZERO;
+  const rl = motorTelemetry?.rearLeft   ?? ZERO;
+  const rr = motorTelemetry?.rearRight  ?? ZERO;
+
+  const wsStatus: ServerStatus = status === 'connected'
+    ? 'connected'
+    : status === 'connecting'
+    ? 'connecting'
+    : 'disconnected';
 
   return (
     <div className="bg-gray-800 text-white p-3 rounded-md shadow-md w-full max-w-xs flex flex-col">
-      {/* Header with status dot */}
+      {/* Header */}
       <div className="w-full flex items-center justify-between mb-3">
         <h2 className="text-base font-bold">Motor Telemetry</h2>
         <div className="flex items-center gap-2">
-          {/* Movement V2 Button - Always show */}
           <button
             onClick={() => setIsModalOpen(true)}
             className="text-xs px-2 py-0.5 rounded bg-purple-600/30 text-purple-300 hover:bg-purple-600/50 transition-colors"
             title="Open Movement V2 Status"
-            aria-label="Open Movement V2 Status"
           >
             Status
           </button>
-          <StatusDot 
-            status={motorTelemetryWs.connectionStatus} 
-            title={`Motor telemetry: ${motorTelemetryWs.connectionStatus}`} 
-          />
+          <StatusDot status={wsStatus} title={`Motor telemetry: ${wsStatus}`} />
         </div>
       </div>
 
-      {/* Motor Status Grid */}
+      {/* Motor cards */}
       <div className="w-full mb-3">
         <div className="grid grid-cols-2 gap-1.5">
-          {motorCards}
+          <MotorCard label="Front Left"  accent="text-blue-300"   {...fl} />
+          <MotorCard label="Front Right" accent="text-green-300"  {...fr} />
+          <MotorCard label="Rear Left"   accent="text-purple-300" {...rl} />
+          <MotorCard label="Rear Right"  accent="text-orange-300" {...rr} />
         </div>
-        
-        {/* Profile Switcher - Always show */}
+
+        {/* Profile switcher */}
         <div className="mt-3 pt-3 border-t border-gray-700">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-gray-400">Profile:</span>
             <span className={`text-xs font-medium capitalize ${
-              motorTelemetryWs.connectionStatus === 'connected'
-                ? 'text-purple-300'
-                : 'text-gray-500'
+              status === 'connected' ? 'text-purple-300' : 'text-gray-500'
             }`}>
-              {motorTelemetryWs.connectionStatus === 'connected'
-                ? (movementV2?.profile?.name || 'Unknown')
-                : 'Server Offline'}
+              {status === 'connected' ? (movementV2?.profile?.name || 'Unknown') : 'Server Offline'}
             </span>
           </div>
           <div className="flex gap-1.5">
-            {['smooth', 'aggressive', 'precision'].map((profile) => (
+            {(['smooth', 'aggressive', 'precision'] as const).map((profile) => (
               <button
                 key={profile}
                 onClick={() => {
-                  if (motorTelemetryWs.connectionStatus === 'connected') {
-                    sendCommand(COMMAND.SET_PROFILE, { profile });
-                    setTimeout(() => sendCommand(COMMAND.STATUS), 300);
+                  if (status === 'connected') {
+                    sendCommand('set-profile', { profile });
+                    setTimeout(() => sendCommand('status'), 300);
                   }
                 }}
-                disabled={motorTelemetryWs.connectionStatus !== 'connected'}
+                disabled={status !== 'connected'}
                 className={`flex-1 px-2 py-1 text-xs rounded transition-all ${
-                  motorTelemetryWs.connectionStatus === 'connected'
+                  status === 'connected'
                     ? movementV2?.profile?.name === profile
                       ? 'bg-purple-600/30 text-purple-300 border border-purple-600/50'
                       : 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-gray-300 border border-gray-600'
                     : 'bg-gray-800 text-gray-600 border border-gray-700 cursor-not-allowed opacity-50'
                 }`}
-                title={
-                  motorTelemetryWs.connectionStatus === 'connected'
-                    ? `Switch to ${profile} profile`
-                    : 'Server not connected'
-                }
+                title={status === 'connected' ? `Switch to ${profile} profile` : 'Server not connected'}
               >
                 {profile.charAt(0).toUpperCase() + profile.slice(1)}
               </button>
             ))}
           </div>
         </div>
-        
-        {/* Connection Status */}
+
+        {/* Connection status */}
         <div className="mt-2 flex items-center justify-between text-xs">
           <span className="text-gray-400">Status:</span>
-          <span className="text-gray-300">{motorTelemetryWs.connectionStatus}</span>
+          <span className="text-gray-300">{status}</span>
         </div>
       </div>
-      
-      {/* Movement V2 Modal */}
+
+      {/* Movement V2 modal */}
       <MovementV2Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        movementV2={
-          movementV2 || 
-          (motorTelemetryWs.connectionStatus !== 'connected' ? {
-            enabled: true,
-            profile: {
-              name: 'smooth',
-              config: {
-                max_speed: 0.8,
-                accel_rate: 150.0,
-                decel_rate: 200.0
-              }
-            },
-            thermal: {
-              enabled: true,
-              state: 'ok' as const,
-              max_temp_seen: 45.2,
-              limits: {
-                max_temp: 75.0,
-                warning_temp: 60.0
-              }
-            },
-            ramping: {
-              current_pwm: 1200,
-              target_pwm: 2000,
-              is_ramping: true
-            },
-            watchdog: {
-              enabled: true,
-              time_until_trigger: 1.8,
-              state: 'active'
-            }
-          } : null)
-        }
+        movementV2={movementV2 || null}
       />
     </div>
   );
 });
+MotorTelemetryPanel.displayName = 'MotorTelemetryPanel';
 
 export default MotorTelemetryPanel;
