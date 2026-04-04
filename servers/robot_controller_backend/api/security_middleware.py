@@ -68,8 +68,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.burst = burst
     
     async def dispatch(self, request: Request, call_next):
-        # Skip rate limiting for health checks
-        if request.url.path in ["/health", "/api/health"]:
+        # Skip rate limiting for health checks and internal sensor polling
+        if request.url.path in ["/health", "/api/health", "/api/sensors/distance"]:
             return await call_next(request)
         
         # Get client identifier (IP address)
