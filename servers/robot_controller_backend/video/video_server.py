@@ -178,15 +178,13 @@ _SENSOR_API_URL  = os.getenv("SENSOR_API_URL",  "http://127.0.0.1:8000/api/senso
 
 
 def _sensor_poll_loop() -> None:
-    """Poll FastAPI /api/sensors/distance at ~20 Hz and cache the result."""
+    """Poll FastAPI /api/sensors/distance at ~20 Hz and cache the result.
+    Uses stdlib urllib so no extra dependency is needed."""
     global _latest_distance
-    if _requests is None:
-        logging.warning("obstacle avoidance: 'requests' package unavailable — distance polling disabled")
-        return
     while True:
         try:
-            res = _requests.get(_SENSOR_API_URL, timeout=0.5)
-            data = res.json()
+            with urllib.request.urlopen(_SENSOR_API_URL, timeout=0.5) as resp:
+                data = json.loads(resp.read())
             if data.get("ok") and not data.get("stale"):
                 with _distance_lock:
                     _latest_distance = data["distance_cm"]
