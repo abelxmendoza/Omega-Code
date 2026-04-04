@@ -156,7 +156,6 @@ except ImportError:
         from servers.robot_controller_backend.movement.motor_controller import MotorController, motor_loop as _motor_loop
     except ImportError:
         from motor_controller import MotorController, motor_loop as _motor_loop
-            MotorTelemetryController = None
 
 # Import optimization utilities
 try:
