@@ -791,6 +791,7 @@ async def do_move(fn_name: str, speed: int):
                 if safety_state == SafetyState.KILL:
                     print("🔥 [THERMAL][KILL] Motor kill triggered - stopping motors")
                     log("[MOVE][THERMAL] Motor kill triggered - stopping motors")
+                    MOTOR_CTRL.stop()
                     motor.stop()
                     return
                 
@@ -1437,6 +1438,7 @@ async def watchdog_background_task():
             async with motor_lock:
                 try:
                     print("⏱️ [WATCHDOG] Watchdog triggered - stopping motors")
+                    MOTOR_CTRL.stop()   # reset ramp + target so motor_loop doesn't re-drive
                     motor.stop()
                     log("[MOVE][WATCHDOG] Watchdog triggered - motors stopped")
                 except Exception as e:

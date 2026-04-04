@@ -133,8 +133,8 @@ class MotorController:
             return
         self._last_ts = now
 
-        self._current_left  = self._ramp(self._current_left,  self._target_left)
-        self._current_right = self._ramp(self._current_right, self._target_right)
+        self._current_left  = self._ramp_deadzone(self._current_left,  self._target_left)
+        self._current_right = self._ramp_deadzone(self._current_right, self._target_right)
 
         self._write(int(self._current_left), int(self._current_right))
 
@@ -161,6 +161,21 @@ class MotorController:
         if current > target:
             return max(current - self.RAMP_STEP, target)
         return target
+
+    def _ramp_deadzone(self, current: float, target: float) -> float:
+        """
+        Ramp with dead-zone awareness.
+        When transitioning from stopped to moving, jump directly to MIN_PWM
+        so the first hardware write is already above the stall threshold.
+        """
+        if target == 0.0:
+            # Decelerating to stop — ramp down normally
+            return self._ramp(current, target)
+        sign = 1.0 if target > 0 else -1.0
+        # If current is in the dead zone (including 0), snap to MIN_PWM floor
+        if abs(current) < self.MIN_PWM:
+            current = sign * float(self.MIN_PWM)
+        return self._ramp(current, target)
 
     def _write(self, left: int, right: int) -> None:
         """Write signed PWM to hardware. Never output dead-zone values."""
