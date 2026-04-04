@@ -942,7 +942,8 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     current_speed = speed
                     _last_direction = cmd
                     await do_move(cmd, current_speed)
-                    await send_json(ws, ok(cmd, speed=current_speed))
+                    await send_json(ws, ok(cmd, speed=current_speed,
+                                          motors=get_cached_motor_telemetry()))
 
                     if duration_ms > 0:
                         _last_move_op_id += 1
@@ -961,7 +962,8 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                     log(f"[CMD] Executing stop")
                     _last_direction = None
                     await do_stop()
-                    await send_json(ws, ok("stop", speed=current_speed))
+                    await send_json(ws, ok("stop", speed=current_speed,
+                                          motors=get_cached_motor_telemetry()))
 
                 # -------- STRAIGHT ASSIST --------
                 elif cmd in {"straight-assist", "straight-assist-config"}:

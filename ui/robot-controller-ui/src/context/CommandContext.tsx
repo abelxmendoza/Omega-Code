@@ -456,7 +456,7 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
               });
             }
             // Extract motor telemetry from status.motors
-            if (data.motors && typeof data.motors === 'object') {
+            if (data.motors && typeof data.motors === 'object' && data.motors.frontLeft) {
               const m = data.motors;
               const zero = { speed: 0, power: 0, pwm: 0 };
               setMotorTelemetry({
@@ -481,9 +481,19 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
             }
             if (data?.status === 'ok') {
               applyServoTelemetry(data, 'ack');
-              // Update speed from ack responses (set-speed, increase-speed, decrease-speed, stop)
               if (typeof data?.speed === 'number') {
                 setSpeed(data.speed);
+              }
+              // Live motor telemetry from movement ACKs (forward/backward/left/right/stop)
+              if (data.motors && typeof data.motors === 'object' && data.motors.frontLeft) {
+                const m = data.motors;
+                const zero = { speed: 0, power: 0, pwm: 0 };
+                setMotorTelemetry({
+                  frontLeft:  { ...zero, ...m.frontLeft  },
+                  frontRight: { ...zero, ...m.frontRight },
+                  rearLeft:   { ...zero, ...m.rearLeft   },
+                  rearRight:  { ...zero, ...m.rearRight  },
+                });
               }
             }
             return;
