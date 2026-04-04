@@ -55,6 +55,7 @@ class FrameOverlay:
         self._last_fps_time = time.time()
         self._frame_count = 0
         self._current_fps = 0.0
+        self._distance_cm: Optional[float] = None
         
         # Latency measurement timestamps
         self._capture_timestamp_ns: Optional[int] = None
@@ -218,6 +219,10 @@ class FrameOverlay:
     def get_fps(self) -> float:
         """Get current FPS."""
         return self._current_fps
+
+    def update_distance(self, distance_cm: Optional[float]) -> None:
+        """Store latest distance reading for the obstacle overlay."""
+        self._distance_cm = distance_cm
     
     def set_encode_timestamps(self, start_ns: int, end_ns: int):
         """
@@ -230,6 +235,10 @@ class FrameOverlay:
         self._encode_start_ns = start_ns
         self._encode_end_ns = end_ns
     
+    def add_obstacle_overlay(self, frame: np.ndarray) -> np.ndarray:
+        """Render distance reading onto frame using stored _distance_cm."""
+        return add_obstacle_overlay(frame, self._distance_cm)
+
     def get_latency_metrics(self) -> Dict[str, Optional[int]]:
         """
         Get latency metrics.
@@ -243,3 +252,30 @@ class FrameOverlay:
             "encode_end_ns": self._encode_end_ns,
         }
 
+
+def add_obstacle_overlay(frame: np.ndarray, distance_cm: Optional[float]) -> np.ndarray:
+    """
+    Stamp the current ultrasonic distance onto the frame.
+
+    Colors:
+      green  → distance >= 60 cm (clear)
+      yellow → 30–59 cm (caution)
+      red    → < 30 cm (obstacle)
+    """
+    if cv2 is None or frame is None or distance_cm is None:
+        return frame
+
+    text = f"{distance_cm:.1f} cm"
+    if distance_cm < 30:
+        color = (0, 0, 255)    # red
+    elif distance_cm < 60:
+        color = (0, 255, 255)  # yellow
+    else:
+        color = (0, 255, 0)    # green
+
+    cv2.putText(
+        frame, text, (20, 40),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1.0, color, 2, cv2.LINE_AA,
+    )
+    return frame

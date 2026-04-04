@@ -7,7 +7,7 @@ Channel layout (matches official Freenove motor.py):
   ---------------  -----------  ------------
   Left  upper      ch1          ch0
   Left  lower      ch2          ch3
-  Right upper      ch7          ch6
+  Right upper      ch6          ch7   (physically swapped vs Freenove spec)
   Right lower      ch5          ch4
 
 STOP = set BOTH channels of a wheel to 4095 (not 0).
@@ -69,12 +69,14 @@ class PiMotorDriver(BaseMotorDriver):
             self.pca9685.set_motor_pwm(3, 4095)
 
     def right_upper_wheel(self, duty: int) -> None:
+        # ch6/ch7 are physically swapped on this wheel — mirror of the ch0/ch1
+        # fix applied to left_upper_wheel.  Forward = ch6, backward = ch7.
         if duty > 0:
-            self.pca9685.set_motor_pwm(6, 0)
-            self.pca9685.set_motor_pwm(7, duty)
-        elif duty < 0:
             self.pca9685.set_motor_pwm(7, 0)
-            self.pca9685.set_motor_pwm(6, abs(duty))
+            self.pca9685.set_motor_pwm(6, duty)
+        elif duty < 0:
+            self.pca9685.set_motor_pwm(6, 0)
+            self.pca9685.set_motor_pwm(7, abs(duty))
         else:
             self.pca9685.set_motor_pwm(6, 4095)
             self.pca9685.set_motor_pwm(7, 4095)

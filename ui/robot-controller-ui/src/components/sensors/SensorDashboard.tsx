@@ -137,6 +137,10 @@ const SensorDashboard: React.FC = () => {
   const [sensorEnabled, setSensorEnabled] = useState<boolean>(false);
   const [sensorPowerLoading, setSensorPowerLoading] = useState<boolean>(false);
 
+  // Obstacle avoidance toggle
+  const [avoidanceEnabled, setAvoidanceEnabled] = useState<boolean>(false);
+  const [avoidanceLoading, setAvoidanceLoading] = useState<boolean>(false);
+
   // WS refs
   const lineWs = useRef<WebSocket | null>(null);
   const stopLineHeartbeat = useRef<null | (() => void)>(null);
@@ -163,6 +167,25 @@ const SensorDashboard: React.FC = () => {
       .catch(() => { /* backend unreachable — leave at false */ });
     return () => { cancelled = true; };
   }, []);
+
+  const handleToggleAvoidance = async () => {
+    setAvoidanceLoading(true);
+    const want = !avoidanceEnabled;
+    setAvoidanceEnabled(want);
+    try {
+      const res = await fetch('http://localhost:5000/api/avoidance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: want }),
+      });
+      const d = await res.json();
+      setAvoidanceEnabled(!!d.enabled);
+    } catch {
+      setAvoidanceEnabled(!want);
+    } finally {
+      setAvoidanceLoading(false);
+    }
+  };
 
   const handleToggleSensorPower = async () => {
     setSensorPowerLoading(true);
@@ -498,7 +521,24 @@ const SensorDashboard: React.FC = () => {
             </div>
           )}
 
-          <div className="relative mt-3">
+          <div className="relative mt-3 flex flex-col gap-2">
+            <button
+              onClick={handleToggleAvoidance}
+              disabled={avoidanceLoading || !sensorEnabled}
+              className={[
+                'flex items-center justify-center gap-1 w-full h-8 rounded-md text-[11px] font-bold uppercase',
+                'tracking-wide border transition-all duration-200 select-none',
+                'disabled:cursor-not-allowed disabled:opacity-60',
+                avoidanceEnabled
+                  ? 'bg-amber-600 border-amber-400/80 text-white shadow-[0_0_10px_rgba(217,119,6,0.45)] hover:bg-amber-500 active:scale-95'
+                  : 'bg-gray-700/60 border-gray-500/50 text-gray-300 hover:bg-gray-600/70 active:scale-95',
+              ].join(' ')}
+              title={sensorEnabled ? (avoidanceEnabled ? 'Disable obstacle avoidance' : 'Enable obstacle avoidance') : 'Enable sensor first'}
+            >
+              {avoidanceLoading ? <Loader2 size={10} className="animate-spin" /> : null}
+              <span>{avoidanceEnabled ? 'Avoidance ON' : 'Avoidance OFF'}</span>
+            </button>
+
             <Button
               className="w-full gap-2 bg-blue-600 hover:bg-blue-700 text-white"
               variant="default"

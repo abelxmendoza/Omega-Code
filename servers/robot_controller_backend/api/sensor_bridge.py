@@ -120,6 +120,9 @@ class OmegaSensorBridge:
         # Spike rejection: last accepted raw reading (cm)
         self._last_valid_cm: float | None = None
 
+        # Latest smoothed ultrasonic reading — exposed for REST distance endpoint
+        self.latest_ultrasonic: float | None = None
+
         # Health tracking: monotonic timestamps of last valid reading (0 = never)
         self._last_valid_ultra_ts: float = 0.0
         self._last_valid_line_ts: float = 0.0
@@ -223,6 +226,7 @@ class OmegaSensorBridge:
         self._last_valid_ultra_ts = time.monotonic()
 
         smoothed_cm = self._smooth_ultrasonic(raw_cm)
+        self.latest_ultrasonic = round(smoothed_cm, 1)
         dist_m = round(smoothed_cm / 100.0, 3)
         data = {
             'type': 'ultrasonic',
@@ -347,6 +351,7 @@ class OmegaSensorBridge:
                         self._last_valid_ultra_ts = _bridge_latest_ultra_ts
 
                         smoothed_cm = self._smooth_ultrasonic(raw_cm)
+                        self.latest_ultrasonic = round(smoothed_cm, 1)
                         dist_m = round(smoothed_cm / 100.0, 3)
                         data = {
                             'type': 'ultrasonic',

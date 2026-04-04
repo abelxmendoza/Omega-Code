@@ -69,8 +69,19 @@ import time
 import json
 import logging
 import platform
+import threading
 import urllib.request
 from typing import Optional, List, Dict, Any
+
+try:
+    import requests as _requests
+except ImportError:
+    _requests = None  # type: ignore
+
+try:
+    import websocket as _websocket
+except ImportError:
+    _websocket = None  # type: ignore
 
 try:
     import psutil
@@ -146,6 +157,94 @@ except Exception:
 _vision_mode: int = 0
 # Frame counter for periodic debug logging (not every frame)
 _frame_log_counter: int = 0
+
+# ── Obstacle avoidance ───────────────────────────────────────────────────────
+# Latest ultrasonic distance polled from FastAPI (cm), shared with frame loop.
+_latest_distance: Optional[float] = None
+_distance_lock = threading.Lock()
+
+# Avoidance on/off flag — toggled by /api/avoidance endpoint.
+_avoidance_enabled: bool = False
+
+# Persistent websocket-client connection to the movement server.
+_move_ws = None
+_move_ws_lock = threading.Lock()
+
+_MOVEMENT_WS_URL = os.getenv("MOVEMENT_WS_URL", "ws://127.0.0.1:8081")
+_SENSOR_API_URL  = os.getenv("SENSOR_API_URL",  "http://127.0.0.1:8000/api/sensors/distance")
+
+
+def _sensor_poll_loop() -> None:
+    """Poll FastAPI /api/sensors/distance at ~20 Hz and cache the result."""
+    global _latest_distance
+    if _requests is None:
+        logging.warning("obstacle avoidance: 'requests' package unavailable — distance polling disabled")
+        return
+    while True:
+        try:
+            res = _requests.get(_SENSOR_API_URL, timeout=0.5)
+            data = res.json()
+            if data.get("ok") and not data.get("stale"):
+                with _distance_lock:
+                    _latest_distance = data["distance_cm"]
+        except Exception:
+            pass
+        time.sleep(0.05)  # 20 Hz
+
+
+threading.Thread(target=_sensor_poll_loop, daemon=True, name="sensor_poll").start()
+
+
+def _get_move_ws():
+    """Return a live websocket-client connection; reconnect on failure."""
+    global _move_ws
+    if _websocket is None:
+        return None
+    with _move_ws_lock:
+        if _move_ws is not None:
+            try:
+                _move_ws.ping()
+                return _move_ws
+            except Exception:
+                _move_ws = None
+        try:
+            _move_ws = _websocket.create_connection(_MOVEMENT_WS_URL, timeout=1)
+        except Exception as exc:
+            logging.debug("avoidance: movement WS connect failed: %s", exc)
+            _move_ws = None
+        return _move_ws
+
+
+def _send_move_command(command: str, speed: Optional[int] = None) -> None:
+    """Send a direction command to the movement WebSocket server."""
+    ws = _get_move_ws()
+    if ws is None:
+        return
+    payload: dict = {"command": command}
+    if speed is not None:
+        payload["speed"] = speed
+    try:
+        ws.send(json.dumps(payload))
+    except Exception:
+        with _move_ws_lock:
+            global _move_ws
+            _move_ws = None
+
+
+def _compute_avoidance_command(distance_cm: Optional[float]) -> Optional[str]:
+    """
+    Map distance to a movement command.
+    Returns None when avoidance is off or distance is unknown.
+    """
+    if not _avoidance_enabled or distance_cm is None:
+        return None
+    if distance_cm < 20:
+        return "left"     # obstacle close — turn away
+    if distance_cm < 40:
+        return "forward"  # obstacle near — slow forward
+    return "forward"      # clear — full forward
+
+# ── End obstacle avoidance ───────────────────────────────────────────────────
 
 # Camera power singleton — single source of truth for on/off state.
 try:
@@ -838,6 +937,31 @@ def generate_frames():
                 except Exception as e:
                     logging.warning(f"⚠️ Overlay error: {e}")
                     _metrics["errors_total"] += 1
+
+            # Obstacle distance overlay (all modes except Raw/Pi-Recording)
+            if mode not in (0, 5):
+                try:
+                    with _distance_lock:
+                        _dist = _latest_distance
+                    from .frame_overlays import add_obstacle_overlay
+                    frame = add_obstacle_overlay(frame, _dist)
+                except Exception:
+                    try:
+                        from frame_overlays import add_obstacle_overlay
+                        frame = add_obstacle_overlay(frame, _dist)
+                    except Exception:
+                        pass
+
+            # Obstacle avoidance motor commands
+            try:
+                with _distance_lock:
+                    _dist_cmd = _latest_distance
+                _cmd = _compute_avoidance_command(_dist_cmd)
+                if _cmd is not None:
+                    _spd = 600 if _dist_cmd is not None and _dist_cmd < 40 else 1000
+                    _send_move_command(_cmd, _spd)
+            except Exception:
+                pass
 
             # Add to frame buffer
             if ENABLE_FRAME_BUFFER and frame_buffer is not None:
@@ -1548,6 +1672,21 @@ def configure_overlays():
     except Exception as e:
         logging.error(f"⚠️ Overlay config error: {e}")
         return jsonify({"ok": False, "error": str(e)}), 400
+
+
+@app.route("/api/avoidance", methods=["GET", "POST"])
+def avoidance_endpoint():
+    """
+    GET  → {"ok": true, "enabled": bool}
+    POST → body {"enabled": bool} → {"ok": true, "enabled": bool}
+    """
+    global _avoidance_enabled
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        _avoidance_enabled = bool(data.get("enabled", _avoidance_enabled))
+        if not _avoidance_enabled:
+            _send_move_command("stop")
+    return jsonify({"ok": True, "enabled": _avoidance_enabled})
 
 
 # ---------------- Watchdog / init loop ----------------

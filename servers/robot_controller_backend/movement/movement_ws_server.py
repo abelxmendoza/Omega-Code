@@ -722,16 +722,16 @@ async def do_move(fn_name: str, speed: int):
         if MOVEMENT_WATCHDOG:
             MOVEMENT_WATCHDOG.kick()
         
-        fn = getattr(motor, fn_name, None)
-        actual_method = fn_name
-        if not callable(fn):
-            # Map left/right to pivot turns (A/D keys use pivot turns)
-            if fn_name == "left":
-                fn = getattr(motor, "pivot_left", None)
-                actual_method = "pivot_left"
-            elif fn_name == "right":
-                fn = getattr(motor, "pivot_right", None)
-                actual_method = "pivot_right"
+        # Always use pivot turns for left/right (A/D keys)
+        if fn_name == "left":
+            fn = getattr(motor, "pivot_left", None)
+            actual_method = "pivot_left"
+        elif fn_name == "right":
+            fn = getattr(motor, "pivot_right", None)
+            actual_method = "pivot_right"
+        else:
+            fn = getattr(motor, fn_name, None)
+            actual_method = fn_name
         if not callable(fn):
             elog(f"[MOVE] motor missing method: {fn_name}")
             raise RuntimeError(f"motor missing method: {fn_name}")
