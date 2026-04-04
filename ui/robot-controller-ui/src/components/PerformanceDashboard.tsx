@@ -4,9 +4,9 @@
 # File: /src/components/PerformanceDashboard.tsx
 # Summary:
 # Real-time performance monitoring dashboard.
-# Polls /api/performance-proxy/metrics (30s) and /api/performance-proxy/cache (non-blocking).
-# Circuit breaker: 3 failures → 60s backoff.
-# Skips polling when backend is offline (from useSystemHealth).
+# Polls /api/performance-proxy/metrics every 30s regardless of backend status.
+# Shows default placeholder values when backend is offline or data not yet loaded.
+# Circuit breaker: 3 failures → 60s backoff, then retries.
 */
 
 import React, { useState, useEffect, useRef, memo } from 'react';
@@ -15,7 +15,7 @@ import {
   Thermometer, Battery, Zap, AlertTriangle, CheckCircle2,
   Clock, Radio,
 } from 'lucide-react';
-import { useSystemHealth } from '@/context/SystemHealthContext';
+import { useCommand } from '@/context/CommandContext';
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -104,12 +104,76 @@ interface CacheStats {
 }
 
 /* ------------------------------------------------------------------ */
+/* Default / offline placeholder data                                  */
+/* ------------------------------------------------------------------ */
+
+const DEFAULT_DATA: PerformanceData = {
+  timestamp: 0,
+  source: '—',
+  deviceName: '—',
+  cpuUsage: 0,
+  memoryUsage: 0,
+  memoryPercent: 0,
+  diskUsage: 0,
+  networkIO: { bytesSent: 0, bytesRecv: 0, packetsSent: 0, packetsRecv: 0 },
+  websocketConnections: 0,
+  uptime: 0,
+  loadAverage: 0,
+  temperature: null,
+  responseTime: 0,
+  errorRate: 0,
+  throughput: 0,
+  piSpecific: {
+    gpioStatus: { status: '—', pins: '—' },
+    cameraStatus: { status: '—', enabled: false },
+    robotServices: { movement: false, camera: false, sensors: false, lighting: false },
+    piModel: '—',
+    firmwareVersion: '—',
+  },
+  robotTelemetry: {
+    power: {
+      voltage: null, percentage: null, charging: false,
+      powerSource: '—', undervoltage: false, powerConsumption: null,
+    },
+    sensors: {
+      camera:      { fps: null, resolution: null, status: '—' },
+      ultrasonic:  { distance: null, status: '—', pins: '—' },
+      lineTracking:{ sensors: [], status: '—', pins: '—' },
+      voltage:     { value: null, status: '—', adc: '—', i2c: '—' },
+      buzzer:      { status: '—', pin: '—' },
+      leds:        { status: '—', pins: '—' },
+    },
+    motors: {
+      leftMotor:  { speed: 0, position: 0, temperature: null, status: '—' },
+      rightMotor: { speed: 0, position: 0, temperature: null, status: '—' },
+      servoMotors: [],
+      actuators: [],
+    },
+    network: { wifiSignal: null, latency: null, throughput: null, connectionType: '—', ipAddress: null },
+    autonomous: {
+      mode: '—',
+      navigation: { status: '—', target: null, path: [] },
+      obstacleAvoidance: { enabled: false, detected: false },
+      lineFollowing: { enabled: false, onLine: false },
+      mission: { active: false, progress: 0 },
+    },
+    safety: {
+      emergencyStop: false,
+      safetyLimits: { enabled: false, violations: 0 },
+      collisionDetection: { enabled: false, detected: false },
+      batteryProtection: { enabled: false, lowBattery: false },
+      thermalProtection: { enabled: false, overheated: false },
+    },
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* Constants                                                           */
 /* ------------------------------------------------------------------ */
 
-const POLL_MS      = 30_000;
-const BACKOFF_MS   = 60_000;
-const FAIL_THRESH  = 3;
+const POLL_MS     = 30_000;
+const BACKOFF_MS  = 60_000;
+const FAIL_THRESH = 3;
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -122,13 +186,14 @@ function statusColor(value: number, warn: number, crit: number) {
 }
 
 function formatBytes(bytes: number) {
+  if (!bytes) return '0 B';
   const sizes = ['B', 'KB', 'MB', 'GB'];
-  if (bytes === 0) return '0 B';
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
 }
 
 function formatUptime(seconds: number) {
+  if (!seconds) return '—';
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
@@ -189,34 +254,33 @@ function ServiceDot({ on, label }: { on: boolean; label: string }) {
 /* ------------------------------------------------------------------ */
 
 const PerformanceDashboard: React.FC = memo(() => {
-  const health = useSystemHealth();
-  const [perfData, setPerfData] = useState<PerformanceData | null>(null);
-  const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
-  const [monitoring, setMonitoring] = useState(false);
+  const { status: wsStatus } = useCommand();
+  const backendOnline = wsStatus === 'connected';
 
-  const fetchRef = useRef<() => void>(() => {});
+  const [perfData, setPerfData] = useState<PerformanceData>(DEFAULT_DATA);
+  const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
+  const [live, setLive] = useState(false);
+  const [lastFetched, setLastFetched] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!health.connected) {
-      setMonitoring(false);
-      return;
-    }
-
     let mounted = true;
     let failCount = 0;
     let intervalId: ReturnType<typeof setInterval>;
 
     async function tick() {
-      // Metrics (critical path)
       try {
         const res = await fetch('/api/performance-proxy/metrics');
         if (!mounted) return;
         if (res.ok) {
+          const data = await res.json();
           failCount = 0;
-          setPerfData(await res.json());
-          setMonitoring(true);
-          if (failCount === 0 && intervalId) {
-            // recover to normal interval — reschedule handled below
+          setPerfData(data);
+          setLive(true);
+          setLastFetched(Date.now());
+          // Reset to normal interval on recovery
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = setInterval(tick, POLL_MS);
           }
         } else {
           failCount++;
@@ -226,21 +290,20 @@ const PerformanceDashboard: React.FC = memo(() => {
         failCount++;
       }
 
-      // Cache stats (non-critical — never affects monitoring state)
+      // Cache stats — never affects live state
       try {
         const res = await fetch('/api/performance-proxy/cache');
         if (mounted && res.ok) setCacheStats(await res.json());
       } catch { /* silent */ }
 
-      // Circuit breaker escalation
+      // Circuit breaker
       if (failCount >= FAIL_THRESH) {
-        setMonitoring(false);
+        setLive(false);
         clearInterval(intervalId);
         intervalId = setInterval(tick, BACKOFF_MS);
       }
     }
 
-    fetchRef.current = tick;
     tick();
     intervalId = setInterval(tick, POLL_MS);
 
@@ -248,33 +311,21 @@ const PerformanceDashboard: React.FC = memo(() => {
       mounted = false;
       clearInterval(intervalId);
     };
-  }, [health.connected]);
+  }, []); // runs forever — no health gate
 
-  /* Loading / offline state */
-  if (!perfData) {
-    return (
-      <div className="bg-gray-900 border border-white/10 rounded-lg overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 border-b border-white/10">
-          <Activity size={14} className="text-emerald-400" />
-          <span className="text-sm font-bold tracking-wide text-white uppercase">Performance</span>
-        </div>
-        <div className="p-6 text-center text-sm text-white/40">
-          {!health.connected
-            ? 'Backend offline — waiting for connection'
-            : 'Fetching metrics…'}
-        </div>
-      </div>
-    );
+  /* Alert conditions — only when live */
+  const alerts: { msg: string; level: 'critical' | 'warning' }[] = [];
+  if (live) {
+    if (perfData.cpuUsage > 90)                   alerts.push({ msg: 'High CPU usage',        level: 'critical' });
+    if (perfData.memoryPercent > 95)              alerts.push({ msg: 'High memory usage',     level: 'critical' });
+    if ((perfData.responseTime ?? 0) > 1000)      alerts.push({ msg: 'Slow response time',    level: 'critical' });
+    if ((perfData.errorRate ?? 0) > 5)            alerts.push({ msg: 'High error rate',       level: 'critical' });
+    if (perfData.temperature && perfData.temperature > 70) alerts.push({ msg: 'CPU temperature critical', level: 'critical' });
+    if (cacheStats && cacheStats.hitRate < 60)    alerts.push({ msg: 'Low cache hit rate',    level: 'warning'  });
   }
 
-  /* Alert conditions */
-  const alerts: { msg: string; level: 'critical' | 'warning' }[] = [];
-  if (perfData.cpuUsage > 90)            alerts.push({ msg: 'High CPU usage', level: 'critical' });
-  if (perfData.memoryPercent > 95)       alerts.push({ msg: 'High memory usage', level: 'critical' });
-  if ((perfData.responseTime ?? 0) > 1000) alerts.push({ msg: 'Slow response time', level: 'critical' });
-  if ((perfData.errorRate ?? 0) > 5)    alerts.push({ msg: 'High error rate', level: 'critical' });
-  if (perfData.temperature && perfData.temperature > 70) alerts.push({ msg: 'CPU temperature critical', level: 'critical' });
-  if (cacheStats && cacheStats.hitRate < 60) alerts.push({ msg: 'Low cache hit rate', level: 'warning' });
+  const headerStatus = live ? 'Live' : backendOnline ? 'Fetching…' : 'Offline';
+  const headerDot    = live ? 'bg-emerald-400' : backendOnline ? 'bg-amber-400 animate-pulse' : 'bg-rose-400';
 
   return (
     <div className="bg-gray-900 border border-white/10 rounded-lg overflow-hidden">
@@ -284,15 +335,15 @@ const PerformanceDashboard: React.FC = memo(() => {
         <div className="flex items-center gap-2">
           <Activity size={14} className="text-emerald-400" />
           <span className="text-sm font-bold tracking-wide text-white uppercase">Performance</span>
-          {perfData.piSpecific?.piModel && (
+          {live && perfData.piSpecific?.piModel && perfData.piSpecific.piModel !== '—' && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/40 font-medium">
               {perfData.piSpecific.piModel}
             </span>
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full ${monitoring ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-          <span className="text-[11px] text-white/40">{monitoring ? 'Live' : 'Backoff'}</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${headerDot}`} />
+          <span className="text-[11px] text-white/40">{headerStatus}</span>
         </div>
       </div>
 
@@ -305,183 +356,166 @@ const PerformanceDashboard: React.FC = memo(() => {
             <SectionHeader icon={<Cpu size={11} />} label="System" colorClass="text-sky-400" />
             <Row
               label="CPU"
-              value={`${perfData.cpuUsage.toFixed(1)}%`}
-              valueClass={statusColor(perfData.cpuUsage, 70, 90)}
+              value={live ? `${perfData.cpuUsage.toFixed(1)}%` : '—'}
+              valueClass={live ? statusColor(perfData.cpuUsage, 70, 90) : 'text-white/30'}
             />
             <Row
               label="Memory"
-              value={`${perfData.memoryPercent.toFixed(1)}%`}
-              valueClass={statusColor(perfData.memoryPercent, 80, 95)}
+              value={live ? `${perfData.memoryPercent.toFixed(1)}%` : '—'}
+              valueClass={live ? statusColor(perfData.memoryPercent, 80, 95) : 'text-white/30'}
             />
             <Row
               label="Disk"
-              value={`${perfData.diskUsage.toFixed(1)}%`}
-              valueClass={statusColor(perfData.diskUsage, 85, 95)}
+              value={live ? `${perfData.diskUsage.toFixed(1)}%` : '—'}
+              valueClass={live ? statusColor(perfData.diskUsage, 85, 95) : 'text-white/30'}
             />
-            {perfData.temperature != null && (
-              <Row
-                label="Temp"
-                value={`${perfData.temperature.toFixed(1)}°C`}
-                valueClass={statusColor(perfData.temperature, 60, 70)}
-              />
-            )}
+            <Row
+              label="Temp"
+              value={live && perfData.temperature != null ? `${perfData.temperature.toFixed(1)}°C` : '—'}
+              valueClass={live && perfData.temperature != null ? statusColor(perfData.temperature, 60, 70) : 'text-white/30'}
+            />
           </Card>
 
           <Card>
             <SectionHeader icon={<Wifi size={11} />} label="Network I/O" colorClass="text-emerald-400" />
-            <Row label="Sent"      value={formatBytes(perfData.networkIO.bytesSent)} />
-            <Row label="Received"  value={formatBytes(perfData.networkIO.bytesRecv)} />
-            <Row label="WS Conns"  value={String(perfData.websocketConnections)} />
-            {perfData.robotTelemetry?.network?.latency != null && (
-              <Row label="Latency" value={`${perfData.robotTelemetry.network.latency}ms`} />
-            )}
-            {perfData.robotTelemetry?.network?.wifiSignal != null && (
-              <Row
-                label="Signal"
-                value={`${perfData.robotTelemetry.network.wifiSignal}dBm`}
-                valueClass={perfData.robotTelemetry.network.wifiSignal > -60 ? 'text-emerald-400' : 'text-amber-400'}
-              />
-            )}
+            <Row label="Sent"     value={live ? formatBytes(perfData.networkIO.bytesSent) : '—'} valueClass={live ? 'text-white' : 'text-white/30'} />
+            <Row label="Received" value={live ? formatBytes(perfData.networkIO.bytesRecv) : '—'} valueClass={live ? 'text-white' : 'text-white/30'} />
+            <Row label="WS Conns" value={live ? String(perfData.websocketConnections) : '—'}     valueClass={live ? 'text-white' : 'text-white/30'} />
+            <Row
+              label="Latency"
+              value={live && perfData.robotTelemetry?.network?.latency != null ? `${perfData.robotTelemetry.network.latency}ms` : '—'}
+              valueClass={live ? 'text-white' : 'text-white/30'}
+            />
           </Card>
 
           <Card>
             <SectionHeader icon={<Zap size={11} />} label="Application" colorClass="text-violet-400" />
             <Row
               label="Response"
-              value={`${(perfData.responseTime ?? 0).toFixed(1)}ms`}
-              valueClass={statusColor(perfData.responseTime ?? 0, 500, 1000)}
+              value={live ? `${(perfData.responseTime ?? 0).toFixed(1)}ms` : '—'}
+              valueClass={live ? statusColor(perfData.responseTime ?? 0, 500, 1000) : 'text-white/30'}
             />
             <Row
               label="Error Rate"
-              value={`${(perfData.errorRate ?? 0).toFixed(2)}%`}
-              valueClass={statusColor(perfData.errorRate ?? 0, 2, 5)}
+              value={live ? `${(perfData.errorRate ?? 0).toFixed(2)}%` : '—'}
+              valueClass={live ? statusColor(perfData.errorRate ?? 0, 2, 5) : 'text-white/30'}
             />
-            <Row label="Throughput" value={`${(perfData.throughput ?? 0).toFixed(0)} req/s`} />
-            <Row
-              label="Uptime"
-              value={perfData.uptime > 0 ? formatUptime(perfData.uptime) : '—'}
-            />
+            <Row label="Throughput" value={live ? `${(perfData.throughput ?? 0).toFixed(0)} req/s` : '—'} valueClass={live ? 'text-white' : 'text-white/30'} />
+            <Row label="Uptime"     value={live ? formatUptime(perfData.uptime) : '—'}                    valueClass={live ? 'text-white' : 'text-white/30'} />
           </Card>
         </div>
 
         {/* Row 2: Pi services + Power + Safety */}
-        {(perfData.piSpecific || perfData.robotTelemetry) && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
 
-            {perfData.piSpecific && (
-              <Card>
-                <SectionHeader icon={<Server size={11} />} label="Pi Services" colorClass="text-amber-400" />
-                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
-                  {Object.entries(perfData.piSpecific.robotServices).map(([svc, on]) => (
-                    <ServiceDot key={svc} on={on as boolean} label={svc} />
-                  ))}
-                </div>
-                <div className="pt-1 space-y-1.5">
-                  <Row
-                    label="GPIO"
-                    value={perfData.piSpecific.gpioStatus.status}
-                    valueClass={perfData.piSpecific.gpioStatus.status === 'active' ? 'text-emerald-400' : 'text-rose-400'}
-                  />
-                  <Row
-                    label="Camera"
-                    value={perfData.piSpecific.cameraStatus.status}
-                    valueClass={perfData.piSpecific.cameraStatus.enabled ? 'text-emerald-400' : 'text-rose-400'}
-                  />
-                </div>
-              </Card>
-            )}
+          <Card>
+            <SectionHeader icon={<Server size={11} />} label="Pi Services" colorClass="text-amber-400" />
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
+              {Object.entries(perfData.piSpecific.robotServices).map(([svc, on]) => (
+                <ServiceDot key={svc} on={live ? (on as boolean) : false} label={svc} />
+              ))}
+            </div>
+            <div className="pt-1 space-y-1.5">
+              <Row
+                label="GPIO"
+                value={live ? perfData.piSpecific.gpioStatus.status : '—'}
+                valueClass={live && perfData.piSpecific.gpioStatus.status === 'active' ? 'text-emerald-400' : live ? 'text-rose-400' : 'text-white/30'}
+              />
+              <Row
+                label="Camera"
+                value={live ? perfData.piSpecific.cameraStatus.status : '—'}
+                valueClass={live && perfData.piSpecific.cameraStatus.enabled ? 'text-emerald-400' : live ? 'text-rose-400' : 'text-white/30'}
+              />
+            </div>
+          </Card>
 
-            {perfData.robotTelemetry?.power && (
-              <Card>
-                <SectionHeader icon={<Battery size={11} />} label="Power" colorClass="text-yellow-400" />
-                <Row label="Source" value={perfData.robotTelemetry.power.powerSource} />
-                {perfData.robotTelemetry.power.voltage != null && (
-                  <Row
-                    label="Voltage"
-                    value={`${perfData.robotTelemetry.power.voltage}V`}
-                    valueClass={perfData.robotTelemetry.power.undervoltage ? 'text-rose-400' : 'text-emerald-400'}
-                  />
-                )}
-                {perfData.robotTelemetry.power.powerConsumption != null && (
-                  <Row label="Consumption" value={`${perfData.robotTelemetry.power.powerConsumption}W`} />
-                )}
-                {perfData.robotTelemetry.power.undervoltage && (
-                  <div className="flex items-center gap-1 text-rose-400 text-[11px] font-semibold pt-0.5">
-                    <AlertTriangle size={11} />
-                    Undervoltage
-                  </div>
-                )}
-              </Card>
+          <Card>
+            <SectionHeader icon={<Battery size={11} />} label="Power" colorClass="text-yellow-400" />
+            <Row label="Source"  value={live ? perfData.robotTelemetry.power.powerSource : '—'} valueClass={live ? 'text-white' : 'text-white/30'} />
+            <Row
+              label="Voltage"
+              value={live && perfData.robotTelemetry.power.voltage != null ? `${perfData.robotTelemetry.power.voltage}V` : '—'}
+              valueClass={live ? (perfData.robotTelemetry.power.undervoltage ? 'text-rose-400' : 'text-emerald-400') : 'text-white/30'}
+            />
+            <Row
+              label="Consumption"
+              value={live && perfData.robotTelemetry.power.powerConsumption != null ? `${perfData.robotTelemetry.power.powerConsumption}W` : '—'}
+              valueClass={live ? 'text-white' : 'text-white/30'}
+            />
+            {live && perfData.robotTelemetry.power.undervoltage && (
+              <div className="flex items-center gap-1 text-rose-400 text-[11px] font-semibold pt-0.5">
+                <AlertTriangle size={11} />
+                Undervoltage
+              </div>
             )}
+          </Card>
 
-            {perfData.robotTelemetry?.safety && (
-              <Card>
-                <SectionHeader icon={<Shield size={11} />} label="Safety" colorClass="text-rose-400" />
-                <Row
-                  label="E-Stop"
-                  value={perfData.robotTelemetry.safety.emergencyStop ? 'ACTIVE' : 'Safe'}
-                  valueClass={perfData.robotTelemetry.safety.emergencyStop ? 'text-rose-400' : 'text-emerald-400'}
-                />
-                <Row
-                  label="Thermal"
-                  value={perfData.robotTelemetry.safety.thermalProtection.overheated ? 'Overheated' : 'Normal'}
-                  valueClass={perfData.robotTelemetry.safety.thermalProtection.overheated ? 'text-rose-400' : 'text-emerald-400'}
-                />
-                <Row
-                  label="Battery"
-                  value={perfData.robotTelemetry.safety.batteryProtection.lowBattery ? 'Low' : 'OK'}
-                  valueClass={perfData.robotTelemetry.safety.batteryProtection.lowBattery ? 'text-amber-400' : 'text-emerald-400'}
-                />
-                <Row
-                  label="Violations"
-                  value={String(perfData.robotTelemetry.safety.safetyLimits.violations)}
-                  valueClass={perfData.robotTelemetry.safety.safetyLimits.violations > 0 ? 'text-amber-400' : 'text-white'}
-                />
-              </Card>
-            )}
-          </div>
-        )}
+          <Card>
+            <SectionHeader icon={<Shield size={11} />} label="Safety" colorClass="text-rose-400" />
+            <Row
+              label="E-Stop"
+              value={live ? (perfData.robotTelemetry.safety.emergencyStop ? 'ACTIVE' : 'Safe') : '—'}
+              valueClass={live ? (perfData.robotTelemetry.safety.emergencyStop ? 'text-rose-400' : 'text-emerald-400') : 'text-white/30'}
+            />
+            <Row
+              label="Thermal"
+              value={live ? (perfData.robotTelemetry.safety.thermalProtection.overheated ? 'Overheated' : 'Normal') : '—'}
+              valueClass={live ? (perfData.robotTelemetry.safety.thermalProtection.overheated ? 'text-rose-400' : 'text-emerald-400') : 'text-white/30'}
+            />
+            <Row
+              label="Battery"
+              value={live ? (perfData.robotTelemetry.safety.batteryProtection.lowBattery ? 'Low' : 'OK') : '—'}
+              valueClass={live ? (perfData.robotTelemetry.safety.batteryProtection.lowBattery ? 'text-amber-400' : 'text-emerald-400') : 'text-white/30'}
+            />
+            <Row
+              label="Violations"
+              value={live ? String(perfData.robotTelemetry.safety.safetyLimits.violations) : '—'}
+              valueClass={live ? (perfData.robotTelemetry.safety.safetyLimits.violations > 0 ? 'text-amber-400' : 'text-white') : 'text-white/30'}
+            />
+          </Card>
+        </div>
 
         {/* Row 3: Sensors + Motors + Cache */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
 
-          {perfData.robotTelemetry?.sensors && (
-            <Card>
-              <SectionHeader icon={<Radio size={11} />} label="Sensors" colorClass="text-sky-400" />
-              {(Object.entries(perfData.robotTelemetry.sensors) as [string, { status: string; fps?: number | null; distance?: number | null; value?: number | null }][]).map(([name, s]) => {
-                const display = s.fps != null ? `${s.fps}fps`
-                  : s.distance != null ? `${s.distance}cm`
-                  : s.value != null ? `${s.value}V`
-                  : s.status;
-                const ok = s.status === 'active' || s.status === 'connected';
-                return (
-                  <Row
-                    key={name}
-                    label={name.replace(/([A-Z])/g, ' $1').trim()}
-                    value={display}
-                    valueClass={ok ? 'text-emerald-400' : 'text-white/40'}
-                  />
-                );
-              })}
-            </Card>
-          )}
+          <Card>
+            <SectionHeader icon={<Radio size={11} />} label="Sensors" colorClass="text-sky-400" />
+            {(Object.entries(perfData.robotTelemetry.sensors) as [string, { status: string; fps?: number | null; distance?: number | null; value?: number | null }][]).map(([name, s]) => {
+              const display = !live ? '—'
+                : s.fps != null      ? `${s.fps}fps`
+                : s.distance != null ? `${s.distance}cm`
+                : s.value != null    ? `${s.value}V`
+                : s.status;
+              const ok = live && (s.status === 'active' || s.status === 'connected');
+              return (
+                <Row
+                  key={name}
+                  label={name.replace(/([A-Z])/g, ' $1').trim()}
+                  value={display}
+                  valueClass={ok ? 'text-emerald-400' : 'text-white/30'}
+                />
+              );
+            })}
+          </Card>
 
-          {perfData.robotTelemetry?.motors && (
-            <Card>
-              <SectionHeader icon={<Activity size={11} />} label="Motors" colorClass="text-purple-400" />
-              <Row
-                label="Left"
-                value={perfData.robotTelemetry.motors.leftMotor.status}
-                valueClass={perfData.robotTelemetry.motors.leftMotor.status === 'connected' ? 'text-emerald-400' : 'text-rose-400'}
-              />
-              <Row
-                label="Right"
-                value={perfData.robotTelemetry.motors.rightMotor.status}
-                valueClass={perfData.robotTelemetry.motors.rightMotor.status === 'connected' ? 'text-emerald-400' : 'text-rose-400'}
-              />
-              <Row label="Servos" value={`${perfData.robotTelemetry.motors.servoMotors.length} active`} valueClass="text-sky-400" />
-            </Card>
-          )}
+          <Card>
+            <SectionHeader icon={<Activity size={11} />} label="Motors" colorClass="text-purple-400" />
+            <Row
+              label="Left"
+              value={live ? perfData.robotTelemetry.motors.leftMotor.status : '—'}
+              valueClass={live && perfData.robotTelemetry.motors.leftMotor.status === 'connected' ? 'text-emerald-400' : live ? 'text-rose-400' : 'text-white/30'}
+            />
+            <Row
+              label="Right"
+              value={live ? perfData.robotTelemetry.motors.rightMotor.status : '—'}
+              valueClass={live && perfData.robotTelemetry.motors.rightMotor.status === 'connected' ? 'text-emerald-400' : live ? 'text-rose-400' : 'text-white/30'}
+            />
+            <Row
+              label="Servos"
+              value={live ? `${perfData.robotTelemetry.motors.servoMotors.length} active` : '—'}
+              valueClass={live ? 'text-sky-400' : 'text-white/30'}
+            />
+          </Card>
 
           <Card>
             <SectionHeader icon={<HardDrive size={11} />} label="Cache" colorClass="text-amber-400" />
@@ -497,7 +531,7 @@ const PerformanceDashboard: React.FC = memo(() => {
                 <Row label="Misses"     value={String(cacheStats.misses)} />
               </>
             ) : (
-              <p className="text-xs text-white/30 italic">Unavailable</p>
+              <p className="text-xs text-white/30 italic">—</p>
             )}
           </Card>
         </div>
@@ -508,7 +542,11 @@ const PerformanceDashboard: React.FC = memo(() => {
             <AlertTriangle size={11} />
             Alerts
           </div>
-          {alerts.length === 0 ? (
+          {!live ? (
+            <div className="flex items-center gap-1.5 text-xs text-white/30 italic">
+              Awaiting data…
+            </div>
+          ) : alerts.length === 0 ? (
             <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold">
               <CheckCircle2 size={12} />
               All systems normal
@@ -529,9 +567,11 @@ const PerformanceDashboard: React.FC = memo(() => {
         <div className="flex items-center justify-between text-[11px] text-white/25 px-0.5">
           <div className="flex items-center gap-1">
             <Clock size={10} />
-            Updated {new Date(perfData.timestamp).toLocaleTimeString()}
+            {lastFetched ? `Updated ${new Date(lastFetched).toLocaleTimeString()}` : 'Not yet fetched'}
           </div>
-          {perfData.source && <span>{perfData.source} · {perfData.deviceName}</span>}
+          {live && perfData.source !== '—' && (
+            <span>{perfData.source} · {perfData.deviceName}</span>
+          )}
         </div>
 
       </div>
