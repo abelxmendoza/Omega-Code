@@ -42,7 +42,7 @@ class ServiceState:
 
 class ProcessSupervisor:
     """Supervises service processes with auto-restart and health monitoring"""
-    
+
     def __init__(self, registry_path: str, base_dir: str = None):
         self.registry_path = registry_path
         self.base_dir = base_dir or os.getcwd()
@@ -53,7 +53,32 @@ class ProcessSupervisor:
         self.crash_cooldown = 30.0  # Seconds to wait before restarting after crash
         self.health_check_interval = 10.0  # Seconds between health checks
         self.lock = threading.Lock()
-        
+        # port → service name, built once from registry
+        self._port_map: Dict[str, int] = {}
+        self._build_port_map()
+
+    def _build_port_map(self) -> None:
+        """Cache service-name → port from registry for external-process detection."""
+        try:
+            registry = self.load_registry()
+            self._port_map = {
+                s["name"]: s["port"]
+                for s in registry
+                if s.get("port") is not None
+            }
+        except Exception:
+            pass
+
+    def _find_pid_on_port(self, port: int) -> Optional[int]:
+        """Return the PID of any process listening on `port`, or None."""
+        try:
+            for conn in psutil.net_connections(kind="tcp"):
+                if conn.laddr.port == port and conn.status == "LISTEN" and conn.pid:
+                    return conn.pid
+        except (psutil.AccessDenied, AttributeError):
+            pass
+        return None
+
     def load_registry(self) -> List[Dict[str, Any]]:
         """Load service registry from JSON file"""
         import json
@@ -68,22 +93,34 @@ class ProcessSupervisor:
     def start_service(self, service_def: Dict[str, Any]) -> bool:
         """Start a service based on its definition"""
         name = service_def["name"]
-        
+
         with self.lock:
             if name in self.processes:
-                log.warning(f"Service {name} is already running")
+                log.warning(f"Service {name} is already running (tracked)")
                 return False
-            
+
             # Initialize service state
             if name not in self.services:
                 self.services[name] = ServiceState(
                     name=name,
                     restart_policy=service_def.get("restart_policy", "never")
                 )
-            
+
             state = self.services[name]
+
+            # Detect externally-running process by port — don't spawn a duplicate
+            port = service_def.get("port") or self._port_map.get(name)
+            if port:
+                existing_pid = self._find_pid_on_port(port)
+                if existing_pid:
+                    log.info(f"Service {name} already running externally on port {port} (PID {existing_pid}), adopting")
+                    state.status = "running"
+                    state.pid = existing_pid
+                    state.start_time = state.start_time or time.time()
+                    return True
+
             state.status = "starting"
-            
+
             try:
                 # Build command
                 cmd = [service_def["cmd"]] + service_def.get("args", [])
@@ -126,6 +163,27 @@ class ProcessSupervisor:
         """Stop a service gracefully or forcefully"""
         with self.lock:
             if name not in self.processes:
+                # Try to stop an externally-adopted process by its known PID
+                state = self.services.get(name)
+                if state and state.pid:
+                    try:
+                        proc = psutil.Process(state.pid)
+                        if not force:
+                            proc.terminate()
+                            try:
+                                proc.wait(timeout=5)
+                            except psutil.TimeoutExpired:
+                                proc.kill()
+                        else:
+                            proc.kill()
+                        state.status = "stopped"
+                        state.pid = None
+                        remove_pid(name)
+                        log.info(f"Stopped external service {name}")
+                        return True
+                    except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                        log.error(f"Failed to stop external process for {name}: {e}")
+                        return False
                 log.warning(f"Service {name} is not running")
                 return False
             
@@ -186,25 +244,42 @@ class ProcessSupervisor:
         state = self.services.get(name)
         if state is None:
             return None
-        
-        # Update process info if running
+
         if name in self.processes:
+            # Supervisor-owned process
             process = self.processes[name]
             if process.poll() is not None:
-                # Process has terminated
                 state.status = "crashed"
                 state.crash_count += 1
                 del self.processes[name]
                 state.pid = None
             else:
-                # Process is running - update metrics
                 try:
                     proc = psutil.Process(process.pid)
                     state.cpu_percent = proc.cpu_percent()
                     state.memory_mb = proc.memory_info().rss / (1024 * 1024)
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
-        
+        else:
+            # Not supervisor-owned — probe port for external process
+            port = self._port_map.get(name)
+            if port:
+                pid = self._find_pid_on_port(port)
+                if pid:
+                    state.status = "running"
+                    state.pid = pid
+                    try:
+                        proc = psutil.Process(pid)
+                        state.cpu_percent = proc.cpu_percent()
+                        state.memory_mb = proc.memory_info().rss / (1024 * 1024)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                else:
+                    # Port gone — mark stopped (not crashed; could be intentional)
+                    if state.status == "running":
+                        state.status = "stopped"
+                        state.pid = None
+
         return asdict(state)
     
     def list_services(self) -> List[Dict[str, Any]]:
