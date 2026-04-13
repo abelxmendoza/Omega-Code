@@ -152,22 +152,68 @@ class XboxControllerTeleop:
             return "local"
     
     def find_xbox_controller(self) -> Optional[str]:
-        """Find Xbox controller device path."""
-        devices = [InputDevice(path) for path in list_devices()]
-        
-        for device in devices:
-            # Check if device has gamepad-like capabilities
-            caps = device.capabilities()
-            if ecodes.EV_ABS in caps:
-                # Check for typical gamepad axes
-                abs_caps = caps[ecodes.EV_ABS]
-                has_stick = any(axis in abs_caps for axis in [
-                    AXIS_LEFT_STICK_Y, AXIS_RIGHT_STICK_X
-                ])
-                if has_stick:
-                    print(f"✅ Found controller: {device.name} at {device.path}")
-                    return device.path
-        
+        """Find Xbox controller event device path.
+
+        Strategy:
+        1. evdev list_devices() — needs input group, gives richest info.
+        2. /proc/bus/input/devices — world-readable; maps name → event node.
+        3. First /dev/input/event* that can be opened (last resort).
+        """
+        import glob as _glob
+        import re as _re
+
+        # --- Strategy 1: evdev (needs input group) ---
+        try:
+            devices = [InputDevice(path) for path in list_devices()]
+            for device in devices:
+                caps = device.capabilities()
+                if ecodes.EV_ABS in caps:
+                    abs_caps = caps[ecodes.EV_ABS]
+                    has_stick = any(axis in abs_caps for axis in [
+                        AXIS_LEFT_STICK_Y, AXIS_RIGHT_STICK_X
+                    ])
+                    if has_stick:
+                        print(f"✅ Found controller (evdev): {device.name} at {device.path}")
+                        return device.path
+        except Exception:
+            pass
+
+        # --- Strategy 2: /proc/bus/input/devices (world-readable) ---
+        try:
+            with open("/proc/bus/input/devices") as fh:
+                content = fh.read()
+            name = None
+            handlers: list = []
+            for line in content.splitlines():
+                if line.startswith("N: Name="):
+                    name = line.split("=", 1)[1].strip('"')
+                    handlers = []
+                elif line.startswith("H: Handlers="):
+                    handlers = line.split("=", 1)[1].split()
+                elif line == "" and name:
+                    keywords = ("xbox", "gamepad", "joystick", "controller", "pad")
+                    if any(k in name.lower() for k in keywords):
+                        event_nodes = [h for h in handlers if h.startswith("event")]
+                        if event_nodes:
+                            path = f"/dev/input/{event_nodes[0]}"
+                            print(f"✅ Found controller (proc): {name} at {path}")
+                            return path
+                    name = None
+                    handlers = []
+        except Exception:
+            pass
+
+        # --- Strategy 3: first readable event node ---
+        for path in sorted(_glob.glob("/dev/input/event*")):
+            try:
+                dev = InputDevice(path)
+                caps = dev.capabilities()
+                if ecodes.EV_ABS in caps:
+                    print(f"✅ Found controller (fallback): {dev.name} at {path}")
+                    return path
+            except Exception:
+                continue
+
         return None
     
     def connect_network(self) -> bool:
@@ -410,12 +456,19 @@ class XboxControllerTeleop:
         # Open device
         try:
             self.device = InputDevice(device_path)
-            # Get axis info for normalization
-            self.device.grab()  # Exclusive access
             print(f"✅ Controller opened: {self.device.name}")
         except Exception as e:
             print(f"❌ Failed to open controller: {e}")
             return False
+
+        # Grab exclusive access so desktop compositors don't steal events.
+        # Non-fatal: works fine without grab (events shared with kernel).
+        try:
+            self.device.grab()
+            print("   (exclusive grab: ok)")
+        except Exception as e:
+            print(f"   (exclusive grab failed — running shared mode: {e})")
+            print("   To fix: sudo usermod -a -G input $USER  then re-login")
         
         # Connect based on mode
         if self.mode == "local":
