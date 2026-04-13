@@ -373,30 +373,34 @@ class XboxControllerTeleop:
         
         return max(-1.0, min(1.0, normalized))
     
+    def _abs_info(self, axis_code: int):
+        """Return the AbsInfo for an axis code, or None.
+
+        capabilities()[EV_ABS] is a list of (code, AbsInfo) tuples — NOT a dict.
+        Build a lookup dict once and cache it on the instance.
+        """
+        if not hasattr(self, '_abs_cache'):
+            caps = self.device.capabilities()
+            abs_list = caps.get(ecodes.EV_ABS, [])
+            self._abs_cache = {code: info for code, info in abs_list}
+        return self._abs_cache.get(axis_code)
+
     def process_event(self, event):
         """Process input event from controller."""
         if event.type == ecodes.EV_ABS:
             # Left stick
             if event.code == AXIS_LEFT_STICK_Y:
-                axis_info = self.device.capabilities()[ecodes.EV_ABS][AXIS_LEFT_STICK_Y]
-                self.left_stick_y = -self.normalize_axis(event.value, axis_info)  # Invert Y
+                self.left_stick_y = -self.normalize_axis(event.value, self._abs_info(AXIS_LEFT_STICK_Y))
             elif event.code == AXIS_LEFT_STICK_X:
-                axis_info = self.device.capabilities()[ecodes.EV_ABS][AXIS_LEFT_STICK_X]
-                self.left_stick_x = self.normalize_axis(event.value, axis_info)
-            
+                self.left_stick_x = self.normalize_axis(event.value, self._abs_info(AXIS_LEFT_STICK_X))
+
             # Triggers (GTA-style gas/brake)
             elif event.code == AXIS_RIGHT_TRIGGER:
-                axis_info = self.device.capabilities()[ecodes.EV_ABS].get(AXIS_RIGHT_TRIGGER)
-                if axis_info:
-                    self.right_trigger = event.value / axis_info.max
-                else:
-                    self.right_trigger = event.value / 255.0
+                axis_info = self._abs_info(AXIS_RIGHT_TRIGGER)
+                self.right_trigger = event.value / axis_info.max if axis_info else event.value / 255.0
             elif event.code == AXIS_LEFT_TRIGGER:
-                axis_info = self.device.capabilities()[ecodes.EV_ABS].get(AXIS_LEFT_TRIGGER)
-                if axis_info:
-                    self.left_trigger = event.value / axis_info.max
-                else:
-                    self.left_trigger = event.value / 255.0
+                axis_info = self._abs_info(AXIS_LEFT_TRIGGER)
+                self.left_trigger = event.value / axis_info.max if axis_info else event.value / 255.0
             
             # D-Pad (Camera control)
             elif event.code == AXIS_DPAD_X:
