@@ -245,32 +245,57 @@ class XboxControllerTeleop:
             print(f"💡 Make sure movement_ws_server.py is running on this machine")
             return False
     
+    def _ws_send(self, command: dict) -> bool:
+        """Send a JSON command over the local WebSocket, reconnecting once on failure."""
+        if not self.ws_client:
+            return False
+        msg = json.dumps(command)
+        try:
+            self.ws_client.send(msg)
+            return True
+        except Exception:
+            if self.connect_local():
+                try:
+                    self.ws_client.send(msg)
+                    return True
+                except Exception:
+                    pass
+        return False
+
     def send_velocity_command(self, linear: float, angular: float):
-        """Send velocity command to robot."""
-        # Clamp velocities
-        linear = max(-MAX_LINEAR_VELOCITY, min(MAX_LINEAR_VELOCITY, linear))
+        """Send discrete movement commands using the server's existing protocol.
+
+        Converts the normalised velocity vector into forward/backward/left/right
+        + set-speed commands that the movement_ws_server already handles reliably.
+        """
+        linear  = max(-MAX_LINEAR_VELOCITY, min(MAX_LINEAR_VELOCITY, linear))
         angular = max(-MAX_ANGULAR_VELOCITY, min(MAX_ANGULAR_VELOCITY, angular))
 
         if self.mode == "local":
-            # Local mode: send twist command to movement_ws_server.py
-            if self.ws_client:
-                try:
-                    command = {
-                        "command": "twist",
-                        "linear_x": linear,
-                        "angular_z": angular,
-                    }
-                    self.ws_client.send(json.dumps(command))
-                    self.last_linear = linear
-                    self.last_angular = angular
-                    return
-                except Exception:
-                    # Try to reconnect once
-                    if self.connect_local():
-                        try:
-                            self.ws_client.send(json.dumps(command))
-                        except Exception:
-                            pass
+            # Map linear/angular to discrete command + PWM speed (0-4095)
+            abs_lin = abs(linear)
+            abs_ang = abs(angular)
+
+            if abs_lin < 0.05 and abs_ang < 0.05:
+                cmd, speed_pct = "stop", 0.0
+            elif abs_ang >= abs_lin:
+                cmd       = "left" if angular > 0 else "right"
+                speed_pct = abs_ang
+            else:
+                cmd       = "forward" if linear > 0 else "backward"
+                speed_pct = abs_lin
+
+            pwm = int(speed_pct * 4095)
+
+            if cmd == "stop":
+                self._ws_send({"command": "stop"})
+            else:
+                self._ws_send({"command": "set-speed", "value": pwm})
+                self._ws_send({"command": cmd})
+
+            self.last_linear  = linear
+            self.last_angular = angular
+            return
         else:
             # Remote mode: send over UDP
             if not self.sock:
@@ -303,10 +328,12 @@ class XboxControllerTeleop:
                 self.send_stop()
     
     def send_stop(self):
-        """Send zero velocity command (safe stop)."""
-        self.send_velocity_command(0.0, 0.0)
-        # Also send discrete stop command
-        self.send_command("stop")
+        """Send a stop command."""
+        if self.mode == "local":
+            self._ws_send({"command": "stop"})
+        else:
+            self.send_velocity_command(0.0, 0.0)
+            self.send_command("stop")
     
     def send_command(self, command: str, payload: dict = None):
         """Send discrete command to robot (for pivot, camera, horn, lights, etc.)."""
