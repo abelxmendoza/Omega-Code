@@ -49,6 +49,7 @@ import sys
 import time
 import json
 import socket
+import select
 import argparse
 import signal
 from typing import Optional, Tuple
@@ -499,18 +500,32 @@ class XboxControllerTeleop:
         print(f"   A Button: Emergency stop")
         print(f"\nPress Ctrl+C to stop\n")
         
-        # Main loop
+        # Main loop — select-based so we send at a fixed rate even when
+        # the trigger is held steady (no new axis events).  The watchdog
+        # in movement_ws_server times out after 2s without a command;
+        # we send at 20 Hz so the watchdog is always kept alive.
         last_send_time = 0.0
-        send_interval = 1.0 / COMMAND_RATE
-        
+        send_interval = 1.0 / COMMAND_RATE  # 50 ms
+        fd = self.device.fileno()
+
         try:
-            for event in self.device.read_loop():
+            while self.running:
+                # Wait up to send_interval for device events
+                ready, _, _ = select.select([fd], [], [], send_interval)
                 if not self.running:
                     break
-                
-                self.process_event(event)
-                
-                # Send commands at fixed rate
+
+                # Drain all pending events from the device
+                if ready:
+                    try:
+                        for event in self.device.read():
+                            self.process_event(event)
+                    except OSError:
+                        print("⚠️ Controller disconnected")
+                        break
+
+                # Send velocity command at fixed rate (fires every ~50 ms
+                # regardless of whether a new event arrived)
                 current_time = time.time()
                 if current_time - last_send_time >= send_interval:
                     # GTA-style movement: Triggers for forward/backward
@@ -519,47 +534,23 @@ class XboxControllerTeleop:
                         linear = self.right_trigger * MAX_LINEAR_VELOCITY
                     elif self.left_trigger > 0.1:
                         linear = -self.left_trigger * MAX_LINEAR_VELOCITY
-                    
+
                     # Pivot turns with left stick X
                     pivot_active = False
                     if abs(self.left_stick_x) > DEAD_ZONE:
-                        # Pure pivot turn (in-place rotation)
-                        pivot_speed = int(abs(self.left_stick_x) * 2000)  # PWM value
-                        if self.left_stick_x > 0.1:
-                            # Pivot right — use twist with angular_z < 0 (right turn)
-                            if self.last_pivot_command != "pivot-right" or (current_time - self.last_pivot_time) > 0.2:
-                                self.send_velocity_command(0.0, -abs(self.left_stick_x))
-                                self.last_pivot_command = "pivot-right"
-                                self.last_pivot_time = current_time
-                            pivot_active = True
-                        elif self.left_stick_x < -0.1:
-                            # Pivot left — use twist with angular_z > 0 (left turn)
-                            if self.last_pivot_command != "pivot-left" or (current_time - self.last_pivot_time) > 0.2:
-                                self.send_velocity_command(0.0, abs(self.left_stick_x))
-                                self.last_pivot_command = "pivot-left"
-                                self.last_pivot_time = current_time
-                            pivot_active = True
-                    
-                    # Forward/backward movement (only if not pivoting)
+                        angular = -self.left_stick_x  # left stick right → negative angular (turn right)
+                        self.send_velocity_command(linear, angular)
+                        pivot_active = True
+
+                    # Forward/backward (or stop) when not pivoting
                     if not pivot_active:
                         if abs(linear) > 0.1:
-                            # Moving forward or backward
                             self.send_velocity_command(linear, 0.0)
-                            self.last_pivot_command = None
-                        else:
-                            # Stop movement
-                            if self.last_linear != 0.0:
-                                self.send_stop()
-                            self.last_pivot_command = None
-                    else:
-                        # Pivoting - stop linear movement
-                        if self.last_linear != 0.0:
+                        elif self.last_linear != 0.0:
                             self.send_velocity_command(0.0, 0.0)
-                    
+
                     last_send_time = current_time
-                
-        except OSError:
-            print("⚠️ Controller disconnected")
+
         except KeyboardInterrupt:
             pass
         finally:
