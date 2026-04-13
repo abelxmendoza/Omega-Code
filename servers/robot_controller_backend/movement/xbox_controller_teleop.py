@@ -404,10 +404,7 @@ class XboxControllerTeleop:
                 axis_info = self._abs_info(AXIS_LEFT_TRIGGER)
                 self.left_trigger = event.value / axis_info.max if axis_info else event.value / 255.0
                 print(f"[DBG] LT raw={event.value} → left_trigger={self.left_trigger:.3f}")
-            else:
-                # Log any other ABS axis so we can spot unexpected codes
-                print(f"[DBG] ABS code={event.code} value={event.value} (unhandled)")
-            
+
             # D-Pad (Camera control)
             elif event.code == AXIS_DPAD_X:
                 old_value = self.dpad_x
@@ -429,7 +426,10 @@ class XboxControllerTeleop:
                 elif event.value == 1 and old_value != 1:  # Down pressed
                     self.send_command("camera-servo-down")
                     print("📷 Camera: Down")
-        
+            else:
+                # Catch-all: log any ABS axis not yet handled
+                print(f"[DBG] ABS code={event.code} value={event.value} (unhandled)")
+
         elif event.type == ecodes.EV_KEY:
             # Buttons
             if event.code == BTN_B:
