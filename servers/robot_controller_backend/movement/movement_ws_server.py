@@ -37,6 +37,7 @@ import subprocess
 from typing import Optional, Set, Tuple
 
 # Add parent directory to path for autonomy module and proper package imports
+# (must happen before the estop import below)
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.append(ROOT)
@@ -44,6 +45,13 @@ if ROOT not in sys.path:
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+
+# Shared emergency-stop event (also watched by autonomy modes)
+try:
+    from movement.estop import ESTOP_EVENT as _ESTOP_EVENT
+except ImportError:
+    import threading as _threading
+    _ESTOP_EVENT = _threading.Event()
 
 # Configure logging
 logging.basicConfig(
@@ -702,7 +710,7 @@ def cancel_buzz_task():
 
 async def do_stop():
     # Stop motors + buzzer
-    global current_speed, _last_direction
+    global _last_direction
     async with motor_lock:
         try:
             MOTOR_CTRL.stop()   # resets ramp + writes stop immediately
@@ -710,8 +718,6 @@ async def do_stop():
         except Exception as e:
             elog("motor stop failed:", repr(e))
     await buzz_off_safe()
-    # Reset speed to 0 on stop for UI sync
-    current_speed = 0
     _last_direction = None
 
 def _call_motor(fn, speed: int):
@@ -954,6 +960,9 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                 # -------- MOVEMENT --------
                 if cmd in {"forward", "backward", "left", "right"}:
                     log(f"[CMD] Executing movement: {cmd} at speed {speed}")
+                    # A manual movement command clears any pending e-stop so
+                    # the operator can take back control from autonomy.
+                    _ESTOP_EVENT.clear()
                     current_speed = speed
                     _last_direction = cmd
                     await do_move(cmd, current_speed)
@@ -976,9 +985,52 @@ async def handler(ws: WebSocketServerProtocol, request_path: Optional[str] = Non
                 elif cmd == "stop":
                     log(f"[CMD] Executing stop")
                     _last_direction = None
+                    # Signal autonomy loops to halt immediately.
+                    _ESTOP_EVENT.set()
                     await do_stop()
                     await send_json(ws, ok("stop", speed=current_speed,
                                           motors=get_cached_motor_telemetry()))
+
+                # -------- TWIST (gamepad / ROS-style velocity) --------
+                elif cmd == "twist":
+                    # Format: {"command":"twist","linear_x":<-1..1>,"angular_z":<-1..1>}
+                    # Sent by useGamepad.ts at 20 Hz from the browser Xbox controller.
+                    # linear_x > 0 = forward, < 0 = backward
+                    # angular_z > 0 = turn left, < 0 = turn right
+                    # Speed is derived from the dominant axis magnitude.
+                    TWIST_DEADZONE = 0.08  # ignore noise below this
+                    try:
+                        lin = float(data.get("linear_x", 0.0))
+                        ang = float(data.get("angular_z", 0.0))
+                    except (TypeError, ValueError):
+                        lin, ang = 0.0, 0.0
+
+                    abs_lin = abs(lin)
+                    abs_ang = abs(ang)
+
+                    if abs_lin <= TWIST_DEADZONE and abs_ang <= TWIST_DEADZONE:
+                        # Both axes in deadzone → stop (clear estop so driver can regain control)
+                        _ESTOP_EVENT.clear()
+                        _last_direction = None
+                        await do_stop()
+                        await send_json(ws, ok("twist", linear_x=lin, angular_z=ang,
+                                               resolved="stop", speed=current_speed))
+                    else:
+                        _ESTOP_EVENT.clear()
+                        # Determine dominant motion: angular wins when it's >= linear
+                        if abs_ang >= abs_lin:
+                            # Pure turn
+                            direction = "left" if ang > 0 else "right"
+                            twist_speed = clamp(int(abs_ang * SPEED_MAX), SPEED_MIN, SPEED_MAX)
+                        else:
+                            direction = "forward" if lin > 0 else "backward"
+                            twist_speed = clamp(int(abs_lin * SPEED_MAX), SPEED_MIN, SPEED_MAX)
+                        current_speed = twist_speed
+                        _last_direction = direction
+                        await do_move(direction, current_speed)
+                        await send_json(ws, ok("twist", linear_x=lin, angular_z=ang,
+                                               resolved=direction, speed=current_speed,
+                                               motors=get_cached_motor_telemetry()))
 
                 # -------- STRAIGHT ASSIST --------
                 elif cmd in {"straight-assist", "straight-assist-config"}:

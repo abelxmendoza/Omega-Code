@@ -40,21 +40,18 @@ import { COMMAND } from '../control_definitions';
 import Header from '../components/Header';
 import LedModal from '../components/lighting/LedModal';
 import { useGamepad } from '../hooks/useGamepad';
+import { usePiGamepad } from '../hooks/usePiGamepad';
 import XboxControllerStatus from '../components/control/XboxControllerStatus';
 
-// Autonomy API client (WS/HTTP/mock wires)
+// Autonomy API client (HTTP wire → FastAPI /autonomy/* endpoints)
 import {
   makeAutonomyApi,
-  createWsWire,
-  mockWire,
+  createHttpWire,
 } from '@/utils/autonomyApi';
-import { getEnvByProfile, getActiveProfile, coerceWsScheme } from '@/utils/envProfile';
+import { getActiveProfile } from '@/utils/envProfile';
 
 const DEBUG = !!process.env.NEXT_PUBLIC_WS_DEBUG;
 const MOCK_WS = process.env.NEXT_PUBLIC_MOCK_WS === '1';
-
-// Movement WS URL (used only by autonomy wire — CommandContext owns the primary connection)
-const movementWsResolved = getEnvByProfile('NEXT_PUBLIC_BACKEND_WS_URL_MOVEMENT');
 
 /* ------------------ Client-only camera (avoids SSR issues) ------------------ */
 const CameraFrame = dynamic(() => import('../components/CameraFrame'), {
@@ -125,26 +122,15 @@ export default function Home() {
   }
   const gamepadState = useGamepad({ wsRef: gamepadWsProxy, paused: gamepadPaused || MOCK_WS });
 
-  /* ---------------- Autonomy API (WS wire, with mock toggle) --------------- */
-  const autonomyApi = useMemo(() => {
-    try {
-      if (MOCK_WS || !movementWsResolved) {
-        return makeAutonomyApi(mockWire);
-      }
-      const wire = createWsWire(() => coerceWsScheme(movementWsResolved), { timeoutMs: 3000 });
-      return makeAutonomyApi(wire);
-    } catch (e) {
-      return makeAutonomyApi(mockWire);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [movementWsResolved]);
+  /* ---- Pi-side controller detection (polls /gamepad/status every 3 s) ---- */
+  const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '') || 'http://localhost:8000';
+  const piGamepad = usePiGamepad(apiBase);
 
-  // Log autonomy API status after render
-  useEffect(() => {
-    if (MOCK_WS || !movementWsResolved) {
-      addCommand('Autonomy API using MOCK wire.');
-    }
-  }, [addCommand]);
+  /* ---------------- Autonomy API (HTTP wire → FastAPI :8000) --------------- */
+  const autonomyApi = useMemo(() => {
+    const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '') || 'http://localhost:8000';
+    return makeAutonomyApi(createHttpWire(apiBase));
+  }, []);
 
   /* ---------------------- Send command helper with logs --------------------- */
   const sendCommandWithLog = useCallback(
@@ -253,6 +239,7 @@ export default function Home() {
                 state={gamepadState}
                 paused={gamepadPaused}
                 onTogglePause={() => setGamepadPaused(p => !p)}
+                piGamepad={piGamepad}
               />
             </div>
 

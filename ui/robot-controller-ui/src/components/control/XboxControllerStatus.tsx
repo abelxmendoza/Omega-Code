@@ -15,11 +15,14 @@
 
 import React from 'react';
 import { GamepadState } from '../../hooks/useGamepad';
+import { PiGamepadState } from '../../hooks/usePiGamepad';
 
 interface Props {
   state: GamepadState;
   paused: boolean;
   onTogglePause: () => void;
+  /** Controller detected on the Pi via evdev (not the browser machine). */
+  piGamepad?: PiGamepadState;
 }
 
 // --- sub-components ---------------------------------------------------------
@@ -127,8 +130,11 @@ const VectorBar: React.FC<{ value: number; label: string; positiveLabel: string;
 
 // --- main component ---------------------------------------------------------
 
-const XboxControllerStatus: React.FC<Props> = ({ state, paused, onTogglePause }) => {
+const XboxControllerStatus: React.FC<Props> = ({ state, paused, onTogglePause, piGamepad }) => {
   const { connected, name, linearX, angularZ, estop } = state;
+
+  // Show Pi controller badge when browser can't see the controller (it's on the Pi)
+  const piOnly = !connected && piGamepad?.connected;
 
   return (
     <div className="bg-black/40 border border-white/10 rounded-lg p-4 space-y-4">
@@ -138,18 +144,26 @@ const XboxControllerStatus: React.FC<Props> = ({ state, paused, onTogglePause })
           {/* Controller icon */}
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="shrink-0">
             <rect x="2" y="7" width="20" height="10" rx="5" stroke="currentColor" strokeWidth="1.5" className="text-white/60" />
-            <circle cx="8" cy="12" r="2" fill={connected ? '#10b981' : 'rgba(255,255,255,0.2)'} />
-            <circle cx="16" cy="10" r="1" fill={connected ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.15)'} />
-            <circle cx="18" cy="12" r="1" fill={connected ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.15)'} />
+            <circle cx="8" cy="12" r="2" fill={connected || piOnly ? '#10b981' : 'rgba(255,255,255,0.2)'} />
+            <circle cx="16" cy="10" r="1" fill={connected || piOnly ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.15)'} />
+            <circle cx="18" cy="12" r="1" fill={connected || piOnly ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.15)'} />
           </svg>
           <div>
             <div className="text-xs font-semibold text-white/80">
-              {connected ? 'Xbox Controller' : 'No Controller'}
+              {connected ? 'Xbox Controller' : piOnly ? 'Pi Controller' : 'No Controller'}
             </div>
             {connected && (
               <div className="text-[9px] text-white/35 truncate max-w-[180px]">{name}</div>
             )}
+            {piOnly && (
+              <div className="text-[9px] text-white/35 truncate max-w-[180px]">{piGamepad!.name}</div>
+            )}
           </div>
+          {piOnly && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/20 border border-blue-400/30 text-blue-300">
+              on Pi
+            </span>
+          )}
           {connected && estop && (
             <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/30 border border-red-400/50 text-red-300 font-bold animate-pulse">
               E-STOP
@@ -171,9 +185,15 @@ const XboxControllerStatus: React.FC<Props> = ({ state, paused, onTogglePause })
         </button>
       </div>
 
-      {!connected ? (
+      {!connected && !piOnly ? (
         <div className="text-center py-4 text-white/30 text-xs">
           Plug in an Xbox controller and press any button to activate
+        </div>
+      ) : piOnly ? (
+        <div className="text-center py-3 text-white/40 text-xs space-y-1">
+          <div className="text-emerald-400/80 font-medium text-[11px]">Controller detected on Pi</div>
+          <div>Run <span className="font-mono text-white/60">xbox_controller_teleop.py --mode local</span></div>
+          <div className="text-white/25">to start driving</div>
         </div>
       ) : (
         <>

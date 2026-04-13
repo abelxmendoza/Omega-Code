@@ -10,6 +10,8 @@ from .performance_routes import router as performance_router
 from .service_routes import router as service_router
 from .config_routes import router as config_router
 from .movement_routes import router as movement_router
+from .gamepad_routes import router as gamepad_router
+from .control_path import router as control_path_router
 from .sensor_ws_routes import router as sensor_ws_router
 from .sensor_power_routes import router as sensor_power_router
 
@@ -32,3 +34,5 @@ router.include_router(performance_router)
 router.include_router(network_router)
 router.include_router(service_router)
 router.include_router(config_router)
+router.include_router(gamepad_router)
+router.include_router(control_path_router)

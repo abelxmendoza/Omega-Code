@@ -72,6 +72,26 @@ from typing import Optional
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# CONTROL_MODE  (Step 3 — Phase 1, additive)
+# ---------------------------------------------------------------------------
+# Read once at import time.  Never changes at runtime.
+#   auto   (default) — ROS2 publish if available, then direct PCA9685 fallback
+#   direct            — skip ROS2 entirely, go straight to PCA9685
+#   ros2              — ROS2 only; no direct motor fallback
+#
+# Setting CONTROL_MODE=direct is the safest way to bypass ROS2 without
+# touching any code.  Default 'auto' keeps existing behaviour unchanged.
+_CONTROL_MODE: str = os.environ.get("CONTROL_MODE", "auto").lower()
+if _CONTROL_MODE not in ("auto", "direct", "ros2"):
+    log.warning(
+        "Unknown CONTROL_MODE=%r — falling back to 'auto'. "
+        "Valid values: auto, direct, ros2",
+        _CONTROL_MODE,
+    )
+    _CONTROL_MODE = "auto"
+log.info("[CTRL_PATH] CONTROL_MODE=%s", _CONTROL_MODE)
+
+# ---------------------------------------------------------------------------
 # Optional rclpy import -- the bridge degrades gracefully when ROS is absent
 # ---------------------------------------------------------------------------
 _rclpy_ok = False
@@ -274,6 +294,7 @@ class OmegaRosBridge:
         self._node = node
         self._thread = executor_thread
         self._enabled = node is not None
+        self._motor_driver = None  # lazily initialised; cached for lifetime of bridge
 
     # ------------------------------------------------------------------
     @classmethod
@@ -321,9 +342,8 @@ class OmegaRosBridge:
 
     def send_command(self, command: str, speed: float = 0.5) -> bool:
         """
-        Translate a legacy UI command string into a /cmd_vel Twist.
-        Also drives motors directly via PiMotorDriver as fallback when
-        no ROS motor_controller_node subscriber is present.
+        Translate a legacy UI command string into a /cmd_vel Twist and/or
+        direct motor PWM.  Works with or without ROS2.
 
         Args:
             command: One of the keys in _CMD_TO_TWIST  (e.g. 'forward')
@@ -331,11 +351,8 @@ class OmegaRosBridge:
                      linear and angular components.
 
         Returns:
-            True if published, False if bridge is disabled or command unknown.
+            True if at least one path succeeded, False if command unknown.
         """
-        if not self._enabled:
-            return False
-
         cmd = command.lower().strip()
         if cmd not in _CMD_TO_TWIST:
             log.warning('ROS bridge: unknown command %r', command)
@@ -344,28 +361,38 @@ class OmegaRosBridge:
         lin, ang = _CMD_TO_TWIST[cmd]
         speed = max(0.0, min(1.0, float(speed)))
 
-        # 1. Publish to ROS (no-op if no subscriber — future motor_controller_node)
-        self._node.publish_twist(lin * speed, ang * speed)
+        # 1. Publish to ROS if available
+        if self._enabled:
+            self._node.publish_twist(lin * speed, ang * speed)
 
-        # 2. Direct motor driver fallback (works without ROS motor_controller_node)
-        try:
-            from movement.hardware import get_motor_driver
-            motor = get_motor_driver()
-            pwm = int(speed * 4095)
-            if cmd == 'forward':
-                motor.set_pwm(pwm, pwm)
-            elif cmd == 'backward':
-                motor.set_pwm(-pwm, -pwm)
-            elif cmd == 'left':
-                motor.set_pwm(-pwm, pwm)
-            elif cmd == 'right':
-                motor.set_pwm(pwm, -pwm)
-            elif cmd == 'stop':
-                motor.stop()
-        except Exception as e:
-            log.warning('Direct motor fallback failed: %s', e)
+        # 2. Direct motor driver — always attempted, works without ROS2.
+        #    Skipped only when CONTROL_MODE=ros2.
+        #    Driver is cached after first successful init to avoid repeated
+        #    I2C initialisation (PCA9685 setup is expensive).
+        if _CONTROL_MODE != 'ros2':
+            try:
+                if self._motor_driver is None:
+                    from movement.hardware import get_motor_driver
+                    self._motor_driver = get_motor_driver()
+                motor = self._motor_driver
+                pwm = int(speed * 4095)
+                log.debug('[CTRL_PATH] executing direct motor command (mode=%s)', _CONTROL_MODE)
+                if cmd == 'forward':
+                    motor.set_pwm(pwm, pwm)
+                elif cmd == 'backward':
+                    motor.set_pwm(-pwm, -pwm)
+                elif cmd in ('left', 'pivot_left'):
+                    motor.set_pwm(-pwm, pwm)
+                elif cmd in ('right', 'pivot_right'):
+                    motor.set_pwm(pwm, -pwm)
+                elif cmd == 'stop':
+                    motor.stop()
+                return True
+            except Exception as e:
+                log.warning('Direct motor fallback failed: %s', e)
+                self._motor_driver = None  # reset so next call retries init
 
-        return True
+        return self._enabled
 
     def send_twist(self, linear_x: float, angular_z: float) -> bool:
         """
@@ -378,16 +405,20 @@ class OmegaRosBridge:
         return True
 
     def stop(self) -> bool:
-        """Publish a zero Twist (immediate stop) and stop motors directly."""
-        if not self._enabled:
-            return False
-        self._node.publish_stop()
+        """Publish a zero Twist (immediate stop) and stop motors directly.
+        Works with or without ROS2."""
+        if self._enabled:
+            self._node.publish_stop()
         try:
-            from movement.hardware import get_motor_driver
-            get_motor_driver().stop()
+            if self._motor_driver is None:
+                from movement.hardware import get_motor_driver
+                self._motor_driver = get_motor_driver()
+            self._motor_driver.stop()
+            return True
         except Exception as e:
             log.warning('Direct motor stop failed: %s', e)
-        return True
+            self._motor_driver = None
+        return self._enabled
 
     # ------------------------------------------------------------------
     # Lighting / system
@@ -439,6 +470,26 @@ class OmegaRosBridge:
     @property
     def is_active(self) -> bool:
         return self._enabled
+
+    @property
+    def motor_driver_ok(self) -> bool:
+        """True if the direct PCA9685 motor driver is initialised and reachable.
+
+        Probes lazily on first call; result is cached on the driver instance.
+        Returns False when CONTROL_MODE=ros2 (direct path intentionally skipped)
+        or when the hardware is absent / unreachable.
+        """
+        if _CONTROL_MODE == 'ros2':
+            return False
+        if self._motor_driver is not None:
+            return True
+        try:
+            from movement.hardware import get_motor_driver
+            self._motor_driver = get_motor_driver()
+            return True
+        except Exception as exc:
+            log.debug('[CTRL_PATH] motor_driver_ok probe failed: %s', exc)
+            return False
 
     def shutdown(self) -> None:
         """

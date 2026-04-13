@@ -7,6 +7,7 @@ from api.security_middleware import create_security_middleware_stack
 from api.error_handlers import global_exception_handler, http_exception_handler
 from api.ros_bridge import OmegaRosBridge
 from api.sensor_bridge import OmegaSensorBridge
+from api.control_path import registry as _ctrl_registry
 import asyncio
 import uvicorn
 import logging
@@ -55,11 +56,29 @@ async def lifespan(app: FastAPI):
     app.state.ros_bridge = bridge
     logger.info('ROS bridge active=%s', bridge.is_active)
 
+    # [CTRL_PATH] motor path registration (Step 2 — Phase 1)
+    _motor_path = (
+        'both'   if bridge.is_active and bridge.motor_driver_ok else
+        'ros2'   if bridge.is_active else
+        'direct' if bridge.motor_driver_ok else
+        'none'
+    )
+    _ctrl_registry.register('motor', _motor_path)
+    logger.info('[CTRL_PATH] motor → %s', _motor_path)
+
     # ROS subscribe bridge (ultrasonic, line tracking → WebSocket fan-out)
     loop = asyncio.get_event_loop()
     sensor_bridge = OmegaSensorBridge.create(loop)
     app.state.sensor_bridge = sensor_bridge
     logger.info('Sensor bridge active=%s', sensor_bridge.is_active)
+
+    # [CTRL_PATH] sensor + autonomy path registration
+    _sensor_path = 'ros2' if sensor_bridge.is_active else 'direct'
+    _ctrl_registry.register('sensor', _sensor_path)
+    logger.info('[CTRL_PATH] sensor → %s', _sensor_path)
+
+    _ctrl_registry.register('autonomy', 'fastapi')
+    logger.info('[CTRL_PATH] autonomy → fastapi')
 
     # Push current mode to video_server so both processes stay in sync after restarts
     loop.run_in_executor(None, _push_mode_to_video_server)

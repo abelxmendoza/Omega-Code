@@ -203,27 +203,27 @@ class XboxControllerTeleop:
         # Clamp velocities
         linear = max(-MAX_LINEAR_VELOCITY, min(MAX_LINEAR_VELOCITY, linear))
         angular = max(-MAX_ANGULAR_VELOCITY, min(MAX_ANGULAR_VELOCITY, angular))
-        
+
         if self.mode == "local":
-            # For local mode, convert to movement commands or use ROS2 bridge format
-            # Try ROS2 bridge format first (if available)
+            # Local mode: send twist command to movement_ws_server.py
             if self.ws_client:
                 try:
                     command = {
-                        "type": "publish",
-                        "topic": "/cmd_vel",
-                        "msg_type": "Twist",
-                        "command": {
-                            "linear": {"x": linear, "y": 0.0, "z": 0.0},
-                            "angular": {"x": 0.0, "y": 0.0, "z": angular}
-                        }
+                        "command": "twist",
+                        "linear_x": linear,
+                        "angular_z": angular,
                     }
                     self.ws_client.send(json.dumps(command))
                     self.last_linear = linear
                     self.last_angular = angular
                     return
                 except Exception:
-                    pass
+                    # Try to reconnect once
+                    if self.connect_local():
+                        try:
+                            self.ws_client.send(json.dumps(command))
+                        except Exception:
+                            pass
         else:
             # Remote mode: send over UDP
             if not self.sock:
@@ -469,16 +469,16 @@ class XboxControllerTeleop:
                         # Pure pivot turn (in-place rotation)
                         pivot_speed = int(abs(self.left_stick_x) * 2000)  # PWM value
                         if self.left_stick_x > 0.1:
-                            # Pivot right
+                            # Pivot right — use twist with angular_z < 0 (right turn)
                             if self.last_pivot_command != "pivot-right" or (current_time - self.last_pivot_time) > 0.2:
-                                self.send_command("pivot-right", {"speed": pivot_speed})
+                                self.send_velocity_command(0.0, -abs(self.left_stick_x))
                                 self.last_pivot_command = "pivot-right"
                                 self.last_pivot_time = current_time
                             pivot_active = True
                         elif self.left_stick_x < -0.1:
-                            # Pivot left
+                            # Pivot left — use twist with angular_z > 0 (left turn)
                             if self.last_pivot_command != "pivot-left" or (current_time - self.last_pivot_time) > 0.2:
-                                self.send_command("pivot-left", {"speed": pivot_speed})
+                                self.send_velocity_command(0.0, abs(self.left_stick_x))
                                 self.last_pivot_command = "pivot-left"
                                 self.last_pivot_time = current_time
                             pivot_active = True
