@@ -399,9 +399,14 @@ class XboxControllerTeleop:
             elif event.code == AXIS_RIGHT_TRIGGER:
                 axis_info = self._abs_info(AXIS_RIGHT_TRIGGER)
                 self.right_trigger = event.value / axis_info.max if axis_info else event.value / 255.0
+                print(f"[DBG] RT raw={event.value} → right_trigger={self.right_trigger:.3f}")
             elif event.code == AXIS_LEFT_TRIGGER:
                 axis_info = self._abs_info(AXIS_LEFT_TRIGGER)
                 self.left_trigger = event.value / axis_info.max if axis_info else event.value / 255.0
+                print(f"[DBG] LT raw={event.value} → left_trigger={self.left_trigger:.3f}")
+            else:
+                # Log any other ABS axis so we can spot unexpected codes
+                print(f"[DBG] ABS code={event.code} value={event.value} (unhandled)")
             
             # D-Pad (Camera control)
             elif event.code == AXIS_DPAD_X:
@@ -545,6 +550,7 @@ class XboxControllerTeleop:
                     # Forward/backward (or stop) when not pivoting
                     if not pivot_active:
                         if abs(linear) > 0.1:
+                            print(f"[DBG] SEND linear={linear:.3f} rt={self.right_trigger:.3f} lt={self.left_trigger:.3f}")
                             self.send_velocity_command(linear, 0.0)
                         elif self.last_linear != 0.0:
                             self.send_velocity_command(0.0, 0.0)
