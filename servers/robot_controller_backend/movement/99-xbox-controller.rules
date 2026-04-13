@@ -1,0 +1,16 @@
+# /etc/udev/rules.d/99-xbox-controller.rules
+#
+# Grant read/write access to Xbox controllers for the omega1 user
+# without requiring input group membership.
+#
+# Install:
+#   sudo cp 99-xbox-controller.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#   (no reboot needed — unplug/replug controller to apply)
+
+# Xbox One X pad (045e:0b12)
+SUBSYSTEM=="input", ATTRS{idVendor}=="045e", ATTRS{idProduct}=="0b12", MODE="0666"
+
+# Generic Xbox / Microsoft gamepads — covers other Xbox models
+SUBSYSTEM=="input", ATTRS{idVendor}=="045e", KERNEL=="event*", MODE="0666"
+SUBSYSTEM=="input", ATTRS{idVendor}=="045e", KERNEL=="js*",    MODE="0666"
