@@ -64,6 +64,7 @@ from fastapi.testclient import TestClient
 
 class _MockBridge:
     is_active = False
+    motor_driver_ok = True  # new attribute added to main_api.py startup path
 
     def send_command(self, *a, **kw):
         return False

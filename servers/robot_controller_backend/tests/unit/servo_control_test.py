@@ -52,36 +52,50 @@ class TestServoControl(unittest.TestCase):
     @patch('controllers.servo_control.PCA9685')
     def test_set_servo_pwm_horizontal(self, MockPCA9685):
         """
-        Test the setServoPwm function for the horizontal servo to ensure it executes without errors.
+        Verify horizontal servo pulse is calculated correctly and clamped to the safe range.
+
+        Formula: pulse = 2500 - int((angle + error) / 0.09)
+        Safe range: 1200–1800 µs (hardware safety clamp added with the PCA9685 50Hz fix).
+
+        angle=90, error=10 → 2500 - int(100 / 0.09) = 2500 - 1111 = 1389 µs  (in range)
+        angle=10, error=10 → 2500 - int(20  / 0.09) = 2500 - 222  = 2278 µs  (> 1800 → clamped)
         """
-        # Create an instance of the mock PCA9685
         mock_pca9685_instance = MockPCA9685.return_value
-        
-        # Instantiate the Servo class
+
         servo = Servo()
-        
-        # Test setting PWM for horizontal servo
+
+        # In-range angle: raw pulse 1389 µs — should pass through unclamped
+        servo.setServoPwm('horizontal', 90)
+        expected_pulse = 2500 - int((90 + 10) / 0.09)   # = 1389
+        mock_pca9685_instance.setServoPulse.assert_called_with(8, expected_pulse)
+
+        # Out-of-range angle: raw pulse 2278 µs — safety clamp enforces MAX (1800 µs)
         servo.setServoPwm('horizontal', 10)
-        
-        # Check if setServoPulse was called with the correct values
-        mock_pca9685_instance.setServoPulse.assert_called_with(8, 2500 - int((10 + 10) / 0.09))
+        mock_pca9685_instance.setServoPulse.assert_called_with(8, 1800)
 
     @patch('controllers.servo_control.PCA9685')
     def test_set_servo_pwm_vertical(self, MockPCA9685):
         """
-        Test the setServoPwm function for the vertical servo to ensure it executes without errors.
+        Verify vertical servo pulse is calculated correctly and clamped to the safe range.
+
+        Formula: pulse = 500 + int((angle + error) / 0.09)
+        Safe range: 1200–1800 µs.
+
+        angle=90, error=10 → 500 + int(100 / 0.09) = 500 + 1111 = 1611 µs  (in range)
+        angle=10, error=10 → 500 + int(20  / 0.09) = 500 + 222  =  722 µs  (< 1200 → clamped)
         """
-        # Create an instance of the mock PCA9685
         mock_pca9685_instance = MockPCA9685.return_value
-        
-        # Instantiate the Servo class
+
         servo = Servo()
-        
-        # Test setting PWM for vertical servo
+
+        # In-range angle: raw pulse 1611 µs — should pass through unclamped
+        servo.setServoPwm('vertical', 90)
+        expected_pulse = 500 + int((90 + 10) / 0.09)    # = 1611
+        mock_pca9685_instance.setServoPulse.assert_called_with(9, expected_pulse)
+
+        # Out-of-range angle: raw pulse 722 µs — safety clamp enforces MIN (1200 µs)
         servo.setServoPwm('vertical', 10)
-        
-        # Check if setServoPulse was called with the correct values
-        mock_pca9685_instance.setServoPulse.assert_called_with(9, 500 + int((10 + 10) / 0.09))
+        mock_pca9685_instance.setServoPulse.assert_called_with(9, 1200)
 
 if __name__ == '__main__':
     unittest.main()

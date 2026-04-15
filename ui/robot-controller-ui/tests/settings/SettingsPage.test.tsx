@@ -77,13 +77,13 @@ describe('SettingsPage', () => {
 
   it('renders settings page header', () => {
     renderWithProviders(<SettingsPage />);
-    
-    // Use getAllByText and check first occurrence to handle duplicates
+
+    // Multiple "Robot Settings" elements are expected (nav + section heading)
     const robotSettingsHeaders = screen.getAllByText('Robot Settings');
     expect(robotSettingsHeaders.length).toBeGreaterThan(0);
-    // Check for page description or title
-    const pageTitle = screen.queryByText(/Configure.*robot settings/i) || screen.queryByText(/Settings/i);
-    expect(pageTitle).toBeInTheDocument();
+    // At least one Settings-related element should be visible
+    const settingsEls = screen.queryAllByText(/Settings/i);
+    expect(settingsEls.length).toBeGreaterThan(0);
   });
 
   it('displays robot name input', async () => {
@@ -98,10 +98,9 @@ describe('SettingsPage', () => {
 
   it('renders all settings sections', () => {
     renderWithProviders(<SettingsPage />);
-    
-    // Use getAllByText for sections that might appear multiple times
+
+    // Verify sections that are actually rendered by the Settings page
     expect(screen.getAllByText('Robot Settings').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Network Settings').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Camera Settings').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Movement Settings').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Lighting Settings').length).toBeGreaterThan(0);

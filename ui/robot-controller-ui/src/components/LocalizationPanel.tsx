@@ -250,17 +250,30 @@ const LocalizationPanel: React.FC = () => {
   }, []);
 
   // ── Canvas redraw ─────────────────────────────────────────────────────────
+  // Draw on every fetchStatus change too so the grid appears immediately on mount.
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !pose) return;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    drawPose(ctx, pose, CANVAS_SIZE, PIXELS_PER_METRE);
-  }, [pose]);
+    const p: PoseData = pose ?? {
+      x: 0, y: 0, theta_rad: 0, theta_deg: 0,
+      covariance: [[1, 0, 0], [0, 1, 0], [0, 0, 0.5]],
+      quality: 0, correction_count: 0, last_marker_seen: null, ts: 0,
+    };
+    drawPose(ctx, p, CANVAS_SIZE, PIXELS_PER_METRE);
+  }, [pose, fetchStatus]);
 
   // ── Render ────────────────────────────────────────────────────────────────
-  const quality    = pose?.quality ?? 0;
-  const isNotReady = fetchStatus !== 'ok';
+  const quality = pose?.quality ?? 0;
+
+  // Use zeroed placeholder values when no live data has arrived yet so the
+  // layout is always fully visible (canvas + stats) even while offline.
+  const displayPose: PoseData = pose ?? {
+    x: 0, y: 0, theta_rad: 0, theta_deg: 0,
+    covariance: [[1, 0, 0], [0, 1, 0], [0, 0, 0.5]],
+    quality: 0, correction_count: 0, last_marker_seen: null, ts: 0,
+  };
 
   return (
     <div className="bg-gray-800 text-white p-3 rounded-md shadow-md w-full flex flex-col gap-2">
@@ -291,78 +304,79 @@ const LocalizationPanel: React.FC = () => {
         </div>
       )}
 
-      {!isNotReady && (
-        <div className="flex gap-3">
-          {/* Stats column */}
-          <div className="flex flex-col gap-1 min-w-[110px] text-xs">
-            <div className="flex justify-between gap-2">
-              <span className="text-gray-400">X</span>
-              <span className="font-mono text-white">{pose ? pose.x.toFixed(3) : '—'} m</span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span className="text-gray-400">Y</span>
-              <span className="font-mono text-white">{pose ? pose.y.toFixed(3) : '—'} m</span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span className="text-gray-400">θ</span>
-              <span className="font-mono text-white">
-                {pose ? `${pose.theta_deg.toFixed(1)}°` : '—'}
-              </span>
-            </div>
-            <div className="border-t border-gray-700 my-0.5" />
-            <div className="flex justify-between gap-2">
-              <span className="text-gray-400">Fixes</span>
-              <span className={`font-mono ${(pose?.correction_count ?? 0) > 0 ? 'text-emerald-400' : 'text-gray-500'}`}>
-                {pose?.correction_count ?? 0}
-              </span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span className="text-gray-400">Marker</span>
-              <span className="font-mono text-amber-300">
-                {pose?.last_marker_seen != null ? `#${pose.last_marker_seen}` : '—'}
-              </span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span className="text-gray-400">Age</span>
-              <span className={`font-mono ${age > 5 ? 'text-red-400' : 'text-gray-300'}`}>
-                {age}s
-              </span>
-            </div>
-            {/* σ trace */}
-            {pose && (
-              <div className="flex justify-between gap-2">
-                <span className="text-gray-400">σ</span>
-                <span className="font-mono text-gray-400 text-[10px]">
-                  {(Math.sqrt(pose.covariance[0][0]) * 100).toFixed(1)}cm
-                </span>
-              </div>
-            )}
+      {/* Stats + canvas — always rendered; shows zeroed placeholders when offline */}
+      <div className="flex gap-3">
+        {/* Stats column */}
+        <div className="flex flex-col gap-1 min-w-[110px] text-xs">
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">X</span>
+            <span className={`font-mono ${pose ? 'text-white' : 'text-gray-600'}`}>
+              {displayPose.x.toFixed(3)} m
+            </span>
           </div>
-
-          {/* Canvas */}
-          <div className="relative flex-shrink-0">
-            <canvas
-              ref={canvasRef}
-              width={CANVAS_SIZE}
-              height={CANVAS_SIZE}
-              className="rounded bg-gray-900 border border-gray-700"
-              style={{ width: CANVAS_SIZE, height: CANVAS_SIZE }}
-            />
-            {!pose && (
-              <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-xs">
-                Waiting…
-              </div>
-            )}
-            {/* Scale legend */}
-            <div className="absolute bottom-1 right-1 text-[9px] text-gray-600">
-              {(CANVAS_SIZE / 2 / PIXELS_PER_METRE).toFixed(1)} m
-            </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">Y</span>
+            <span className={`font-mono ${pose ? 'text-white' : 'text-gray-600'}`}>
+              {displayPose.y.toFixed(3)} m
+            </span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">θ</span>
+            <span className={`font-mono ${pose ? 'text-white' : 'text-gray-600'}`}>
+              {displayPose.theta_deg.toFixed(1)}°
+            </span>
+          </div>
+          <div className="border-t border-gray-700 my-0.5" />
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">Fixes</span>
+            <span className={`font-mono ${displayPose.correction_count > 0 ? 'text-emerald-400' : 'text-gray-500'}`}>
+              {displayPose.correction_count}
+            </span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">Marker</span>
+            <span className="font-mono text-amber-300">
+              {displayPose.last_marker_seen != null ? `#${displayPose.last_marker_seen}` : '—'}
+            </span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">Age</span>
+            <span className={`font-mono ${pose && age > 5 ? 'text-red-400' : 'text-gray-300'}`}>
+              {pose ? `${age}s` : '—'}
+            </span>
+          </div>
+          {/* σ trace */}
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">σ</span>
+            <span className="font-mono text-gray-400 text-[10px]">
+              {(Math.sqrt(displayPose.covariance[0][0]) * 100).toFixed(1)}cm
+            </span>
           </div>
         </div>
-      )}
 
-      {/* ArUco mode hint */}
-      {fetchStatus === 'ok' && (pose?.correction_count ?? 0) === 0 && (
+        {/* Canvas */}
+        <div className="relative flex-shrink-0">
+          <canvas
+            ref={canvasRef}
+            width={CANVAS_SIZE}
+            height={CANVAS_SIZE}
+            className="rounded bg-gray-900 border border-gray-700"
+            style={{ width: CANVAS_SIZE, height: CANVAS_SIZE }}
+          />
+          {!pose && (
+            <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-xs">
+              Waiting…
+            </div>
+          )}
+          {/* Scale legend */}
+          <div className="absolute bottom-1 right-1 text-[9px] text-gray-600">
+            {(CANVAS_SIZE / 2 / PIXELS_PER_METRE).toFixed(1)} m
+          </div>
+        </div>
+      </div>
+
+      {/* ArUco mode hint — shown whenever correction count is 0 (live or placeholder) */}
+      {(pose?.correction_count ?? 0) === 0 && (
         <p className="text-[10px] text-gray-500 leading-tight">
           Dead-reckoning only — enable ArUco mode (vision mode 4) to apply corrections.
         </p>

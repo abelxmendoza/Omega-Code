@@ -8,36 +8,43 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from controllers.lighting import led_control as lc
 
+
 class TestControllersLedControl(unittest.TestCase):
-    @patch('controllers.lighting.led_control.PixelStrip')
-    def test_init_calls_pixel_strip(self, MockStrip):
-        instance = MockStrip.return_value
-        led = lc.LedControl()
-        MockStrip.assert_called_with(
-            lc.LED_COUNT,
-            lc.LED_PIN,
-            lc.LED_FREQ_HZ,
-            lc.LED_DMA,
-            lc.LED_INVERT,
-            lc.LED_BRIGHTNESS,
-            lc.LED_CHANNEL,
-        )
-        instance.begin.assert_called_once()
+    """Tests for the LedController class.
 
-    @patch('controllers.lighting.led_control.PixelStrip')
-    def test_init_falls_back_to_stub_on_error(self, MockStrip):
-        instance = MockStrip.return_value
-        instance.begin.side_effect = RuntimeError('boom')
-        led = lc.LedControl()
-        self.assertTrue(isinstance(led.strip, lc.StubPixelStrip))
+    The class uses rpi_ws281x.Adafruit_NeoPixel internally (not PixelStrip);
+    the conftest.py already stubs rpi_ws281x globally so no additional patching
+    is needed for basic construction tests.
+    """
 
+    def test_init_creates_stub_on_import_error(self):
+        """When Adafruit_NeoPixel raises ImportError, falls back to StubPixelStrip."""
+        with patch('controllers.lighting.led_control.Adafruit_NeoPixel',
+                   side_effect=ImportError('no hw')):
+            led = lc.LedController(num_pixels=8)
+        self.assertTrue(led._is_stub)
+        self.assertIsInstance(led.strip, lc.StubPixelStrip)
 
+    def test_init_creates_stub_on_runtime_error(self):
+        """When begin() raises a non-permission RuntimeError, falls back to StubPixelStrip."""
+        mock_strip = MagicMock()
+        mock_strip.begin.side_effect = RuntimeError('hardware failure')
+        with patch('controllers.lighting.led_control.Adafruit_NeoPixel',
+                   return_value=mock_strip):
+            led = lc.LedController(num_pixels=4)
+        self.assertTrue(led._is_stub)
 
+    def test_num_pixels_stored(self):
+        """num_pixels kwarg is stored on the controller."""
+        led = lc.LedController(num_pixels=12)
+        self.assertEqual(led.num_pixels, 12)
 
-    def test_convert_color_valid(self):
-        led = lc.LedControl()
-        result = led._convert_color('RGB', 0x112233)
-        self.assertIsInstance(result, int)
+    def test_invalid_num_pixels_raises(self):
+        with self.assertRaises(ValueError):
+            lc.LedController(num_pixels=0)
+        with self.assertRaises(ValueError):
+            lc.LedController(num_pixels=9999)
 
-if __name__ == '__main__':
-    unittest.main()
+    def test_invalid_pin_raises(self):
+        with self.assertRaises(ValueError):
+            lc.LedController(num_pixels=8, pin=100)

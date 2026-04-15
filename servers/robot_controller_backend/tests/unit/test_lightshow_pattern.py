@@ -62,10 +62,11 @@ def test_set_led_routes_to_lightshow(mock_sleep):
 
 
 @patch('controllers.lighting.led_control.time.sleep', return_value=None)
-def test_set_led_respects_mode_alias(mock_sleep):
+def test_set_led_pattern_lightshow_dispatches(mock_sleep):
+    """pattern='lightshow' always routes to self.lightshow(), regardless of mode."""
     controller = LedController(num_pixels=6)
     controller.lightshow = MagicMock()
 
-    controller.set_led(0x445566, mode='lightshow', pattern='static', interval=90, brightness=0.6)
+    controller.set_led(0x445566, mode='single', pattern='lightshow', interval=90, brightness=0.6)
 
     controller.lightshow.assert_called_once_with(0x445566, interval=90, brightness=0.6)

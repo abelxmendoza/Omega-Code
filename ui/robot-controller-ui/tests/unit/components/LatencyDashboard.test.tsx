@@ -81,7 +81,9 @@ describe('LatencyDashboard', () => {
     });
   });
 
-  it('updates latency metrics in real-time', async () => {
+  it('updates latency metrics after poll interval', async () => {
+    jest.useFakeTimers();
+
     const mockLatency = {
       ok: true,
       type: 'pi_only',
@@ -91,11 +93,12 @@ describe('LatencyDashboard', () => {
 
     renderWithProviders(<LatencyDashboard />);
 
+    // Flush initial fetch
     await waitFor(() => {
-      expect(screen.getByText(/2.5.*ms/i)).toBeInTheDocument();
+      expect(screen.getByText(/2\.50 ms/i)).toBeInTheDocument();
     });
 
-    // Simulate update with new value
+    // Swap mock to return updated value before advancing the timer
     const updatedLatency = {
       ok: true,
       type: 'pi_only',
@@ -103,10 +106,14 @@ describe('LatencyDashboard', () => {
     };
     mockFetch(updatedLatency);
 
-    // Wait for next poll (500ms interval)
+    // Advance past the 5s poll interval
+    jest.advanceTimersByTime(6_000);
+
     await waitFor(() => {
-      expect(screen.getByText(/3.0.*ms/i)).toBeInTheDocument();
-    }, { timeout: 1000 });
+      expect(screen.getByText(/3\.00 ms/i)).toBeInTheDocument();
+    });
+
+    jest.useRealTimers();
   });
 });
 

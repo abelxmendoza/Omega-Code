@@ -8,8 +8,32 @@ import React from 'react';
 import { render, RenderOptions } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
+import { RouterContext } from 'next/dist/shared/lib/router-context.shared-runtime';
 import { CommandProvider } from '@/context/CommandContext';
 import { CapabilityProvider } from '@/context/CapabilityContext';
+import { SystemModeProvider } from '@/context/SystemModeContext';
+
+// Minimal Next.js router mock — satisfies useRouter() inside any component under test
+export const createMockRouter = (overrides: Partial<any> = {}): any => ({
+  basePath: '',
+  pathname: '/',
+  route: '/',
+  asPath: '/',
+  query: {},
+  push: jest.fn().mockResolvedValue(true),
+  replace: jest.fn().mockResolvedValue(true),
+  reload: jest.fn(),
+  back: jest.fn(),
+  forward: jest.fn(),
+  prefetch: jest.fn().mockResolvedValue(undefined),
+  beforePopState: jest.fn(),
+  events: { on: jest.fn(), off: jest.fn(), emit: jest.fn() },
+  isFallback: false,
+  isLocaleDomain: false,
+  isReady: true,
+  isPreview: false,
+  ...overrides,
+});
 
 // Mock store for testing
 export const createMockStore = (initialState = {}) => {
@@ -28,22 +52,28 @@ export const renderWithProviders = (
   {
     preloadedState = {},
     store = createMockStore(preloadedState),
+    router = {},
     ...renderOptions
-  }: RenderOptions & { preloadedState?: any; store?: any } = {}
+  }: RenderOptions & { preloadedState?: any; store?: any; router?: Partial<any> } = {}
 ) => {
+  const mockRouter = createMockRouter(router);
   const Wrapper = ({ children }: { children: React.ReactNode }) => {
     return (
-      <Provider store={store}>
-        <CapabilityProvider>
-          <CommandProvider>
-            {children}
-          </CommandProvider>
-        </CapabilityProvider>
-      </Provider>
+      <RouterContext.Provider value={mockRouter}>
+        <Provider store={store}>
+          <SystemModeProvider>
+            <CapabilityProvider>
+              <CommandProvider>
+                {children}
+              </CommandProvider>
+            </CapabilityProvider>
+          </SystemModeProvider>
+        </Provider>
+      </RouterContext.Provider>
     );
   };
 
-  return { store, ...render(ui, { wrapper: Wrapper, ...renderOptions }) };
+  return { store, router: mockRouter, ...render(ui, { wrapper: Wrapper, ...renderOptions }) };
 };
 
 // Mock WebSocket helper

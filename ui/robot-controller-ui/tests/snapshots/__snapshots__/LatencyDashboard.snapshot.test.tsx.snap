@@ -101,7 +101,7 @@ exports[`LatencyDashboard Snapshots matches snapshot with Pi-only latency 1`] = 
       class="w-2 h-2 bg-green-500 rounded-full animate-pulse"
     />
     <span>
-      Updating every 500ms
+      Updating every 5s
     </span>
   </div>
 </div>
@@ -208,7 +208,7 @@ exports[`LatencyDashboard Snapshots matches snapshot with hybrid latency 1`] = `
       class="w-2 h-2 bg-green-500 rounded-full animate-pulse"
     />
     <span>
-      Updating every 500ms
+      Updating every 5s
     </span>
   </div>
 </div>
@@ -315,7 +315,7 @@ exports[`LatencyDashboard Snapshots matches snapshot with no data 1`] = `
       class="w-2 h-2 bg-green-500 rounded-full animate-pulse"
     />
     <span>
-      Updating every 500ms
+      Updating every 5s
     </span>
   </div>
 </div>

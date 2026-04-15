@@ -1,7 +1,14 @@
-import importlib
+"""
+Unit tests for movement/minimal_motor_control.py.
+
+The Motor class delegates to the hardware abstraction layer (get_motor_driver).
+We mock that layer at the module boundary to verify trim/stop/direction logic
+without touching real hardware.
+"""
+
 import os
 import sys
-import types
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -10,76 +17,55 @@ if BACKEND_ROOT not in sys.path:
     sys.path.insert(0, BACKEND_ROOT)
 
 
-@pytest.fixture()
-def motor_module(monkeypatch):
-    instances = []
+def _make_motor():
+    """Return (motor, mock_driver) with get_motor_driver patched in."""
+    mock_driver = MagicMock()
+    mock_driver.MAX_PWM = 4095
+    mock_driver.trim_left = 0
+    mock_driver.trim_right = 0
 
-    class FakePCA9685:
-        def __init__(self, *args, **kwargs):
-            self.calls = []
-            self.freq = None
-            instances.append(self)
+    def _set_trim(left, right):
+        mock_driver.trim_left = left
+        mock_driver.trim_right = right
+    mock_driver.set_trim.side_effect = _set_trim
 
-        def setPWMFreq(self, freq):
-            self.freq = freq
-
-        def setMotorPwm(self, channel, duty):
-            self.calls.append((channel, duty))
-
-    fake_module = types.ModuleType("PCA9685")
-    fake_module.PCA9685 = FakePCA9685
-    monkeypatch.setitem(sys.modules, "PCA9685", fake_module)
-    sys.modules.pop("movement.minimal_motor_control", None)
-    module = importlib.import_module("movement.minimal_motor_control")
-    return module, instances
+    import movement.minimal_motor_control as mmc
+    with patch.object(mmc, 'get_motor_driver', return_value=mock_driver):
+        import importlib
+        importlib.reload(mmc)
+        motor = mmc.Motor()
+        # Re-inject the mock after reload (reload replaces the reference)
+        motor.driver = mock_driver
+    return motor, mock_driver
 
 
-def test_forward_uses_trim_offsets(motor_module):
-    module, instances = motor_module
-    motor = module.Motor()
-    pwm = instances[0]
-
-    motor.set_trim(left=100, right=200)
-    motor.forward(1000)
-
-    # Forward motion should bias left/right channels according to trim
-    assert pwm.calls == [
-        (0, 1100), (1, 0),
-        (4, 1100), (5, 0),
-        (2, 1200), (3, 0),
-        (6, 1200), (7, 0),
-    ]
+def test_forward_calls_set_pwm():
+    motor, driver = _make_motor()
+    motor.forward(1500)
+    driver.set_pwm.assert_called_once_with(1500, 1500)
 
 
-def test_backward_respects_trim_and_clamps(motor_module):
-    module, instances = motor_module
-    motor = module.Motor()
-    pwm = instances[0]
-
-    motor.set_trim(left=5000, right=50)  # left should clamp to MAX_PWM
-    assert motor.get_trim()["left"] == motor.MAX_PWM
-
+def test_backward_calls_set_pwm_negative():
+    motor, driver = _make_motor()
     motor.backward(1000)
-    assert pwm.calls[-8:] == [
-        (0, 0), (1, motor.MAX_PWM),
-        (4, 0), (5, motor.MAX_PWM),
-        (2, 0), (3, 1050),
-        (6, 0), (7, 1050),
-    ]
+    driver.set_pwm.assert_called_once_with(-1000, -1000)
 
 
-def test_stop_command_zeroes_channels(motor_module):
-    module, instances = motor_module
-    motor = module.Motor()
-    pwm = instances[0]
-
-    motor.forward(800)
+def test_stop_calls_driver_stop():
+    motor, driver = _make_motor()
     motor.stop()
+    driver.stop.assert_called_once()
 
-    # Last 8 calls correspond to stop command
-    assert pwm.calls[-8:] == [
-        (0, 0), (1, 0),
-        (4, 0), (5, 0),
-        (2, 0), (3, 0),
-        (6, 0), (7, 0),
-    ]
+
+def test_set_trim_clamps_to_max_pwm():
+    motor, driver = _make_motor()
+    motor.set_trim(left=99999, right=50)
+    assert motor.left_trim == motor.MAX_PWM
+
+
+def test_get_trim_returns_current_values():
+    motor, driver = _make_motor()
+    motor.set_trim(left=100, right=200)
+    trim = motor.get_trim()
+    assert trim['left'] == 100
+    assert trim['right'] == 200

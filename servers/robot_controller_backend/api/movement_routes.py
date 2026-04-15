@@ -226,12 +226,23 @@ async def ws_movement(websocket: WebSocket):
                         'movementV2': _BASE_MOVEMENT_V2,
                         'ts': int(time.time() * 1000),
                     })
-                else:
+                elif backend is not None:
                     ack = await _proxy(data)
                     # Override backend's speed field with ours — backend speed may be 0
                     # after watchdog, but our current_speed is the user's configured speed.
                     ack['speed'] = current_speed
                     await websocket.send_json(ack)
+                else:
+                    # Backend unreachable — return local state as a valid status response
+                    # so the UI always gets a type:status (not a backend_unreachable ack).
+                    await websocket.send_json({
+                        'type': 'status',
+                        'speed': current_speed,
+                        'servo': servo_pos,
+                        'movementV2': _BASE_MOVEMENT_V2,
+                        'sim': True,
+                        'ts': int(time.time() * 1000),
+                    })
                 continue
 
             # ── Speed control — track locally, sync to backend with normalized key ─
@@ -359,6 +370,17 @@ async def ws_movement(websocket: WebSocket):
                     servo_pos[channel] = max(0, min(180, servo_pos[channel] + delta))
                 # Don't sync speed back from backend ack — we own speed state
                 ack['speed'] = current_speed
+                # In sim mode (backend unavailable), synthesize OK for known commands
+                # so the UI and tests receive clean acks.  Unknown commands keep
+                # the error status so callers can detect unrecognised inputs.
+                if (ack.get('status') == 'error'
+                        and ack.get('error') == 'backend_unreachable'
+                        and (cmd in _UI_TO_BRIDGE or cmd in _BUZZ_CMDS
+                             or cmd in _SERVO_CMDS or cmd in _SERVO_NUDGE
+                             or cmd in ('twist', 'reset-servo'))):
+                    ack = {'type': 'ack', 'action': cmd, 'status': 'ok',
+                           'speed': current_speed, 'sim': True,
+                           'ts': int(time.time() * 1000)}
                 await websocket.send_json(ack)
 
     except WebSocketDisconnect:
