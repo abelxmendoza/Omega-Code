@@ -66,7 +66,8 @@ const nextConfig = {
                 "default-src 'self'",
                 "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Needed for Next.js
                 "script-src-elem 'self' 'unsafe-inline'", // For inline script elements
-                "style-src 'self' 'unsafe-inline'", // Needed for CSS-in-JS
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", // CSS-in-JS + Google Fonts stylesheet
+                "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com", // <link> stylesheets
                 "font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com https://fonts-api.fontawesome.com",
                 "img-src 'self' data: blob: http: https:",
                 "connect-src 'self' http://localhost:* ws://localhost:* wss://localhost:* http://*:* ws://*:* wss://*:*",
