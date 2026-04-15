@@ -21,7 +21,7 @@
 
 import React from 'react';
 import { Activity, Cpu, Thermometer, AlertTriangle, Radio, Shield } from 'lucide-react';
-import { useSystemMode } from '@/hooks/useSystemMode';
+import { useSystemModeContext as useSystemMode } from '@/context/SystemModeContext';
 
 /* ------------------------------------------------------------------ */
 /* Mode metadata (display only — no mode IDs used for control)         */

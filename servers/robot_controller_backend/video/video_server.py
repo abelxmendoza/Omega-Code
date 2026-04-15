@@ -232,6 +232,45 @@ def _send_move_command(command: str, speed: Optional[int] = None) -> None:
             _move_ws = None
 
 
+_LOCALIZATION_URL = os.getenv(
+    "LOCALIZATION_API_URL", "http://127.0.0.1:8000/localization/aruco_update"
+)
+_localization_post_lock = threading.Lock()
+
+
+def _post_aruco_to_localization(
+    marker_id: int,
+    rvec: list,
+    tvec: list,
+) -> None:
+    """Fire-and-forget: POST ArUco pose data to the FastAPI localization endpoint.
+
+    Runs in a daemon thread so it never blocks the camera frame loop.
+    rvec/tvec values are the raw floats from ArucoDetection (already a list of 3).
+    """
+    import json as _json
+
+    def _post():
+        try:
+            payload = _json.dumps({
+                "marker_id": marker_id,
+                "rvec": [float(v) for v in rvec],
+                "tvec": [float(v) for v in tvec],
+                "timestamp": time.time(),
+            }).encode()
+            req = urllib.request.Request(
+                _LOCALIZATION_URL,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=0.3)
+        except Exception:
+            pass  # silently drop — never interrupt video pipeline
+
+    threading.Thread(target=_post, daemon=True).start()
+
+
 def _compute_avoidance_command(distance_cm: Optional[float]) -> Optional[str]:
     """
     Map distance to a movement command.
@@ -919,15 +958,27 @@ def generate_frames():
                             try:
                                 logging.debug("[PIPELINE] Running ArUco detection")
                                 frame, detections = aruco_detector.annotate(frame)
-                                if detections and hybrid_system_manager:
+                                if detections:
+                                    if hybrid_system_manager:
+                                        for det in detections:
+                                            if hasattr(det, 'marker_id'):
+                                                aruco_markers.append(ArUcoMarker(
+                                                    marker_id=det.marker_id,
+                                                    corners=[[float(c[0]), float(c[1])] for c in det.corners],
+                                                    centre=[float(det.centre[0]), float(det.centre[1])],
+                                                    pose=None,
+                                                ))
+                                    # Forward pose-bearing detections to the FastAPI
+                                    # localization endpoint so the EKF can correct drift.
+                                    # Only sent when rvec/tvec are available (requires
+                                    # ARUCO_MARKER_LENGTH + ARUCO_CALIBRATION_FILE env vars).
                                     for det in detections:
-                                        if hasattr(det, 'marker_id'):
-                                            aruco_markers.append(ArUcoMarker(
-                                                marker_id=det.marker_id,
-                                                corners=[[float(c[0]), float(c[1])] for c in det.corners],
-                                                centre=[float(det.centre[0]), float(det.centre[1])],
-                                                pose=getattr(det, 'pose', None),
-                                            ))
+                                        if det.rvec is not None and det.tvec is not None:
+                                            _post_aruco_to_localization(
+                                                det.marker_id,
+                                                list(det.rvec),
+                                                list(det.tvec),
+                                            )
                             except Exception as e:
                                 logging.warning(f"[PIPELINE] ArUco detection error: {e}")
                                 _metrics["errors_total"] += 1

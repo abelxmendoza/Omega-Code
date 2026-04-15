@@ -86,7 +86,7 @@ const InstallButton: React.FC = () => {
 };
 
 interface HeaderProps {
-  batteryLevel: number;
+  batteryLevel: number | null;
   /** Pass current gamepad connected state from useGamepad hook */
   gamepadConnected?: boolean;
   /** Name of the connected gamepad (for tooltip) */
@@ -428,10 +428,11 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false,
   const allGood = upCount === states.length;
 
   const batteryClass =
-    batteryLevel > 75 ? 'bg-green-500' :
-    batteryLevel > 50 ? 'bg-yellow-500' :
-    batteryLevel > 20 ? 'bg-blue-500 neon-blue' :
-                        'bg-red-500';
+    batteryLevel === null  ? 'bg-gray-600' :
+    batteryLevel > 75     ? 'bg-green-500' :
+    batteryLevel > 50     ? 'bg-yellow-500' :
+    batteryLevel > 20     ? 'bg-blue-500 neon-blue' :
+                            'bg-red-500';
 
   const liveLinkLabel = netSummary.label;
   const profile = getActiveProfile();
@@ -559,9 +560,9 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false,
           <div className="flex items-center text-sm xl4:text-base">
             <span className="opacity-80">Battery:</span>
             <div className="ml-2 w-32 xl4:w-48 battery-container">
-              <div className={`h-4 xl4:h-5 rounded ${batteryClass}`} style={{ width: `${batteryLevel}%` }} />
+              <div className={`h-4 xl4:h-5 rounded ${batteryClass}`} style={{ width: `${batteryLevel ?? 0}%` }} />
             </div>
-            <span className="ml-2 opacity-80">{batteryLevel}%</span>
+            <span className="ml-2 opacity-80">{batteryLevel != null ? `${batteryLevel}%` : '—'}</span>
           </div>
           
           {/* Capability Status */}

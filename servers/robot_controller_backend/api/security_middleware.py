@@ -54,8 +54,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = csp
         
         # Remove server header (don't leak server info)
-        response.headers.pop("server", None)
-        
+        # MutableHeaders does not have .pop(); use del with an existence check.
+        if "server" in response.headers:
+            del response.headers["server"]
+
         return response
 
 
@@ -67,9 +69,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.requests_per_minute = requests_per_minute
         self.burst = burst
     
+    # Read-only polling endpoints called at high frequency by the dashboard UI.
+    # Exempting them prevents the legitimate single-client dashboard from
+    # triggering 429s while still rate-limiting mutations and unknown paths.
+    _EXEMPT_PATHS = frozenset({
+        "/health",
+        "/api/health",
+        "/api/sensors/distance",
+        # Localization — cheap EKF state reads, polled every 2 s by LocalizationPanel
+        "/localization/pose",
+        "/localization/status",
+        # Autonomy — state read polled every 2 s by SensorDashboard when active
+        "/autonomy/status",
+        # Gamepad — presence check polled every 10 s by usePiGamepad
+        "/gamepad/status",
+    })
+
     async def dispatch(self, request: Request, call_next):
         # Skip rate limiting for health checks and internal sensor polling
-        if request.url.path in ["/health", "/api/health", "/api/sensors/distance"]:
+        if request.url.path in self._EXEMPT_PATHS:
             return await call_next(request)
         
         # Get client identifier (IP address)

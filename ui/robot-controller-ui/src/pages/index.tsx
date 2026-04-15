@@ -42,6 +42,7 @@ import LedModal from '../components/lighting/LedModal';
 import { useGamepad } from '../hooks/useGamepad';
 import { usePiGamepad } from '../hooks/usePiGamepad';
 import XboxControllerStatus from '../components/control/XboxControllerStatus';
+import LocalizationPanel from '../components/LocalizationPanel';
 
 // Autonomy API client (HTTP wire → FastAPI /autonomy/* endpoints)
 import {
@@ -177,7 +178,7 @@ export default function Home() {
       </Head>
 
       <Header
-        batteryLevel={75}
+        batteryLevel={null}
         gamepadConnected={gamepadState.connected}
         gamepadName={gamepadState.name}
         gamepadPaused={gamepadPaused}
@@ -192,7 +193,7 @@ export default function Home() {
               <CarControlPanel />
               <AutonomyPanel
                 connected={isConnected}
-                batteryPct={75}
+
                 onStart={async (mode, params) => {
                   try {
                     await autonomyApi.start(mode, params);
@@ -270,10 +271,13 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Zone 3: System Mode + Latency side by side */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 xl:gap-6">
+          {/* Zone 3: System Mode + Localization + Latency */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 xl:gap-6">
             <ErrorBoundary>
               <SystemStatusPanel />
+            </ErrorBoundary>
+            <ErrorBoundary>
+              <LocalizationPanel />
             </ErrorBoundary>
             <ErrorBoundary>
               <LatencyDashboard />

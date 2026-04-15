@@ -13,7 +13,7 @@ export interface PiGamepadState {
   name: string;
 }
 
-const POLL_INTERVAL_MS = 3000;
+const POLL_INTERVAL_MS = 10_000; // gamepad presence doesn't need sub-second precision
 
 export function usePiGamepad(apiBase: string): PiGamepadState {
   const [state, setState] = useState<PiGamepadState>({ connected: false, name: '' });

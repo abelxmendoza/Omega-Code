@@ -23,8 +23,12 @@ set_pwm(left_pwm, right_pwm)
   right_pwm to both right wheels.  Signed: positive = forward.
 """
 
+import logging as _logging
+
 from .base_motor_driver import BaseMotorDriver
 from .pca9685_real import PCA9685
+
+_log = _logging.getLogger(__name__)
 
 _MAX_DUTY = 4095
 
@@ -41,7 +45,19 @@ class PiMotorDriver(BaseMotorDriver):
     def __init__(self, trim_left: int = 0, trim_right: int = 0):
         super().__init__(trim_left, trim_right)
         self.pca9685 = PCA9685()
-        self.pca9685.set_pwm_freq(500)  # 500 Hz for smooth DC motor control (was 50 Hz)
+        self.pca9685.set_pwm_freq(50)   # 50 Hz: servos on ch8/9 share this clock — must stay at 50 Hz
+        # Verify the frequency actually took — a silent I2C failure here would
+        # leave servo channels outputting invalid pulses on the next power-on.
+        _prescale = self.pca9685.read(0xFE)
+        _actual_hz = 25_000_000.0 / 4096.0 / (_prescale + 1)
+        if abs(_actual_hz - 50.0) > 5.0:
+            _log.error(
+                "[SERVO_SAFETY] set_pwm_freq(50) resulted in %.1f Hz (prescale=%d). "
+                "I2C write may have failed. Servo channels will output invalid pulses.",
+                _actual_hz, _prescale,
+            )
+        else:
+            _log.info("[MOTOR_INIT] PCA9685 frequency set and verified: %.1f Hz", _actual_hz)
         # Signed duty per wheel (positive = forward): FL, RL, FR, RR
         self._duty = {"frontLeft": 0, "rearLeft": 0, "frontRight": 0, "rearRight": 0}
 

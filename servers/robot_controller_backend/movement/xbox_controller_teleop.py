@@ -17,20 +17,33 @@ Features:
 - GTA-style driving controls (triggers for gas/brake)
 - Pivot turns with left stick
 - Camera control with D-Pad
-- Sends commands over UDP to robot at 192.168.50.2
-- Safe default: zero velocity if triggers released or connection lost
-- Automatic controller detection
+- 20 Hz keep-alive loop — watchdog never fires, stop is always delivered
+- Automatic controller detection (USB or Bluetooth)
+- Bluetooth reconnect: if controller drops, the loop retries automatically
+
+Wireless / Bluetooth setup:
+    Pair the Xbox controller to the Pi once with bluetoothctl:
+        sudo bluetoothctl
+        power on
+        agent on
+        scan on          # press the Bluetooth button on the controller
+        pair <MAC>
+        trust <MAC>
+        connect <MAC>
+    After pairing, the controller reconnects automatically on power-on.
+    The xpad kernel driver creates /dev/input/eventX exactly like USB,
+    so this script works identically — no extra configuration needed.
 
 Usage:
-    # Auto-detect mode (recommended)
+    # Auto-detect mode (recommended; runs locally on Pi)
     python3 xbox_controller_teleop.py
-    
+
     # Force local mode (controller on robot)
     python3 xbox_controller_teleop.py --mode local
-    
+
     # Force remote mode (controller on laptop)
     python3 xbox_controller_teleop.py --mode remote --robot-ip 192.168.50.2
-    
+
     # Custom robot IP and port
     python3 xbox_controller_teleop.py --robot-ip 192.168.1.100 --port 8888
 
@@ -413,6 +426,29 @@ class XboxControllerTeleop:
             self._abs_cache = {code: info for code, info in abs_list}
         return self._abs_cache.get(axis_code)
 
+    def _wait_for_reconnect(self, timeout: float = 30.0, interval: float = 2.0) -> bool:
+        """Wait for the controller to reconnect (e.g. after Bluetooth drop).
+
+        Polls find_xbox_controller() every *interval* seconds for up to
+        *timeout* seconds.  Re-opens the device on the instance and returns
+        True on success, False on timeout.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline and self.running:
+            time.sleep(interval)
+            path = self.find_xbox_controller()
+            if path:
+                try:
+                    self.device = InputDevice(path)
+                    try:
+                        self.device.grab()
+                    except Exception:
+                        pass
+                    return True
+                except Exception as exc:
+                    print(f"   (open failed: {exc})")
+        return False
+
     def process_event(self, event):
         """Process input event from controller."""
         if event.type == ecodes.EV_ABS:
@@ -426,11 +462,9 @@ class XboxControllerTeleop:
             elif event.code == AXIS_RIGHT_TRIGGER:
                 axis_info = self._abs_info(AXIS_RIGHT_TRIGGER)
                 self.right_trigger = event.value / axis_info.max if axis_info else event.value / 255.0
-                print(f"[DBG] RT raw={event.value} → right_trigger={self.right_trigger:.3f}")
             elif event.code == AXIS_LEFT_TRIGGER:
                 axis_info = self._abs_info(AXIS_LEFT_TRIGGER)
                 self.left_trigger = event.value / axis_info.max if axis_info else event.value / 255.0
-                print(f"[DBG] LT raw={event.value} → left_trigger={self.left_trigger:.3f}")
 
             # D-Pad (Camera control)
             elif event.code == AXIS_DPAD_X:
@@ -453,9 +487,7 @@ class XboxControllerTeleop:
                 elif event.value == 1 and old_value != 1:  # Down pressed
                     self.send_command("camera-servo-down")
                     print("📷 Camera: Down")
-            else:
-                # Catch-all: log any ABS axis not yet handled
-                print(f"[DBG] ABS code={event.code} value={event.value} (unhandled)")
+            # (other ABS axes not used)
 
         elif event.type == ecodes.EV_KEY:
             # Buttons
@@ -532,10 +564,12 @@ class XboxControllerTeleop:
         print(f"   A Button: Emergency stop")
         print(f"\nPress Ctrl+C to stop\n")
         
-        # Main loop — select-based so we send at a fixed rate even when
-        # the trigger is held steady (no new axis events).  The watchdog
-        # in movement_ws_server times out after 2s without a command;
-        # we send at 20 Hz so the watchdog is always kept alive.
+        # Main loop — select-based so we tick at a fixed rate even when the
+        # trigger is held steady (no new axis events).  The watchdog in
+        # movement_ws_server fires after 2 s of silence; we send at 20 Hz so
+        # it is always kept alive.  We send unconditionally every tick so a
+        # failed stop command is retried on the very next tick rather than
+        # being skipped because last_linear was already cleared.
         last_send_time = 0.0
         send_interval = 1.0 / COMMAND_RATE  # 50 ms
         fd = self.device.fileno()
@@ -553,34 +587,31 @@ class XboxControllerTeleop:
                         for event in self.device.read():
                             self.process_event(event)
                     except OSError:
-                        print("⚠️ Controller disconnected")
-                        break
+                        print("⚠️ Controller disconnected — waiting for reconnect…")
+                        if not self._wait_for_reconnect():
+                            break
+                        fd = self.device.fileno()
+                        self._abs_cache = {}  # reset axis cache for new device
+                        print("✅ Controller reconnected")
+                        continue
 
-                # Send velocity command at fixed rate (fires every ~50 ms
-                # regardless of whether a new event arrived)
+                # Send velocity command unconditionally every tick.
+                # When triggers are released linear=0 → "stop" is sent;
+                # repeating stop at 20 Hz is harmless and ensures delivery
+                # even if a single WebSocket send fails.
                 current_time = time.time()
                 if current_time - last_send_time >= send_interval:
-                    # GTA-style movement: Triggers for forward/backward
                     linear = 0.0
                     if self.right_trigger > 0.1:
                         linear = self.right_trigger * MAX_LINEAR_VELOCITY
                     elif self.left_trigger > 0.1:
                         linear = -self.left_trigger * MAX_LINEAR_VELOCITY
 
-                    # Pivot turns with left stick X
-                    pivot_active = False
                     if abs(self.left_stick_x) > DEAD_ZONE:
-                        angular = -self.left_stick_x  # left stick right → negative angular (turn right)
+                        angular = -self.left_stick_x  # stick right → turn right
                         self.send_velocity_command(linear, angular)
-                        pivot_active = True
-
-                    # Forward/backward (or stop) when not pivoting
-                    if not pivot_active:
-                        if abs(linear) > 0.1:
-                            print(f"[DBG] SEND linear={linear:.3f} rt={self.right_trigger:.3f} lt={self.left_trigger:.3f}")
-                            self.send_velocity_command(linear, 0.0)
-                        elif self.last_linear != 0.0:
-                            self.send_velocity_command(0.0, 0.0)
+                    else:
+                        self.send_velocity_command(linear, 0.0)
 
                     last_send_time = current_time
 

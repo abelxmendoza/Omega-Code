@@ -167,7 +167,6 @@ def read_sensors() -> dict:
         return {"left": 0, "center": 0, "right": 0}
 
 import websockets
-from websockets.server import WebSocketServerProtocol
 
 def _path_ok(request_path: str) -> bool:
     # tolerate trailing slash and query string
@@ -176,7 +175,7 @@ def _path_ok(request_path: str) -> bool:
     return (req or "/") == PATH
 
 # ---------- WS tasks ----------
-async def producer(websocket: WebSocketServerProtocol):
+async def producer(websocket):
     """Send samples at RATE_HZ, change-only, with periodic keepalives."""
     last_state = None
     last_sent = 0.0
@@ -204,7 +203,7 @@ async def producer(websocket: WebSocketServerProtocol):
 
         await asyncio.sleep(period)
 
-async def consumer(websocket: WebSocketServerProtocol):
+async def consumer(websocket):
     """Handle inbound heartbeat and optional runtime settings."""
     async for message in websocket:
         try:
@@ -232,8 +231,13 @@ async def consumer(websocket: WebSocketServerProtocol):
                         INVERT[k] = bool(data["invert"][k])
                 _log(f"invert updated → {INVERT}")
 
-async def handler(websocket: WebSocketServerProtocol):
-    req_path = getattr(websocket, "path", "") or ""
+async def handler(websocket):
+    # websockets >= 14 moved path to websocket.request.path; fall back for older versions
+    req_path = (
+        getattr(websocket, "path", None)
+        or getattr(getattr(websocket, "request", None), "path", None)
+        or ""
+    )
     if not _path_ok(req_path):
         _log(f"Rejecting path: {req_path!r} (expected {PATH})")
         await websocket.close(code=1008, reason="Invalid path")

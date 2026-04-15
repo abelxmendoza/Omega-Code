@@ -31,6 +31,8 @@ The system was redesigned into a centralized, fault-tolerant architecture:
 | `fetch("ws://...")` silent failures | `toHealthUrl()` / `wsUrlToHttp()` normalize all WS URLs to HTTP before any fetch call |
 | Fake simulated performance data | Removed; `PerformanceDashboard` shows real Pi metrics or a clear "backend offline" state |
 | No automated test coverage | 156 tests added: unit (circuit breaker, URL helpers, env profile), integration (context, API), E2E (Cypress) |
+| N duplicate system-mode polling loops | `SystemModeContext` shares one `/api/system/mode/status` loop across all consumers — polling stays O(1) regardless of how many components mount |
+| PCA9685 shared PWM clock bug (500 Hz → invalid servo pulses) | Motor driver locked to 50 Hz; `Servo.__init__` reads the PRESCALE register on startup and auto-corrects if another process changed the frequency; all servo pulses hard-clamped to 1200–1800 µs on every command |
 
 **Result:** HTTP requests <10/min at rest, stable WS control, accurate system state, no console noise from protocol mismatches.
 
@@ -178,6 +180,7 @@ Omega-Code/
 ├── servers/
 │   └── robot_controller_backend/
 │       ├── movement/               # Motor HAL: PCA9685, ramp, PID, odometry, watchdog
+│       │   └── pose_ekf.py         # SE(2) Extended Kalman Filter (dead-reckoning + ArUco)
 │       ├── sensors/                # HC-SR04, IR, ADC WebSocket servers
 │       ├── video/
 │       │   ├── video_server.py     # Flask MJPEG server (port 5000)
@@ -185,7 +188,8 @@ Omega-Code/
 │       ├── api/
 │       │   ├── ros_bridge.py       # FastAPI <-> ROS2 bridge (publishes /cmd_vel_in)
 │       │   ├── sensor_bridge.py    # ROS subscriber → WebSocket fan-out
-│       │   ├── sensor_ws_routes.py # WS /ws/ultrasonic, /ws/line, /ws/battery
+│       │   ├── sensor_ws_routes.py # WS /ws/ultrasonic, /ws/line, /ws/battery, /ws/radar
+│       │   ├── localization_routes.py  # SE(2) EKF pose, ArUco correction, marker map endpoints
 │       │   ├── movement_routes.py  # REST movement and servo endpoints
 │       │   ├── config_routes.py    # Read/write omega_config sections
 │       │   ├── system_mode_routes.py
@@ -208,8 +212,10 @@ Omega-Code/
         │   ├── pages/              # Routes: index, network, ros, services, settings + API proxies
         │   ├── components/         # UI by domain: control/, lighting/, sensors/, network/,
         │   │                       #   ros/, settings/, services/, capability/, macros/, common/, ui/
+        │   │                       #   LocalizationPanel.tsx — SE(2) pose canvas + quality badge
         │   ├── context/            # CommandContext (WS + log), MacroContext, CapabilityContext,
-        │   │                       #   SystemHealthContext (centralized health provider)
+        │   │                       #   SystemHealthContext (centralized health provider),
+        │   │                       #   SystemModeContext (shared mode poll — O(1) regardless of consumers)
         │   ├── services/           # systemHealth.ts — singleton poll loop + circuit breaker
         │   ├── hooks/              # WS lifecycle, HTTP polling, gamepad, ROS2 status
         │   ├── utils/              # robotFetch / RobotResponse, connect*Ws connectors, autonomy client,
@@ -491,6 +497,7 @@ FastAPI bridge  ──┐
 xbox_teleop     ──┤──> /cmd_vel_in ──> obstacle_avoidance_node ──> /cmd_vel ──> motor_controller
                    │                        ^
                    │              /omega/ultrasonic (HC-SR04)
+                   │              camera snapshot (optional secondary)
 ```
 
 **States:**
@@ -498,8 +505,19 @@ xbox_teleop     ──┤──> /cmd_vel_in ──> obstacle_avoidance_node ─
 | State | Condition | Behaviour |
 |---|---|---|
 | `PASS_THROUGH` | dist > warn_m (0.50 m) | Commands pass through unchanged |
-| `WARN` | stop_m < dist ≤ warn_m | Forward speed scaled down proportionally; reverse always passes |
-| `PIVOTING` | dist ≤ stop_m (0.25 m) | Stops forward motion, pivots in place; direction alternates each burst |
+| `WARN` | stop_m < dist ≤ warn_m | Forward speed scaled **proportionally** to clearance (smooth deceleration, not binary stop) |
+| `PIVOTING` | dist ≤ stop_m (0.25 m) | Pivots until the full warn zone is clear; direction alternates per obstacle |
+| `RECOVERING` | brief post-pivot | Counter-pivot to partially restore original heading |
+| `SENSOR_OFFLINE` | no valid reading > 0.5 s | Motors halted; resumes automatically when sensor recovers |
+| `ESTOP` | ESTOP_EVENT set | Motors halted; waits for event clear (next `/autonomy/start`) |
+
+**Optional camera secondary sensor:** set `camera_assist=true` in the start payload.
+The Flask video server snapshot at `~2 FPS` is analysed for edge density; if an obstacle
+is visually confirmed the effective stop threshold is raised for an earlier reaction.
+
+**Heading recovery:** `recovery_ratio` (default 30%) — after each pivot the robot
+counter-rotates for `recovery_ratio × pivot_time` seconds to partially restore the
+original heading across multiple consecutive obstacles.
 
 ```bash
 # Monitor avoidance state
@@ -580,6 +598,26 @@ ros2 run omega_robot xbox_teleop
 
 Pure left-stick with no triggers → in-place pivot.
 
+### Bluetooth pairing (one-time setup)
+
+The FastAPI-mode teleop (`movement/xbox_controller_teleop.py`) detects the controller
+automatically over USB or Bluetooth via `evdev` — no configuration change needed.
+After pairing once with `bluetoothctl` the controller reconnects automatically:
+
+```bash
+sudo bluetoothctl
+power on
+agent on
+scan on          # press the Bluetooth button on the controller
+pair <MAC>
+trust <MAC>
+connect <MAC>
+```
+
+If the controller drops mid-session the teleop loop retries reconnection every 2 s
+for up to 30 s before giving up. A 20 Hz keep-alive loop ensures the movement
+watchdog never fires while the controller is held steady.
+
 ---
 
 ## Servo Pan-Tilt
@@ -599,6 +637,69 @@ ros2 topic pub --once /omega/servo_increment geometry_msgs/Vector3 '{x: 0.0, y: 
 # Monitor position
 ros2 topic echo /omega/servo_state
 ```
+
+### FastAPI / WebSocket path
+
+The FastAPI backend (`controllers/servo_control.py`) also drives the servos
+directly via WebSocket commands (`servo-horizontal`, `servo-vertical`, `set-servo-position`,
+`reset-servo`). Safe pulse range is **1200–1800 µs** on both channels; all commands are
+hard-clamped to this range before any I2C write.
+
+### PCA9685 shared clock — safety constraint
+
+All 16 PCA9685 channels share one global PWM clock. **The clock must stay at 50 Hz.**
+Motors use channels 0–7; servos use channels 8–9. If the frequency is raised (e.g. to
+500 Hz for motor smoothness), servo channels output ~150 µs pulses — below the valid
+servo range — causing immediate oscillation.
+
+Guardrails in place:
+- `motor_driver_pi.py` sets and verifies 50 Hz at startup; logs `[SERVO_SAFETY]` error if the I2C write fails.
+- `Servo.__init__` reads the PRESCALE register after `setPWMFreq(50)` and auto-corrects + re-centers if another process changed it.
+- Every `setServoPwm()` call clamps the computed pulse to 1200–1800 µs regardless of input angle.
+
+### Power-on procedure
+
+```
+1. Flip main Pi power switch (boots Pi only — do NOT power servos yet)
+2. Wait ≥ 10 seconds
+   • t=8s:  crontab fires → PCA9685 set to 50 Hz, ch8/9 → 1500 µs (center)
+   • t=12s: movement_ws_server starts → verifies 50 Hz
+3. Flip hat power switch (S1/S2) → battery voltage to servos
+   Servo receives 1500 µs → moves smoothly to center and holds still
+```
+
+Verify crontab is present: `ssh omegaone crontab -l | grep reboot`
+Verify live frequency: `i2cget -y 1 0x40 0xFE` → should return `0x79` (121 = 50 Hz prescale).
+
+---
+
+## Radar Sweep
+
+The `/ws/radar` WebSocket endpoint sweeps the pan servo (PCA9685 ch8) back and forth
+while reading HC-SR04 distance at each angle, streaming polar scan frames to the UI.
+
+```
+Client                           FastAPI /ws/radar
+  │── { command: "start-sweep",       │
+  │     step_deg: 5,                  │── move servo to angle
+  │     dwell_ms: 150,                │── wait for settle
+  │     sweep_min: 30,                │── read HC-SR04
+  │     sweep_max: 150 }              │
+  │◄── { type: "radar_scan",          │
+  │      angle_deg: 45,               │
+  │      distance_cm: 38.2,           │
+  │      ts: 1714000000000 }  ────────┘
+  │── { command: "stop-sweep" }
+```
+
+The UI (`UltrasonicVisualization`) renders a phosphor-green radar display on a `<canvas>`:
+- Sweep animation with fading blip trails
+- Scan line showing current servo angle
+- Distance scale rings at 0.5 m / 1.0 m / 1.5 m
+- Accessible from the Sensor Dashboard via the **Radar** button (opens as a portal modal)
+
+All servo commands through the radar sweep path are subject to the same 1200–1800 µs
+clamp. `sweep_min` is capped to 30–89° and `sweep_max` to 91–150° server-side.
 
 ---
 
@@ -646,6 +747,75 @@ decision_node (Pi)
 ```
 
 Bandwidth: 640×480 JPEG @ 80% ≈ 40–60 KB/frame × 10fps ≈ 400–600 KB/s over Tailscale.
+
+---
+
+## SE(2) EKF Localization
+
+Dead-reckoning position estimation fused with ArUco marker corrections via an Extended
+Kalman Filter. The filter state is `[x, y, θ]` in metres/radians relative to the
+power-on origin (or the last `/localization/reset` call).
+
+```
+movement_routes.py  ──POST /localization/command──►  prediction loop (20 Hz)
+                                                         │  kinematic model
+                                                         ▼
+video_server.py     ──POST /localization/aruco_update──► EKF update step
+(ArUco detection)                                        │  marker map lookup
+                                                         ▼
+GET /localization/pose  ◄────────────────────────────  SE2PoseFilter.get_pose()
+LocalizationPanel (UI)                                   x, y, θ, covariance, quality
+```
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/localization/pose` | Current pose estimate (x, y, θ, covariance, quality 0–1) |
+| `POST` | `/localization/aruco_update` | Receive ArUco rvec/tvec from video server; apply EKF correction |
+| `POST` | `/localization/command` | Update velocity hint used by the prediction loop |
+| `POST` | `/localization/reset` | Reset filter to a known pose |
+| `POST` | `/localization/marker_map` | Replace the ArUco marker world-position map at runtime |
+| `GET`  | `/localization/status` | Filter diagnostics (hz, quality, correction count) |
+
+### ArUco marker map
+
+Define known marker world positions in a JSON file and set `ARUCO_MARKER_MAP_FILE`:
+
+```json
+{
+  "7":  {"x": 1.0, "y": 0.0, "alpha": 3.14159},
+  "12": {"x": 0.0, "y": 2.0, "alpha": 1.5708}
+}
+```
+
+`alpha` is the direction the marker normal faces (radians, 0 = faces +X world axis).
+Without a map the prediction loop still runs (dead-reckoning only); quality is capped at 0.5.
+
+### Quality score
+
+`quality` (0–1) returned by `GET /localization/pose` combines two factors:
+- **covariance trace** — how uncertain is the geometric estimate (decays as dead-reckoning drifts)
+- **staleness** — time since last ArUco correction (decays to 0 after 60 s without a fix)
+
+A score ≥ 0.7 (green) means a recent ArUco correction with low covariance.
+Dead-reckoning only is capped at 0.5 (amber) regardless of covariance.
+
+### UI panel
+
+`LocalizationPanel` polls `GET /localization/pose` every 2 s and shows:
+- x / y position (metres) and heading θ (degrees)
+- Quality badge (green / amber / red)
+- Mini 2D top-down canvas: robot dot + heading arrow + 1-σ uncertainty ellipse
+- ArUco correction count and last marker ID seen
+
+### Video server integration
+
+`video/video_server.py` posts ArUco detections with full rvec/tvec to
+`POST /localization/aruco_update` in a fire-and-forget daemon thread so the camera
+frame loop is never blocked. Requires `ARUCO_MARKER_LENGTH` (metres) and
+`ARUCO_CALIBRATION_FILE` (camera intrinsics JSON) to be set in the video server
+environment for pose estimation to produce metric results.
 
 ---
 
@@ -745,8 +915,9 @@ pip install -e ~/Desktop/Omega-Code/
 | Issue | Status |
 |---|---|
 | Front-left motor (left_upper) sometimes silent | ch0/ch1 wiring swap applied — run `motor_channel_scan.py` to verify channel mapping if still failing |
+| Servo oscillating on power-on | Root cause: `motor_driver_pi.py` set PCA9685 to 500 Hz (DC motor smoothing), corrupting servo pulse widths to ~147 µs. Fixed: motor driver locked to 50 Hz; `Servo.__init__` reads PRESCALE on startup and auto-corrects; all pulse outputs hard-clamped to 1200–1800 µs |
 | Pitch servo jitter at extremes | Hardware slack in gimbal; limits tightened to 1300–1700 µs |
-| No wheel encoders | Dead-reckoning odometry only; large covariance in `/odom` until encoders added |
+| No wheel encoders | Dead-reckoning odometry only; large covariance in `/odom` until encoders added; SE(2) EKF partially compensates via ArUco marker corrections |
 | Camera node not in omega_hybrid.launch.py | Camera is launched separately due to libcamera env var requirement |
 
 ---
@@ -791,3 +962,7 @@ pip install -e ~/Desktop/Omega-Code/
 | Circuit breaker on all pollers | 3 consecutive failures → 60 s backoff; prevents log spam and 429s when the Pi is unreachable; success resets to normal interval automatically |
 | ws:// normalized to http:// before fetch | `fetch()` rejects WS-scheme URLs at the browser level (silent TypeError); `toHealthUrl()` / `wsUrlToHttp()` coerce the scheme before any health probe |
 | Simulated performance data removed | Fake random metrics make the dashboard look healthy when the Pi is offline; replaced with an explicit "backend offline" state so degradation is always visible |
+| SE(2) EKF separated from `sensor_fusion.py` | Localization state is tightly coupled to ArUco observations and differential-drive kinematics; keeping it in a standalone `pose_ekf.py` + `localization_routes.py` avoids polluting the sensor fusion pipeline and makes the filter independently testable |
+| PCA9685 clock locked to 50 Hz | All 16 channels share one global PWM clock; servos on ch8/ch9 require exactly 50 Hz (20 ms period). Setting any higher frequency for DC motors corrupts servo pulse widths. Motor driver and servo init both read back the PRESCALE register and abort/correct if the frequency drifted. |
+| `SystemModeContext` polling consolidation | Multiple components independently polled `/api/system/mode/status` — O(N) requests per component mount. Context wraps the loop in a React context; consumers call `useSystemMode()` instead of spawning their own intervals. |
+| Fire-and-forget ArUco posting from `video_server.py` | Flask video server runs in its own process; spawning a daemon thread for each ArUco observation keeps the MJPEG frame loop non-blocking while feeding the EKF localization endpoint with marker corrections. |

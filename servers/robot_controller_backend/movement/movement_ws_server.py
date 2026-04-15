@@ -455,7 +455,7 @@ else:
     def get_cached_motor_telemetry():
         return {}  # Return empty dict if telemetry not available
 
-# ── MotorController (dead-zone, ramp, 500 Hz PCA9685 layer) ──────────────
+# ── MotorController (dead-zone, ramp, 50 Hz PCA9685 layer) ───────────────
 MOTOR_CTRL = MotorController(motor)
 log(f"[MOVE][INIT] MotorController ready — MIN={MOTOR_CTRL.MIN_PWM} MAX={MOTOR_CTRL.MAX_PWM} RAMP={MOTOR_CTRL.RAMP_STEP}/tick")
 

@@ -11,6 +11,11 @@ Additional security features that maintain accessibility:
 
 from fastapi import Request, HTTPException, status
 from fastapi.responses import Response
+try:
+    from starlette.requests import ClientDisconnect
+except ImportError:
+    # Older Starlette versions expose it from starlette.exceptions
+    from starlette.exceptions import ClientDisconnect  # type: ignore[no-redef]
 from starlette.middleware.base import BaseHTTPMiddleware
 from typing import Optional, Dict, Any
 import logging
@@ -281,6 +286,11 @@ class SecurityAuditMiddleware(BaseHTTPMiddleware):
             
             return response
             
+        except ClientDisconnect:
+            # Client disconnected mid-request — normal network event, not a security issue.
+            # Return 499 instead of re-raising so the exception stops here and does NOT
+            # propagate through BaseHTTPMiddleware's anyio TaskGroup as a noisy ExceptionGroup.
+            return Response(status_code=499)
         except HTTPException as e:
             # Log security-related exceptions
             if self.enabled and e.status_code in [401, 403, 429]:

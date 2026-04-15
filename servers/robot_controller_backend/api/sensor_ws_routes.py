@@ -301,3 +301,206 @@ async def ws_lighting(websocket: WebSocket):
         log.info('ws_lighting: client disconnected')
     except Exception as exc:
         log.debug('ws_lighting: %s', exc)
+
+
+# ---------------------------------------------------------------------------
+# /ws/radar  — ultrasonic radar sweep (servo pan + HC-SR04 distance)
+# ---------------------------------------------------------------------------
+
+# Hardware classes loaded lazily so the server still starts on non-Pi hosts.
+_radar_servo_cls = None   # controllers.servo_control.Servo
+_radar_sensor_cls = None  # sensors.ultrasonic_sensor.Ultrasonic
+
+
+def _try_load_radar_hw() -> bool:
+    """Return True if both Servo and Ultrasonic classes are importable."""
+    global _radar_servo_cls, _radar_sensor_cls
+    if _radar_servo_cls is None:
+        try:
+            from controllers.servo_control import Servo
+            _radar_servo_cls = Servo
+        except Exception:
+            pass
+    if _radar_sensor_cls is None:
+        try:
+            from sensors.ultrasonic_sensor import Ultrasonic
+            _radar_sensor_cls = Ultrasonic
+        except Exception:
+            pass
+    return _radar_servo_cls is not None and _radar_sensor_cls is not None
+
+
+async def _do_radar_sweep(
+    websocket: WebSocket,
+    step_deg: int,
+    dwell_ms: float,
+    sweep_min: int,
+    sweep_max: int,
+    stop_ev: asyncio.Event,
+    servo,
+    sensor,
+) -> None:
+    """
+    Sweep the pan servo back and forth between sweep_min and sweep_max,
+    reading ultrasonic distance at each step and streaming radar_scan frames.
+    Exits when stop_ev is set or the WebSocket closes.
+    """
+    angle = sweep_min
+    direction = 1
+
+    while not stop_ev.is_set():
+        # Position servo (blocking I²C writes, offload to thread pool)
+        try:
+            await asyncio.to_thread(servo.setServoPwm, '0', angle)
+        except Exception as exc:
+            log.warning('radar: servo error at %d°: %s', angle, exc)
+
+        # Dwell — servo settle time; exit early if stopped
+        try:
+            await asyncio.wait_for(stop_ev.wait(), timeout=dwell_ms / 1000.0)
+            break  # stop_ev fired during dwell
+        except asyncio.TimeoutError:
+            pass
+
+        if stop_ev.is_set():
+            break
+
+        # Read ultrasonic distance (blocking)
+        try:
+            dist = await asyncio.to_thread(sensor.get_distance)
+        except Exception:
+            dist = -1
+
+        # Stream frame to UI
+        frame = {
+            'type': 'radar_scan',
+            'angle_deg': angle,
+            'distance_cm': dist if dist >= 2 else None,
+            'ts': int(time.time() * 1000),
+        }
+        try:
+            await websocket.send_json(frame)
+        except Exception:
+            return  # client gone
+
+        # Advance angle (bounce off limits)
+        angle += direction * step_deg
+        if angle >= sweep_max:
+            angle = sweep_max
+            direction = -1
+        elif angle <= sweep_min:
+            angle = sweep_min
+            direction = 1
+
+    # Return servo to center
+    try:
+        await asyncio.to_thread(servo.setServoPwm, '0', 90)
+    except Exception:
+        pass
+
+
+@router.websocket('/ws/radar')
+async def ws_radar(websocket: WebSocket):
+    """
+    Radar sweep control WebSocket.
+
+    Client → Server:
+      { command: 'start-sweep', step_deg?: int, dwell_ms?: int,
+        sweep_min?: int, sweep_max?: int }
+      { command: 'stop-sweep' }
+      { type: 'ping', ts: int }
+
+    Server → Client:
+      { type: 'welcome', service: 'radar', status: 'connected', hardware: bool }
+      { type: 'radar_scan', angle_deg: int, distance_cm: float|null, ts: int }
+      { type: 'sweep_status', sweeping: bool, error?: str }
+      { type: 'pong', ts: int }
+    """
+    await websocket.accept()
+    log.info('ws_radar: client connected')
+
+    hw = _try_load_radar_hw()
+    await websocket.send_json({
+        'type': 'welcome',
+        'service': 'radar',
+        'status': 'connected',
+        'hardware': hw,
+    })
+
+    servo = None
+    sensor = None
+    sweep_task: asyncio.Task | None = None
+    stop_ev = asyncio.Event()
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+
+            if data.get('type') == 'ping':
+                await websocket.send_json({'type': 'pong', 'ts': data.get('ts')})
+                continue
+
+            cmd = data.get('command', '')
+
+            if cmd == 'start-sweep':
+                # Cancel any running sweep cleanly
+                if sweep_task and not sweep_task.done():
+                    stop_ev.set()
+                    try:
+                        await asyncio.wait_for(asyncio.shield(sweep_task), timeout=0.6)
+                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                        sweep_task.cancel()
+
+                if not hw:
+                    await websocket.send_json({
+                        'type': 'sweep_status',
+                        'sweeping': False,
+                        'error': 'Hardware unavailable — run on Pi with servo + ultrasonic connected',
+                    })
+                    continue
+
+                # Lazy-init hardware (blocking constructors in thread pool)
+                try:
+                    if servo is None:
+                        servo = await asyncio.to_thread(_radar_servo_cls)
+                    if sensor is None:
+                        sensor = await asyncio.to_thread(_radar_sensor_cls)
+                except Exception as exc:
+                    await websocket.send_json({
+                        'type': 'sweep_status',
+                        'sweeping': False,
+                        'error': f'Hardware init failed: {exc}',
+                    })
+                    continue
+
+                step_deg  = max(1,   min(30,   int(data.get('step_deg',  5))))
+                dwell_ms  = max(50,  min(1000, int(data.get('dwell_ms', 150))))
+                sweep_min = max(30,  min(89,   int(data.get('sweep_min', 30))))
+                sweep_max = max(91,  min(150,  int(data.get('sweep_max', 150))))
+
+                stop_ev = asyncio.Event()
+                sweep_task = asyncio.create_task(_do_radar_sweep(
+                    websocket, step_deg, dwell_ms, sweep_min, sweep_max,
+                    stop_ev, servo, sensor,
+                ))
+                await websocket.send_json({'type': 'sweep_status', 'sweeping': True})
+
+            elif cmd == 'stop-sweep':
+                if sweep_task and not sweep_task.done():
+                    stop_ev.set()
+                await websocket.send_json({'type': 'sweep_status', 'sweeping': False})
+
+    except WebSocketDisconnect:
+        log.info('ws_radar: client disconnected')
+    except Exception as exc:
+        log.debug('ws_radar: %s', exc)
+    finally:
+        stop_ev.set()
+        if sweep_task and not sweep_task.done():
+            sweep_task.cancel()
+        # Return servo to center on disconnect
+        if servo:
+            try:
+                await asyncio.to_thread(servo.setServoPwm, '0', 90)
+            except Exception:
+                pass

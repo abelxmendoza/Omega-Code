@@ -5,6 +5,7 @@ import { CommandProvider } from '../context/CommandContext';
 import { MacroProvider } from '../context/MacroContext';
 import { CapabilityProvider } from '../context/CapabilityContext';
 import { SystemHealthProvider } from '../context/SystemHealthContext';
+import { SystemModeProvider } from '../context/SystemModeContext';
 import '../styles/globals.scss';
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import InstallPrompt from '../components/InstallPrompt';
@@ -39,6 +40,7 @@ const MyApp = ({ Component, pageProps }: AppProps) => {
         <link rel="apple-touch-icon" href="/image/README/omegatechlogopro-noBackground.png" />
       </Head>
       <SystemHealthProvider>
+        <SystemModeProvider>
         <CapabilityProvider>
           <CommandProvider>
             <MacroProvider>
@@ -50,6 +52,7 @@ const MyApp = ({ Component, pageProps }: AppProps) => {
             </MacroProvider>
           </CommandProvider>
         </CapabilityProvider>
+        </SystemModeProvider>
       </SystemHealthProvider>
     </>
   );

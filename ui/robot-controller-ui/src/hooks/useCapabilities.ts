@@ -93,6 +93,9 @@ export function useCapabilities(autoRefresh = true, refreshInterval = 30000) {
   };
 }
 
+const API_BASE_CAP =
+  (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '') || 'http://localhost:8000';
+
 export function useCapabilityCheck(feature: string) {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,7 +104,7 @@ export function useCapabilityCheck(feature: string) {
     const checkCapability = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`${API_BASE}/api/capabilities/check?feature=${feature}`);
+        const response = await fetch(`${API_BASE_CAP}/api/capabilities/check?feature=${feature}`);
         const data = await response.json();
         
         if (data.ok) {

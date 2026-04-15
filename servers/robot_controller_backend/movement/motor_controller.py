@@ -12,7 +12,7 @@ Architecture
   driver (MotorTelemetryController or Motor)
       │
       ▼
-  PCA9685 @ 500 Hz
+  PCA9685 @ 50 Hz  (shared clock — servos on ch8/9 require 50 Hz)
 
 Calling set_speed() or stop() is safe from any coroutine or thread.
 The actual hardware write only happens inside tick(), which runs in

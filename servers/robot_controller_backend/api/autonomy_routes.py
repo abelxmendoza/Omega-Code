@@ -86,10 +86,6 @@ async def get_status() -> Dict[str, Any]:
 @router.post("/start")
 async def start(payload: StartPayload) -> Dict[str, Any]:
     try:
-        # Ensure controller has latest ROS2 context
-        global controller
-        controller = get_controller()
-        
         status = await controller.start(payload.mode, payload.params)
     except AutonomyError as exc:
         _handle_autonomy_error(exc)

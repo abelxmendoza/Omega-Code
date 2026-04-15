@@ -14,6 +14,7 @@ from .gamepad_routes import router as gamepad_router
 from .control_path import router as control_path_router
 from .sensor_ws_routes import router as sensor_ws_router
 from .sensor_power_routes import router as sensor_power_router
+from .localization_routes import router as localization_router
 
 # Import unified network routes from network module
 import sys
@@ -36,3 +37,4 @@ router.include_router(service_router)
 router.include_router(config_router)
 router.include_router(gamepad_router)
 router.include_router(control_path_router)
+router.include_router(localization_router)

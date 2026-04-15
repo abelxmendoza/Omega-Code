@@ -68,6 +68,20 @@ else:
                 logger.error("PCA9685 hardware driver not available. Install smbus2: pip install smbus2")
                 raise ImportError("PCA9685 hardware driver not available")
 
+# PCA9685 PRESCALE register and the expected value for exactly 50 Hz.
+# Formula: floor(25_000_000 / 4096 / 50 − 1 + 0.5) = 121
+# Any other value means a different process changed the global PWM clock,
+# which produces invalid servo pulses (e.g. 500 Hz → 147 µs instead of 1498 µs).
+_PCA9685_PRESCALE_REG   = 0xFE
+_EXPECTED_PRESCALE_50HZ = 121
+_PRESCALE_TOLERANCE     = 2    # ±2 counts ≈ ±0.8 Hz at 50 Hz
+
+# Hardware-safe pulse range for the servos on this chassis.
+# Exceeding these limits risks stripping the servo gears.
+_SERVO_PULSE_MIN_US = 1200
+_SERVO_PULSE_MAX_US = 1800
+
+
 class Servo:
     def __init__(self):
         """
@@ -87,6 +101,7 @@ class Servo:
             self.PwmServo = PCA9685(0x40, debug=True)
             self.PwmServo.setPWMFreq(50)
             time.sleep(0.5)              # let PCA9685 stabilize after freq change
+            self._assert_50hz()          # SAFETY: abort if another process changed the clock
             self.PwmServo.setServoPulse(8, 1500)  # Horizontal servo - neutral
             self.PwmServo.setServoPulse(9, 1500)  # Vertical servo - neutral
             time.sleep(0.1)              # hold neutral before releasing
@@ -96,6 +111,41 @@ class Servo:
         except Exception as e:
             logger.error(f"Failed to initialize servo controller: {e}")
             raise ServoError(f"Servo initialization failed: {e}")
+
+    def _assert_50hz(self):
+        """
+        Read the PRESCALE register and verify the PCA9685 is running at 50 Hz.
+        If another process has changed the global PWM frequency (e.g. to 500 Hz),
+        servo channels receive invalid pulses and oscillate destructively.
+        On mismatch: log ERROR and force-reset to 50 Hz + re-center both channels.
+        """
+        if self.PwmServo is None:
+            return
+        try:
+            prescale = self.PwmServo.read(_PCA9685_PRESCALE_REG)
+            actual_hz = 25_000_000.0 / 4096.0 / (prescale + 1)
+            if abs(prescale - _EXPECTED_PRESCALE_50HZ) > _PRESCALE_TOLERANCE:
+                logger.error(
+                    "SERVO_SAFETY: PCA9685 frequency is %.1f Hz (prescale=%d), "
+                    "expected 50 Hz (prescale=%d). "
+                    "Another process changed the global PWM clock — forcing reset.",
+                    actual_hz, prescale, _EXPECTED_PRESCALE_50HZ,
+                )
+                self.PwmServo.setPWMFreq(50)
+                time.sleep(0.1)
+                self.PwmServo.setServoPulse(8, 1500)
+                self.PwmServo.setServoPulse(9, 1500)
+                logger.warning(
+                    "SERVO_SAFETY: Frequency reset to 50 Hz; both servo channels "
+                    "re-centered to 1500 µs."
+                )
+            else:
+                logger.info(
+                    "SERVO_SAFETY: PCA9685 frequency verified — %.1f Hz (prescale=%d).",
+                    actual_hz, prescale,
+                )
+        except Exception as exc:
+            logger.error("SERVO_SAFETY: Could not read PRESCALE register: %s", exc)
 
     def setServoPwm(self, channel, angle, error=10):
         """
@@ -121,12 +171,14 @@ class Servo:
                 angle = max(0, min(180, angle))
             
             if channel in ('horizontal', '0'):
-                logger.info(f"Setting HORIZONTAL/0 to angle {angle}")
                 pulse_width = 2500 - int((angle + error) / 0.09)
+                pulse_width = max(_SERVO_PULSE_MIN_US, min(_SERVO_PULSE_MAX_US, pulse_width))
+                logger.info("Setting HORIZONTAL/0 to angle %d → %d µs", angle, pulse_width)
                 self.PwmServo.setServoPulse(8, pulse_width)
             elif channel in ('vertical', '1'):
-                logger.info(f"Setting VERTICAL/1 to angle {angle}")
                 pulse_width = 500 + int((angle + error) / 0.09)
+                pulse_width = max(_SERVO_PULSE_MIN_US, min(_SERVO_PULSE_MAX_US, pulse_width))
+                logger.info("Setting VERTICAL/1 to angle %d → %d µs", angle, pulse_width)
                 self.PwmServo.setServoPulse(9, pulse_width)
             else:
                 raise ValueError(f"Unknown channel: {channel}")

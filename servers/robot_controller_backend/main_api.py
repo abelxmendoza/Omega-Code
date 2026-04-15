@@ -83,8 +83,14 @@ async def lifespan(app: FastAPI):
     # Push current mode to video_server so both processes stay in sync after restarts
     loop.run_in_executor(None, _push_mode_to_video_server)
 
+    # Start localization prediction loop (dead reckoning + ArUco EKF)
+    from api.localization_routes import start_prediction_loop, stop_prediction_loop
+    start_prediction_loop()
+    logger.info('[LOCALIZATION] SE(2) EKF prediction loop started')
+
     yield
 
+    stop_prediction_loop()
     bridge.shutdown()
     sensor_bridge.shutdown()
 

@@ -116,9 +116,13 @@ const SpeedControl: React.FC = () => {
 
   const emergencyStop = useCallback(() => {
     if (disabled) return;
-    // Stop motors and explicitly set speed to 0 (keeps UI + backend in sync)
+    // 1. Stop motors immediately via WS (also sets ESTOP_EVENT on server side)
     sendSetSpeedPct(0);
     try { sendCommand(CMD_STOP); } catch {}
+    // 2. Stop any running autonomy mode so it doesn't override the stop.
+    //    Fire-and-forget — ignore errors (autonomy may not be running).
+    const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '') || 'http://localhost:8000';
+    fetch(`${apiBase}/autonomy/stop`, { method: 'POST' }).catch(() => {});
   }, [disabled, sendSetSpeedPct, sendCommand]);
 
   const onSliderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

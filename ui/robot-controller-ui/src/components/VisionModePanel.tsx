@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { useSystemMode } from '@/hooks/useSystemMode';
+import { useSystemModeContext as useSystemMode } from '@/context/SystemModeContext';
 import {
   Video, Activity, Crosshair, User, QrCode,
   Circle, Zap, Map, Shield, Compass, Camera, Eye,

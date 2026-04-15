@@ -82,13 +82,15 @@ export default function LatencyDashboard() {
   useEffect(() => {
     fetchPiLatency();
     fetchHybridLatency();
-    
-    // Poll every 500ms for real-time updates
+
+    // 5 s is sufficient — video-processing latency changes slowly and the
+    // Header already polls the same endpoints at 30 s.  500 ms was creating
+    // unnecessary load on the video server.
     const interval = setInterval(() => {
       fetchPiLatency();
       fetchHybridLatency();
-    }, 500);
-    
+    }, 5_000);
+
     return () => clearInterval(interval);
   }, [fetchPiLatency, fetchHybridLatency]);
 
@@ -217,7 +219,7 @@ export default function LatencyDashboard() {
       {/* Real-time indicator */}
       <div className="mt-4 flex items-center gap-2 text-gray-400 text-xs">
         <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-        <span>Updating every 500ms</span>
+        <span>Updating every 5s</span>
       </div>
     </div>
   );
