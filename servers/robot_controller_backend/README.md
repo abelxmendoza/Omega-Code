@@ -6,11 +6,12 @@ Python services that run on (or alongside) the robot: a FastAPI REST/WebSocket g
 
 | Path | Purpose |
 | --- | --- |
-| `api/` | FastAPI routers composed into `main_api.py`: `movement_routes`, `sensor_ws_routes`, `lighting_routes`, `autonomy_routes`, `ros_routes`, `capability_routes`, `system_mode_routes`, `service_routes`, `config_routes`, plus `sensor_bridge.py`, `ros_bridge.py`, `security_middleware.py`, `error_handlers.py`, `input_validators.py`. |
+| `api/` | FastAPI routers composed into `main_api.py`: `movement_routes`, `sensor_ws_routes` (incl. `/ws/radar`), `lighting_routes`, `autonomy_routes`, `ros_routes`, `localization_routes` (SE(2) EKF), `sim_routes` (SIM_MODE=1 only), `capability_routes`, `system_mode_routes`, `service_routes`, `config_routes`, plus `sensor_bridge.py`, `ros_bridge.py`, `security_middleware.py`, `error_handlers.py`, `input_validators.py`. |
+| `simulation/` | Software simulation engine (`sim_engine.py`): differential-drive kinematics + geometrically correct ArUco rvec/tvec synthesis. Feeds the real SE(2) EKF without any hardware. Activated via `SIM_MODE=1`. |
 | `autonomy/` | Pluggable autonomy controller (`controller.py`, `base.py`) with async mode handlers under `modes/`. |
 | `controllers/` | Python device drivers (servo, buzzer, lighting) invoked by WebSocket servers and FastAPI actions. |
 | `gpio/` | Hardware abstraction with mock interfaces for local development. |
-| `movement/` | Motor HAL: PCA9685 driver, ramp, PID, odometry, watchdog, and the movement WebSocket server (`movement_ws_server.py`). |
+| `movement/` | Motor HAL: PCA9685 driver, ramp, PID, odometry, watchdog, and the movement WebSocket server (`movement_ws_server.py`). `pose_ekf.py` — SE(2) EKF. `hardware/servo_control.py` — PCA9685 servo driver. |
 | `sensors/` | Ultrasonic and line-tracker WebSocket servers (`ultrasonic_ws_server.py`, `line_tracking_ws_server.py`), ADC helpers. |
 | `servers/` | Gateway (`gateway_api.py`) that surfaces `/ws/*`, `/video_feed`, and `/api/net/*` endpoints expected by the UI; snapshot blueprint (`control_api.py`). |
 | `video/` | Flask/OpenCV MJPEG server with startup retry, stall watchdog, face recognition, ArUco detection, motion detection, and snapshot blueprint. |
@@ -19,9 +20,9 @@ Python services that run on (or alongside) the robot: a FastAPI REST/WebSocket g
 | `omega_config/` | YAML config (`config.yaml`, `hardware_map.yaml`, `robot_profile.yaml`) and `config_manager.py`. |
 | `omega_services/` | Process supervisor, service manager, health checks, and `omega-orchestrator.service` for systemd. |
 | `utils/` | Env helpers, LED utility, threading control, optimisation utilities. |
-| `scripts/` | Shell helpers for starting, stopping, and checking services. |
+| `scripts/` | Shell helpers: `start_sim_local.sh` (SIM_MODE=1), `start_all.sh`, `stop_all.sh`, `check_endpoints.sh`. |
 | `tests/` | Pytest suites (`unit/`, `integration/`, `e2e/`, `system/`, `security/`, `performance/`, `regression/`, `hybrid/`, `faults/`) plus shared fixtures in `tests/utils/`. |
-| `requirements.txt` | Python dependency manifest. |
+| `requirements.txt` | All Python dependencies — `pip install -r requirements.txt`. |
 
 ## Services and entry points
 
@@ -40,7 +41,9 @@ Routes registered:
 | Router | Prefix / tags | What it exposes |
 |--------|---------------|-----------------|
 | `movement_routes` | `Movement` | `GET /status`, `POST /move`, `POST /servo`, `POST /buzzer` |
-| `sensor_ws_routes` | `Sensors` | `WS /ws/ultrasonic`, `WS /ws/line`, `WS /ws/battery` |
+| `sensor_ws_routes` | `Sensors` | `WS /ws/ultrasonic`, `WS /ws/line`, `WS /ws/battery`, `WS /ws/radar` (pan-servo sweep) |
+| `localization_routes` | `Localization` | `GET /localization/pose`, `POST /localization/aruco_update`, `/reset`, `/command`, `/marker_map`, `/status` |
+| `sim_routes` | `Simulation` | `POST /sim/start`, `/stop`, `/velocity`, `/teleport`, `/load_scenario`; `GET /sim/state`, `/scenarios`; `WS /sim/ws` — **only mounted when `SIM_MODE=1`** |
 | `lighting_routes` | `/lighting` | Colour, pattern, mode, and brightness control |
 | `autonomy_routes` | `Autonomy` | Start/stop/status for pluggable autonomy modes |
 | `ros_routes` | `ROS` | Topic list, publish, subscribe, and bridge status |
@@ -124,6 +127,30 @@ All-in-one FastAPI service that surfaces `/ws/movement`, `/ws/lighting`, `/ws/ul
 ```bash
 uvicorn servers.gateway_api:app --host 0.0.0.0 --port 7070
 ```
+
+## Simulation mode
+
+The `simulation/sim_engine.py` module implements a software-simulated robot. It is
+activated by setting `SIM_MODE=1` before starting the API server. All simulation routes
+are mounted automatically; no code changes are needed.
+
+```bash
+# Start the sim stack (no hardware required)
+SIM_MODE=1 venv/bin/uvicorn main_api:app --host 0.0.0.0 --port 8000
+# or use the convenience script:
+bash scripts/start_sim_local.sh
+```
+
+The sim engine:
+- Runs differential-drive kinematics at ~50 Hz, updating the robot's world pose
+- Synthesises ArUco `rvec`/`tvec` from the geometric relationship between the robot and
+  any markers defined in the ArUco marker map
+- Posts those observations to `POST /localization/aruco_update` exactly as
+  `video_server.py` does from a real camera
+- The SE(2) EKF downstream receives and fuses them with no modification
+
+All sim control routes are at `/sim/*` (only available when `SIM_MODE=1`). The real
+`/localization/*`, `/ws/*`, and movement endpoints behave identically to hardware mode.
 
 ## Environment configuration
 

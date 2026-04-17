@@ -13,6 +13,51 @@ integration, servo pan-tilt, and autonomous operation.
 
 ---
 
+## Quick Start
+
+### New Pi or SD card — one script does everything
+
+```bash
+git clone https://github.com/abelxmendoza/Omega-Code.git ~/Desktop/Omega-Code
+cd ~/Desktop/Omega-Code
+chmod +x scripts/setup_fresh_pi.sh
+./scripts/setup_fresh_pi.sh
+sudo reboot
+```
+
+`setup_fresh_pi.sh` installs all system packages, creates the Python venv, runs
+`pip install -r requirements.txt`, fetches Go dependencies, configures I2C/SPI/camera
+in `/boot/firmware/config.txt`, installs the Xbox udev rule, and writes the full
+`@reboot` crontab so all services start automatically after reboot.
+
+After the reboot, these services start on their own:
+
+| Service | Port | Log |
+|---|---|---|
+| FastAPI (main_api.py) | 8000 | `/tmp/main_api.log` |
+| Movement WebSocket | 8081 | `/tmp/movement_ws.log` |
+| Line-tracker WebSocket | — | `/tmp/line_tracker.log` |
+| Ultrasonic WebSocket (Go) | — | `/tmp/ultrasonic.log` |
+
+Check they started:
+```bash
+tail -f /tmp/main_api.log
+curl http://localhost:8000/health   # → "ok"
+```
+
+### Dev machine — run the UI pointing at the Pi
+
+```bash
+cd ui/robot-controller-ui
+cp .env.local.example .env.local
+# Edit .env.local: set NEXT_PUBLIC_ROBOT_HOST_LAN=<pi-ip>
+#                  set NEXT_PUBLIC_NETWORK_PROFILE=lan
+npm install
+npm run dev   # http://localhost:3000
+```
+
+---
+
 ## Engineering Overview
 
 During development the control system exhibited critical instability: duplicate WebSocket
@@ -180,8 +225,13 @@ Omega-Code/
 ├── servers/
 │   └── robot_controller_backend/
 │       ├── movement/               # Motor HAL: PCA9685, ramp, PID, odometry, watchdog
-│       │   └── pose_ekf.py         # SE(2) Extended Kalman Filter (dead-reckoning + ArUco)
+│       │   ├── pose_ekf.py         # SE(2) Extended Kalman Filter (dead-reckoning + ArUco)
+│       │   └── hardware/
+│       │       └── servo_control.py  # PCA9685 servo driver (ch8 pan, ch9 tilt)
 │       ├── sensors/                # HC-SR04, IR, ADC WebSocket servers
+│       ├── simulation/             # Software-sim engine (no hardware required)
+│       │   ├── sim_engine.py       # Differential-drive kinematics + ArUco rvec/tvec synthesis
+│       │   └── __init__.py
 │       ├── video/
 │       │   ├── video_server.py     # Flask MJPEG server (port 5000)
 │       │   └── camera.py           # GStreamer/libcamerasrc Camera class
@@ -189,7 +239,8 @@ Omega-Code/
 │       │   ├── ros_bridge.py       # FastAPI <-> ROS2 bridge (publishes /cmd_vel_in)
 │       │   ├── sensor_bridge.py    # ROS subscriber → WebSocket fan-out
 │       │   ├── sensor_ws_routes.py # WS /ws/ultrasonic, /ws/line, /ws/battery, /ws/radar
-│       │   ├── localization_routes.py  # SE(2) EKF pose, ArUco correction, marker map endpoints
+│       │   ├── localization_routes.py  # SE(2) EKF pose, ArUco correction, marker map
+│       │   ├── sim_routes.py       # Simulation control API (SIM_MODE=1 only)
 │       │   ├── movement_routes.py  # REST movement and servo endpoints
 │       │   ├── config_routes.py    # Read/write omega_config sections
 │       │   ├── system_mode_routes.py
@@ -204,31 +255,42 @@ Omega-Code/
 │       ├── network/                # Wi-Fi scan, AP mode, Tailscale, network watchdog
 │       ├── hardware/               # Camera drivers, motor/LED helpers, hardware detection
 │       ├── servers/                # Gateway proxy (gateway_api.py) + snapshot blueprint
+│       ├── scripts/
+│       │   └── start_sim_local.sh  # Launch the sim stack locally (SIM_MODE=1)
 │       ├── tests/                  # 53 test files across 9 suites (unit → faults)
+│       ├── requirements.txt        # All Python dependencies (pip install -r requirements.txt)
 │       └── main_api.py             # FastAPI entry point + security middleware stack
 └── ui/
     └── robot-controller-ui/        # Next.js 13 (Pages Router) operator dashboard
+        ├── .env.local.example      # Copy to .env.local and set Pi IP / profile
+        ├── package.json            # npm dependencies (npm install)
         ├── src/
-        │   ├── pages/              # Routes: index, network, ros, services, settings + API proxies
-        │   ├── components/         # UI by domain: control/, lighting/, sensors/, network/,
-        │   │                       #   ros/, settings/, services/, capability/, macros/, common/, ui/
-        │   │                       #   LocalizationPanel.tsx — SE(2) pose canvas + quality badge
-        │   ├── context/            # CommandContext (WS + log), MacroContext, CapabilityContext,
-        │   │                       #   SystemHealthContext (centralized health provider),
-        │   │                       #   SystemModeContext (shared mode poll — O(1) regardless of consumers)
-        │   ├── services/           # systemHealth.ts — singleton poll loop + circuit breaker
-        │   ├── hooks/              # WS lifecycle, HTTP polling, gamepad, ROS2 status
-        │   ├── utils/              # robotFetch / RobotResponse, connect*Ws connectors, autonomy client,
-        │   │                       #   urlHelpers (toHealthUrl, wsUrlToHttp), envProfile
+        │   ├── pages/
+        │   │   ├── index.tsx       # Main operator dashboard
+        │   │   ├── mission.tsx     # Mission Control page (waypoints + sim launcher)
+        │   │   ├── network.tsx     # Network wizard
+        │   │   └── api/            # Next.js API routes (video-proxy, sim-launcher, etc.)
+        │   ├── components/
+        │   │   ├── LocalizationPanel.tsx   # SE(2) pose canvas + quality badge
+        │   │   ├── mission/
+        │   │   │   ├── MissionControlPanel.tsx  # Waypoint list, mission state
+        │   │   │   ├── MissionMap.tsx           # 2D map canvas
+        │   │   │   └── SimLauncherCard.tsx      # Launch sim mode from UI
+        │   │   └── ... (control/, lighting/, sensors/, network/, ros/, etc.)
+        │   ├── context/            # CommandContext, SystemHealthContext, SystemModeContext
+        │   ├── services/           # systemHealth.ts — singleton poll + circuit breaker
+        │   ├── hooks/
+        │   │   ├── usePoseStream.ts       # Polls /localization/pose → LocalizationPanel
+        │   │   ├── useMissionStream.ts    # WS hook for mission state
+        │   │   └── ... (useWsStatus, useGamepad, useRobotOnline, etc.)
+        │   ├── utils/              # robotFetch, urlHelpers, envProfile, autonomy client
         │   ├── config/             # gateway.ts — profile-aware URL resolution
-        │   ├── themes/             # omega-theme.ts (dark industrial), cyber-theme.ts (neon)
-        │   └── control_definitions.ts  # Single source of truth for all WS command strings
+        │   └── themes/             # omega-theme.ts (dark), cyber-theme.ts (neon)
         └── tests/                  # 156 Jest + MSW + Cypress tests
-            ├── unit/               #   utils (urlHelpers, envProfile), services (systemHealth)
-            └── integration/        #   SystemHealthContext, system-mode API, settings
 
 scripts/
-└── setup_pi_camera.sh              # One-shot Pi camera stack bootstrap
+├── setup_fresh_pi.sh   # Full bootstrap for new Pi/SD card (run once, then reboot)
+└── setup_pi_camera.sh  # Camera-stack-only bootstrap (called by setup_fresh_pi.sh)
 ```
 
 ---
@@ -419,13 +481,30 @@ scp omega1@omegaOne:/tmp/test_frame.jpg ~/Desktop/
 
 ## Installation
 
-### 1. Clone
+### Option A — Fresh Pi (recommended for hardware setup)
+
+See the [Quick Start](#quick-start) section at the top. `scripts/setup_fresh_pi.sh`
+handles everything: system packages, Python venv, Go, Node.js, hardware config, crontab.
+
+### Option B — Manual step-by-step
+
+#### 1. Clone
 
 ```bash
 git clone https://github.com/abelxmendoza/Omega-Code.git ~/Desktop/Omega-Code
 ```
 
-### 2. Install backend as Python package
+#### 2. Python venv + dependencies
+
+```bash
+cd ~/Desktop/Omega-Code/servers/robot_controller_backend
+python3 -m venv venv --system-site-packages
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+#### 3. Install backend as Python package
 
 Makes `servers.robot_controller_backend.*` importable in ROS nodes:
 
@@ -433,7 +512,16 @@ Makes `servers.robot_controller_backend.*` importable in ROS nodes:
 pip install -e ~/Desktop/Omega-Code/
 ```
 
-### 3. Create the Colcon workspace
+#### 4. UI dependencies (dev machine)
+
+```bash
+cd ~/Desktop/Omega-Code/ui/robot-controller-ui
+npm install
+cp .env.local.example .env.local
+# Edit .env.local — set your Pi IP and NEXT_PUBLIC_NETWORK_PROFILE
+```
+
+#### 5. Create the Colcon workspace
 
 ```bash
 mkdir -p ~/omega_ws/src
@@ -445,7 +533,7 @@ ln -s ~/Desktop/Omega-Code/ros/src/omega_camera     omega_camera
 ln -s ~/Desktop/Omega-Code/ros/src/omega_detection  omega_detection
 ```
 
-### 4. Install ROS dependencies
+#### 6. Install ROS dependencies
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -454,7 +542,7 @@ rosdep update
 rosdep install --from-paths src --ignore-src -r -y
 ```
 
-### 5. Build
+#### 7. Build
 
 ```bash
 cd ~/omega_ws
@@ -465,7 +553,7 @@ colcon build --packages-select omega_robot omega_bringup omega_camera omega_dete
 
 `--symlink-install` means Python edits to node files are live without rebuild.
 
-### 6. Environment (add to `~/.bashrc`)
+#### 8. Environment (add to `~/.bashrc`)
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -544,7 +632,19 @@ ros2 launch omega_bringup omega_hybrid.launch.py \
 
 ## Running the Robot
 
-### Full hybrid stack (Pi, hardware mode)
+### Auto-start (recommended — after setup_fresh_pi.sh + reboot)
+
+All services start automatically via `@reboot` crontab. Nothing to do manually.
+Check status:
+
+```bash
+curl http://localhost:8000/health        # FastAPI → "ok"
+tail -20 /tmp/main_api.log              # FastAPI log
+tail -20 /tmp/movement_ws.log           # Movement WS log
+tail -20 /tmp/ultrasonic.log            # Ultrasonic (Go) log
+```
+
+### Full hybrid stack (Pi, hardware mode — manual)
 
 ```bash
 # Terminal 1 — ROS2 nodes (motor, sensors, obstacle avoidance, servo, TF)
@@ -554,9 +654,9 @@ ros2 launch omega_bringup omega_hybrid.launch.py
 cd ~/Desktop/Omega-Code/servers/robot_controller_backend/video
 python3 video_server.py
 
-# Terminal 3 — FastAPI backend (movement WS, sensor WS, ROS bridge)
+# Terminal 3 — FastAPI backend (movement WS, sensor WS, localization EKF)
 cd ~/Desktop/Omega-Code/servers/robot_controller_backend
-python3 main_api.py
+venv/bin/uvicorn main_api:app --host 0.0.0.0 --port 8000
 
 # Terminal 4 — ROS2 camera node (optional — for ROS topic subscribers)
 ros2 run omega_camera camera_node
@@ -571,12 +671,60 @@ ros2 launch omega_bringup omega_hybrid.launch.py launch_servo:=false
 # Disable obstacle avoidance (raw pass-through)
 ros2 launch omega_bringup omega_hybrid.launch.py launch_avoidance:=false
 
-# Simulation mode (no hardware I/O)
-ros2 launch omega_bringup omega_hybrid.launch.py sim_mode:=true
-
 # Motor + sensors only
 ros2 launch omega_bringup omega_minimal.launch.py
 ```
+
+---
+
+## Simulation Mode (no hardware required)
+
+The software simulation engine lets you develop and test the full localization + mission
+control stack on a laptop or Pi without any physical robot. A simulated differential-drive
+robot runs in Python, synthesises geometrically correct ArUco observations, and posts them
+to the real `/localization/aruco_update` endpoint — the SE(2) EKF receives them exactly
+as it would from a real camera.
+
+### Start sim locally
+
+```bash
+cd servers/robot_controller_backend
+bash scripts/start_sim_local.sh
+# or:
+SIM_MODE=1 venv/bin/uvicorn main_api:app --host 0.0.0.0 --port 8000
+```
+
+### Sim API endpoints (only mounted when SIM_MODE=1)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/sim/start` | Start the simulation loop |
+| `POST` | `/sim/stop` | Stop the simulation loop |
+| `POST` | `/sim/velocity` | Inject linear/angular velocity (m/s, rad/s) |
+| `POST` | `/sim/teleport` | Jump robot to an arbitrary pose `{x, y, theta_rad}` |
+| `POST` | `/sim/load_scenario` | Load a named scenario (circle, figure8, grid, etc.) |
+| `GET`  | `/sim/state` | Current sim state (pose, velocity, running) |
+| `GET`  | `/sim/scenarios` | List built-in scenarios |
+| `WS`   | `/sim/ws` | Real-time sim state stream (100 ms frames) |
+
+### Sim from the UI
+
+Open the **Mission Control** page (`/mission`) in the UI. The **Sim Launcher** card lets
+you start/stop the sim, choose a scenario, and inject velocity commands directly from the
+browser. The `LocalizationPanel` on the main dashboard shows the EKF pose updating live.
+
+---
+
+## Mission Control
+
+The Mission Control page (`/mission`) provides:
+
+- **2D mission map** — top-down canvas showing robot position (from EKF), waypoints, and path
+- **Waypoint management** — add, remove, and reorder waypoints; send the list to the robot
+- **Sim Launcher** — start the software simulation engine without touching the terminal
+- **Live EKF feed** — pose quality badge, uncertainty ellipse, ArUco correction count
+
+Access: `http://localhost:3000/mission` when running the UI in dev mode, or navigate via the header.
 
 ---
 
