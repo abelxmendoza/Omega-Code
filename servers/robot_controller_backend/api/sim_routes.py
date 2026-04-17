@@ -228,13 +228,16 @@ class ScenarioRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.post("/start")
-async def sim_start(body: StartRequest) -> Dict[str, Any]:
+async def sim_start(body: StartRequest = None) -> Dict[str, Any]:  # noqa: B008
     """Start (or restart) the simulation loop.
 
     Creates a fresh SimulatedRobot at the given initial pose.
     Optionally resets the EKF to the same pose so both start in sync.
     """
     global _robot, _started_at, _sim_hz
+
+    if body is None:
+        body = StartRequest()
 
     # Stop any existing loop
     _stop_loop()
