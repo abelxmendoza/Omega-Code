@@ -125,3 +125,84 @@ else
   echo "❌ Video not reachable"
   echo "   Hint: start your video server (e.g., python3 video_server.py) or run the quick mock."
 fi
+
+# =============================================================================
+# Preflight checks — backend API, SIM routes, EKF, WebSocket endpoints
+# =============================================================================
+
+API="http://${HOST}:${PORT_API:-8000}"
+FAILS=0
+
+_ok()   { printf "[OK]   %s\n" "$1"; }
+_fail() { printf "[FAIL] %s\n" "$1"; FAILS=$((FAILS + 1)); }
+_skip() { printf "[--]   %s\n" "$1"; }
+
+echo ""
+echo "── Preflight ────────────────────────────────────────────"
+
+# 1. Backend health
+if curl -sf "${API}/health" -o /dev/null 2>/dev/null; then
+  _ok "Backend /health"
+else
+  _fail "Backend /health — is uvicorn running on ${HOST}:${PORT_API:-8000}?"
+fi
+
+# 2. SIM routes (check actual endpoint; SIM_MODE env is advisory only)
+SIM_RESP=$(curl -sf "${API}/sim/status" 2>/dev/null)
+if [ -n "$SIM_RESP" ]; then
+  _ok "SIM routes available"
+elif [ "${SIM_MODE:-0}" = "1" ]; then
+  _fail "SIM routes not available — backend not started with SIM_MODE=1"
+else
+  _skip "SIM routes (start backend with SIM_MODE=1 to enable)"
+fi
+
+# 3. EKF pose
+POSE_JSON=$(curl -sf "${API}/localization/pose" 2>/dev/null || true)
+if [ -n "$POSE_JSON" ]; then
+  POSE_LINE=$(python3 -c "
+import json, sys
+try:
+    d = json.loads('${POSE_JSON//\'/\\\'}')
+    print('x=%.2f y=%.2f \u03b8=%.0f\u00b0 quality=%.0f%%' % (d.get('x',0), d.get('y',0), d.get('theta_deg',0), d.get('quality',0)*100))
+except Exception as e:
+    print('PARSE_ERROR:' + str(e)); sys.exit(1)
+" 2>/dev/null) && _ok "EKF pose ($POSE_LINE)" || _fail "EKF pose — response not parseable"
+else
+  _fail "EKF pose — /localization/pose not responding"
+fi
+
+# 4. WebSocket reachability (raw HTTP upgrade handshake, stdlib only)
+_ws_check() {
+  local url="$1" label="$2"
+  local hh host port path
+  hh="${url#ws://}"
+  host="${hh%%:*}"
+  port="${hh##*:}"; port="${port%%/*}"
+  path="/${hh#*/}"
+  if python3 -c "
+import socket, sys
+try:
+    s = socket.create_connection(('${host}', ${port}), timeout=4)
+    s.sendall(b'GET ${path} HTTP/1.1\r\nHost: ${host}:${port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n')
+    r = s.recv(128).decode(errors='ignore'); s.close()
+    sys.exit(0 if '101' in r else 1)
+except Exception: sys.exit(1)
+" 2>/dev/null; then
+    _ok "WebSocket $label"
+  else
+    _fail "WebSocket $label — connection refused or upgrade rejected"
+  fi
+}
+
+_ws_check "ws://${HOST}:${PORT_API:-8000}/ws/pose"    "/ws/pose"
+_ws_check "ws://${HOST}:${PORT_API:-8000}/ws/mission" "/ws/mission"
+
+# Summary
+echo "─────────────────────────────────────────────────────────"
+if [ "$FAILS" -eq 0 ]; then
+  echo "System ready for demo"
+else
+  echo "System NOT ready — $FAILS check(s) failed"
+  exit 1
+fi
