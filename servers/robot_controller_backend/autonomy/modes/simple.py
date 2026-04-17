@@ -13,6 +13,7 @@ from typing import Any, Mapping, MutableMapping
 
 from ..base import AutonomyModeHandler, AutonomyError
 from .obstacle_avoidance import ObstacleAvoidanceMode
+from .aruco_seek import ArucoSeekMode
 
 __all__ = [
     "IdleMode",
@@ -20,6 +21,7 @@ __all__ = [
     "WaypointMode",
     "DockMode",
     "ObstacleAvoidanceMode",
+    "ArucoSeekMode",
     "DEFAULT_MODE_FACTORIES",
 ]
 
@@ -100,7 +102,8 @@ def DEFAULT_MODE_FACTORIES() -> Mapping[str, Any]:
         "edge_detect": lambda **kw: LoggingMode("edge_detect", logger=kw.get("logger")),
         "waypoints": lambda **kw: WaypointMode(logger=kw.get("logger")),
         "color_track": lambda **kw: LoggingMode("color_track", logger=kw.get("logger")),
-        "aruco": lambda **kw: LoggingMode("aruco", logger=kw.get("logger")),
+        "aruco": lambda **kw: ArucoSeekMode(logger=kw.get("logger")),
+        "aruco_seek": lambda **kw: ArucoSeekMode(logger=kw.get("logger")),
         "person_follow": lambda **kw: LoggingMode("person_follow", logger=kw.get("logger")),
         "scan_servo": lambda **kw: LoggingMode("scan_servo", logger=kw.get("logger")),
         "dock": lambda **kw: DockMode(logger=kw.get("logger")),
