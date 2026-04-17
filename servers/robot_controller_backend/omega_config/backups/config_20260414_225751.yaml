@@ -1,0 +1,38 @@
+camera:
+  backend: picamera2
+  device: /dev/video0
+  fps: 30
+  height: 480
+  width: 640
+lighting:
+  default_brightness: 0.5
+  default_pattern: omega_signature
+logging:
+  level: INFO
+movement:
+  default_profile: smooth
+  max_speed: 4095
+  min_speed: 0
+network:
+  ap:
+    ip: 192.168.4.1
+    password: test123
+    ssid: Omega1-AP
+  default_mode: ap
+robot:
+  name: Omega-1-Test
+  profile: pi4b
+  version: 1.0.0
+security:
+  allowed_origins: []
+  api_auth_enabled: false
+services:
+  autostart:
+  - movement_ws_server
+  - main_api
+  restart_policies:
+    main_api: on-failure
+    movement_ws_server: always
+telemetry:
+  enabled: true
+  update_interval_ms: 1000
