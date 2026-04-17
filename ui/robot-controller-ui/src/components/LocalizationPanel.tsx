@@ -21,22 +21,16 @@
 
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Navigation, Target, Wifi } from 'lucide-react';
+import { usePoseStream } from '@/hooks/usePoseStream';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const API_BASE =
-  (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '') || 'http://localhost:8000';
-
-const POLL_MS           = 2_000;  // normal polling interval (2 s)
-const BACKOFF_MS        = 30_000; // back-off when 429 is received
 const CANVAS_SIZE       = 180;    // px (square)
 const PIXELS_PER_METRE  = 40;     // 1m = 40px  →  canvas shows ±2.25 m viewport
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-
-type FetchStatus = 'ok' | 'rate_limited' | 'offline';
 
 interface PoseData {
   x:                number;
@@ -69,6 +63,13 @@ function qualityLabel(q: number): string {
   if (q >= 0.35) return 'Fair';
   if (q > 0) return 'Poor';
   return 'Dead';
+}
+
+function qualityDescription(q: number): string {
+  if (q >= 0.7) return 'Position continuously corrected by visual markers';
+  if (q >= 0.35) return 'Drifting — point camera at a marker';
+  if (q > 0) return 'No recent fix — move closer to a marker';
+  return 'No visual correction — using dead reckoning only';
 }
 
 // ── Canvas drawing ─────────────────────────────────────────────────────────────
@@ -162,92 +163,64 @@ function drawPose(
 // ── Component ──────────────────────────────────────────────────────────────────
 
 const LocalizationPanel: React.FC = () => {
-  const [pose, setPose]           = useState<PoseData | null>(null);
-  const [fetchStatus, setFetchStatus] = useState<FetchStatus>('offline');
-  const [age, setAge]             = useState<number>(0);    // seconds since last successful fetch
-  const canvasRef                 = useRef<HTMLCanvasElement>(null);
-  const ageTimerRef               = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastTsRef                 = useRef<number>(0);
-  const intervalRef               = useRef<ReturnType<typeof setInterval> | null>(null);
-  const currentIntervalMs         = useRef<number>(POLL_MS);
+  // ── WebSocket pose stream (replaces 2s polling) ────────────────────────────
+  const { pose: wsPose, status, correctionCount, lastMarkerSeen } = usePoseStream();
 
-  // Restart the polling timer at a new interval (backoff / recovery).
-  const restartTimer = useCallback((ms: number, fetchFn: () => Promise<void>) => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    currentIntervalMs.current = ms;
-    intervalRef.current = setInterval(fetchFn, ms);
-  }, []);
+  // Build a full PoseData from the stream (covariance not sent over WS — keep a
+  // fallback so the uncertainty ellipse still renders from the last known value)
+  const [covariance, setCovariance] = useState<number[][]>([[1,0,0],[0,1,0],[0,0,0.5]]);
 
-  // ── Polling ────────────────────────────────────────────────────────────────
-  // Use a ref for fetchPose so restartTimer can reference it without stale closure.
-  const fetchPoseRef = useRef<() => Promise<void>>(async () => {});
-
+  // Periodically fetch covariance from REST (low frequency — only needed for ellipse)
   useEffect(() => {
-    let mounted = true;
-
-    const fetchPose = async () => {
+    const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '') || 'http://localhost:8000';
+    let active = true;
+    const fetchCov = async () => {
       try {
-        const res = await fetch(`${API_BASE}/localization/pose`, {
-          signal: AbortSignal.timeout(1500),
-          cache: 'no-store',
-        });
-
-        if (!mounted) return;
-
-        if (res.status === 429) {
-          // Rate limited — back off and show distinct state
-          setFetchStatus('rate_limited');
-          if (currentIntervalMs.current !== BACKOFF_MS) {
-            restartTimer(BACKOFF_MS, fetchPose);
-          }
-          return;
+        const res = await fetch(`${API_BASE}/localization/pose`, { cache: 'no-store' });
+        if (res.ok && active) {
+          const data = await res.json();
+          if (data.covariance) setCovariance(data.covariance);
         }
-
-        if (!res.ok) {
-          setFetchStatus('offline');
-          return;
-        }
-
-        const data: PoseData = await res.json();
-        if (!mounted) return;
-
-        setPose(data);
-        setFetchStatus('ok');
-        lastTsRef.current = Date.now();
-        setAge(0);
-
-        // If we were backed off (rate-limited), restore normal interval
-        if (currentIntervalMs.current !== POLL_MS) {
-          restartTimer(POLL_MS, fetchPose);
-        }
-      } catch {
-        if (mounted) setFetchStatus('offline');
-      }
+      } catch { /* best-effort */ }
     };
-
-    fetchPoseRef.current = fetchPose;
-
-    fetchPose();
-    intervalRef.current = setInterval(fetchPose, POLL_MS);
-    currentIntervalMs.current = POLL_MS;
-
-    return () => {
-      mounted = false;
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [restartTimer]);
-
-  // Age counter — updates every second independently of the poll
-  useEffect(() => {
-    ageTimerRef.current = setInterval(() => {
-      if (lastTsRef.current > 0) {
-        setAge(Math.round((Date.now() - lastTsRef.current) / 1000));
-      }
-    }, 1000);
-    return () => {
-      if (ageTimerRef.current) clearInterval(ageTimerRef.current);
-    };
+    fetchCov();
+    const id = setInterval(fetchCov, 5000);   // 0.2 Hz — just for ellipse
+    return () => { active = false; clearInterval(id); };
   }, []);
+
+  const pose: PoseData | null = wsPose
+    ? {
+        x:                wsPose.x,
+        y:                wsPose.y,
+        theta_rad:        wsPose.theta_rad,
+        theta_deg:        wsPose.theta_deg,
+        covariance,
+        quality:          wsPose.quality,
+        correction_count: correctionCount,
+        last_marker_seen: lastMarkerSeen,
+        ts:               wsPose.ts,
+      }
+    : null;
+
+  const [age, setAge] = useState(0);
+  const lastTsRef     = useRef<number>(0);
+
+  useEffect(() => {
+    if (wsPose) { lastTsRef.current = Date.now(); setAge(0); }
+  }, [wsPose]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (lastTsRef.current > 0) setAge(Math.round((Date.now() - lastTsRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const fetchStatus =
+    status === 'connected'  ? 'ok' :
+    status === 'error'      ? 'offline' : 'offline';
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // ── Canvas redraw ─────────────────────────────────────────────────────────
   // Draw on every fetchStatus change too so the grid appears immediately on mount.
@@ -281,26 +254,25 @@ const LocalizationPanel: React.FC = () => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Navigation size={14} className="text-blue-400" />
-          <h2 className="text-sm font-bold tracking-wide">Localization</h2>
+          <div>
+            <h2 className="text-sm font-bold tracking-wide">Robot Position</h2>
+            <p className="text-[10px] text-gray-500 leading-none">Estimated from visual markers</p>
+          </div>
         </div>
-        <div className={`flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-medium ${qualityBg(quality)} ${qualityColor(quality)}`}>
+        <div className={`flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-medium ${qualityBg(quality)} ${qualityColor(quality)}`}
+             title={qualityDescription(quality)}>
           <Target size={10} />
           <span>{qualityLabel(quality)}</span>
           {pose && <span className="ml-1 opacity-70">({(quality * 100).toFixed(0)}%)</span>}
         </div>
       </div>
 
-      {fetchStatus === 'rate_limited' && (
-        <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-900/20 rounded px-2 py-2">
-          <Wifi size={12} />
-          <span>Rate limited — retrying in {BACKOFF_MS / 1000}s</span>
-        </div>
-      )}
-
       {fetchStatus === 'offline' && (
         <div className="flex items-center gap-2 text-xs text-red-400 bg-red-900/20 rounded px-2 py-2">
           <Wifi size={12} />
-          <span>Localization offline — backend unreachable</span>
+          <span>
+            {status === 'connecting' ? 'Connecting to /ws/pose…' : 'Localization offline — backend unreachable'}
+          </span>
         </div>
       )}
 
@@ -375,12 +347,26 @@ const LocalizationPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* ArUco mode hint — shown whenever correction count is 0 (live or placeholder) */}
+      {/* Quality description */}
+      <p className={`text-[10px] leading-tight ${qualityColor(quality)} opacity-80`}>
+        {qualityDescription(quality)}
+      </p>
+
+      {/* Hint + bridge button */}
       {(pose?.correction_count ?? 0) === 0 && (
         <p className="text-[10px] text-gray-500 leading-tight">
-          Dead-reckoning only — enable ArUco mode (vision mode 4) to apply corrections.
+          No hardware? Load a simulation scenario in Mission Control.
         </p>
       )}
+
+      <a
+        href="/mission"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-1 flex items-center justify-center gap-1 rounded border border-emerald-600/50 bg-emerald-900/30 px-2 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-900/50 transition-colors"
+      >
+        Open Mission Map ↗
+      </a>
     </div>
   );
 };

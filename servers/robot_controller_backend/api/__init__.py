@@ -38,3 +38,10 @@ router.include_router(config_router)
 router.include_router(gamepad_router)
 router.include_router(control_path_router)
 router.include_router(localization_router)
+
+# Simulation engine — only mounted when SIM_MODE=1
+if os.getenv("SIM_MODE", "0").strip() == "1":
+    import logging
+    from .sim_routes import router as sim_router
+    router.include_router(sim_router)
+    logging.getLogger(__name__).info("[SIM] Simulation routes mounted at /sim")

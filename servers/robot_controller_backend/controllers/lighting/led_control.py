@@ -29,7 +29,15 @@ if 'PYTHONPATH' not in os.environ or 'robot_controller_backend' not in os.enviro
     if parent_dir not in sys.path:
         sys.path.insert(0, parent_dir)
 
-from rpi_ws281x import Adafruit_NeoPixel, Color, WS2811_STRIP_GRB
+try:
+    from rpi_ws281x import Adafruit_NeoPixel, Color, WS2811_STRIP_GRB
+except ImportError:
+    # Non-Pi host — provide minimal stubs so the module loads cleanly.
+    # LedController will fall back to StubPixelStrip automatically.
+    def Color(r, g, b, w=0):  # type: ignore[misc]
+        return (w << 24) | (r << 16) | (g << 8) | b
+    WS2811_STRIP_GRB = 0x00081000
+    Adafruit_NeoPixel = None  # LedController handles None via StubPixelStrip path
 
 from controllers.lighting.patterns import (
     music_visualizer,

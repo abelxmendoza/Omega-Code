@@ -460,6 +460,13 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false,
             </span>
           )}
 
+          {/* Mission Control Link */}
+          <div className="text-[10px] xl4:text-sm px-1.5 xl4:px-2.5 py-0.5 xl4:py-1 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-100 hover:bg-emerald-500/30 transition-colors">
+            <Link href="/mission" title="Mission Control — live map, waypoints, EKF visualization" className="flex items-center gap-1">
+              <span>Mission</span>
+            </Link>
+          </div>
+
           {/* Network Management Link */}
           <div className="text-[10px] xl4:text-sm px-1.5 xl4:px-2.5 py-0.5 xl4:py-1 rounded bg-blue-500/20 border border-blue-400/40 text-blue-100 hover:bg-blue-500/30 transition-colors">
             <Link href="/network" title="Network Management" className="flex items-center gap-1">

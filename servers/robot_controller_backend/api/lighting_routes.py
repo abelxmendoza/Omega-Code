@@ -8,8 +8,7 @@ more comprehensive endpoints with pattern/mode/brightness support.
 """
 
 from fastapi import APIRouter, HTTPException
-from controllers.lighting.led_control import LedController
-from rpi_ws281x import Color
+from controllers.lighting.led_control import LedController, Color
 
 router = APIRouter()
 

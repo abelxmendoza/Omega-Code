@@ -21,7 +21,11 @@ from functools import lru_cache
 import threading
 
 import numpy as np
-from rpi_ws281x import Color
+try:
+    from rpi_ws281x import Color
+except ImportError:
+    def Color(r, g, b, w=0):  # type: ignore[misc]
+        return (w << 24) | (r << 16) | (g << 8) | b
 
 
 def _interruptible_sleep(seconds: float, stop_event: Optional[threading.Event] = None) -> bool:

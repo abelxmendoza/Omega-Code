@@ -399,6 +399,214 @@ async def _do_radar_sweep(
         pass
 
 
+# ---------------------------------------------------------------------------
+# /ws/pose  — real-time SE(2) EKF pose stream
+# ---------------------------------------------------------------------------
+
+@router.websocket('/ws/pose')
+async def ws_pose(websocket: WebSocket):
+    """
+    Streams the current SE(2) EKF pose at up to 20 Hz.
+
+    Only sends a frame when pose values change (change-detect on x, y, theta,
+    quality) so idle clients receive minimal traffic.
+
+    Server → Client on connect:
+      { type: 'welcome', service: 'pose', status: 'connected' }
+
+    Server → Client every ~50ms (when changed):
+      { type: 'pose', x: float, y: float, theta_rad: float,
+        theta_deg: float, quality: float, correction_count: int,
+        last_marker_seen: int|null, ts: float }
+
+    Client → Server heartbeat (optional):
+      { type: 'ping', ts: epoch_ms }  →  { type: 'pong', ts: echo }
+    """
+    await websocket.accept()
+    log.info('ws_pose: client connected')
+
+    await websocket.send_json({
+        'type': 'welcome', 'service': 'pose', 'status': 'connected',
+    })
+
+    # Import EKF filter — same singleton the REST endpoint uses.
+    try:
+        from api.localization_routes import _filter as _ekf_filter
+    except ImportError:
+        log.error('ws_pose: cannot import EKF filter — localization_routes not loaded')
+        await websocket.close(code=1011)
+        return
+
+    import math as _math
+
+    SEND_INTERVAL = 0.05   # 20 Hz max
+    _CHANGE_THRESH_XY    = 0.001   # 1 mm
+    _CHANGE_THRESH_THETA = 0.005   # ~0.3°
+    _CHANGE_THRESH_QUAL  = 0.005
+
+    # Track last-sent values to suppress no-change frames
+    last_x      = None
+    last_y      = None
+    last_theta  = None
+    last_qual   = None
+    last_send_t = 0.0
+
+    try:
+        while True:
+            # Receive any client messages without blocking the send loop.
+            # Use a short wait so we poll the EKF at ~20 Hz regardless.
+            try:
+                msg = await asyncio.wait_for(websocket.receive_json(), timeout=SEND_INTERVAL)
+                if isinstance(msg, dict) and msg.get('type') == 'ping':
+                    await websocket.send_json({'type': 'pong', 'ts': msg.get('ts')})
+            except asyncio.TimeoutError:
+                pass  # normal — no client message this tick
+
+            now = time.monotonic()
+            if now - last_send_t < SEND_INTERVAL:
+                continue
+
+            pose = _ekf_filter.get_pose()
+            x     = pose.x
+            y     = pose.y
+            theta = pose.theta
+            qual  = pose.quality
+
+            # Only send if something meaningful changed
+            changed = (
+                last_x is None
+                or abs(x - last_x)         > _CHANGE_THRESH_XY
+                or abs(y - last_y)         > _CHANGE_THRESH_XY
+                or abs(theta - last_theta) > _CHANGE_THRESH_THETA
+                or abs(qual - last_qual)   > _CHANGE_THRESH_QUAL
+            )
+
+            if changed:
+                await websocket.send_json({
+                    'type':             'pose',
+                    'x':                round(x, 4),
+                    'y':                round(y, 4),
+                    'theta_rad':        round(theta, 5),
+                    'theta_deg':        round(_math.degrees(theta), 3),
+                    'quality':          round(qual, 4),
+                    'correction_count': _ekf_filter.correction_count,
+                    'last_marker_seen': _ekf_filter.last_marker_seen,
+                    'ts':               pose.timestamp,
+                })
+                last_x     = x
+                last_y     = y
+                last_theta = theta
+                last_qual  = qual
+                last_send_t = now
+
+    except WebSocketDisconnect:
+        log.info('ws_pose: client disconnected')
+    except Exception as exc:
+        log.debug('ws_pose: %s', exc)
+
+
+@router.websocket('/ws/mission')
+async def ws_mission(websocket: WebSocket):
+    """
+    Real-time mission event stream.
+
+    Server → Client on connect:
+      { type: 'welcome', service: 'mission', status: 'connected' }
+
+    Server → Client immediately after connect (if sim is running):
+      { type: 'mission_event', event: 'mission_status',
+        waypoint_index: int, waypoints_total: int,
+        mission_active: bool, mission_complete: bool, timestamp: float }
+
+    Server → Client when events occur:
+      { type: 'mission_event',
+        event: 'mission_started' | 'waypoint_reached' | 'mission_completed' | 'mission_aborted',
+        waypoint_index: int, waypoints_total: int, timestamp: float }
+
+    Client → Server heartbeat:
+      { type: 'ping', ts: epoch_ms }  →  { type: 'pong', ts: echo }
+    """
+    await websocket.accept()
+    log.info('ws_mission: client connected')
+
+    # Lazy import — sim_routes may not be loaded if SIM_MODE=0, but the
+    # module always exists so the import succeeds either way.
+    try:
+        from api.sim_routes import (
+            subscribe_mission_events,
+            unsubscribe_mission_events,
+            get_sim_status,
+        )
+    except ImportError:
+        subscribe_mission_events   = None
+        unsubscribe_mission_events = None
+        get_sim_status             = None
+
+    await websocket.send_json({
+        'type': 'welcome', 'service': 'mission', 'status': 'connected',
+    })
+
+    # Subscribe before reading status to avoid a race where an event fires
+    # between get_sim_status() and the queue being registered.
+    q: asyncio.Queue | None = subscribe_mission_events() if subscribe_mission_events else None
+
+    # Send current mission state immediately so the UI doesn't need to poll
+    if get_sim_status:
+        status = get_sim_status()
+        if status is not None:
+            await websocket.send_json({
+                'type':            'mission_event',
+                'event':           'mission_status',
+                'waypoint_index':  status['waypoint_index'],
+                'waypoints_total': status['waypoints_total'],
+                'mission_active':  status['mission_active'],
+                'mission_complete': status.get('mission_complete', False),
+                'timestamp':       time.time(),
+            })
+
+    try:
+        while True:
+            if q is not None:
+                # Race: receive a client message OR get the next mission event
+                recv_task = asyncio.create_task(websocket.receive_json())
+                evt_task  = asyncio.create_task(q.get())
+
+                done, pending = await asyncio.wait(
+                    [recv_task, evt_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for t in pending:
+                    t.cancel()
+
+                for t in done:
+                    if t is recv_task:
+                        try:
+                            msg = t.result()
+                        except Exception:
+                            raise WebSocketDisconnect()
+                        if isinstance(msg, dict) and msg.get('type') == 'ping':
+                            await websocket.send_json({'type': 'pong', 'ts': msg.get('ts')})
+                    else:
+                        evt = t.result()
+                        await websocket.send_json(evt)
+            else:
+                # SIM_MODE off — keep connection alive, respond to pings only
+                try:
+                    msg = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+                    if isinstance(msg, dict) and msg.get('type') == 'ping':
+                        await websocket.send_json({'type': 'pong', 'ts': msg.get('ts')})
+                except asyncio.TimeoutError:
+                    pass
+
+    except WebSocketDisconnect:
+        log.info('ws_mission: client disconnected')
+    except Exception as exc:
+        log.debug('ws_mission: %s', exc)
+    finally:
+        if q is not None and unsubscribe_mission_events is not None:
+            unsubscribe_mission_events(q)
+
+
 @router.websocket('/ws/radar')
 async def ws_radar(websocket: WebSocket):
     """

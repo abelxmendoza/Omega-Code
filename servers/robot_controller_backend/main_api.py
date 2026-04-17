@@ -88,11 +88,21 @@ async def lifespan(app: FastAPI):
     start_prediction_loop()
     logger.info('[LOCALIZATION] SE(2) EKF prediction loop started')
 
+    # Simulation engine (only when SIM_MODE=1)
+    _sim_enabled = os.getenv("SIM_MODE", "0").strip() == "1"
+    if _sim_enabled:
+        logger.info('[SIM] SIM_MODE=1 — simulation engine active')
+
     yield
 
     stop_prediction_loop()
     bridge.shutdown()
     sensor_bridge.shutdown()
+
+    if _sim_enabled:
+        from api.sim_routes import shutdown_sim
+        shutdown_sim()
+        logger.info('[SIM] Simulation engine shut down')
 
 
 app = FastAPI(title="Omega Robot Controller API", lifespan=lifespan)

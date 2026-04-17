@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     reactStrictMode: true,
+    // Force SWC transforms even though babel.config.js exists (it's only for Jest).
+    // Without this, Next.js falls back to Babel which causes multi-minute compile hangs.
+    experimental: {
+      forceSwcTransforms: true,
+    },
     images: {
       remotePatterns: [
         {
