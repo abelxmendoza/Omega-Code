@@ -6,6 +6,7 @@ import { MacroProvider } from '../context/MacroContext';
 import { CapabilityProvider } from '../context/CapabilityContext';
 import { SystemHealthProvider } from '../context/SystemHealthContext';
 import { SystemModeProvider } from '../context/SystemModeContext';
+import { DemoModeProvider } from '../context/DemoModeContext';
 import '../styles/globals.scss';
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import InstallPrompt from '../components/InstallPrompt';
@@ -39,6 +40,7 @@ const MyApp = ({ Component, pageProps }: AppProps) => {
         <link rel="shortcut icon" type="image/png" href="/image/README/omegatechlogopro-noBackground.png" />
         <link rel="apple-touch-icon" href="/image/README/omegatechlogopro-noBackground.png" />
       </Head>
+      <DemoModeProvider>
       <SystemHealthProvider>
         <SystemModeProvider>
         <CapabilityProvider>
@@ -54,6 +56,7 @@ const MyApp = ({ Component, pageProps }: AppProps) => {
         </CapabilityProvider>
         </SystemModeProvider>
       </SystemHealthProvider>
+      </DemoModeProvider>
     </>
   );
 };

@@ -24,6 +24,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Navigation, Target, Wifi } from 'lucide-react';
 import { usePoseStream } from '@/hooks/usePoseStream';
+import { useDemoMode } from '@/context/DemoModeContext';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -163,15 +164,22 @@ function drawPose(
 // ── Component ──────────────────────────────────────────────────────────────────
 
 const LocalizationPanel: React.FC = () => {
+  const { demoMode } = useDemoMode();
+
   // ── WebSocket pose stream (replaces 2s polling) ────────────────────────────
   const { pose: wsPose, status, correctionCount, lastMarkerSeen } = usePoseStream();
 
   // Build a full PoseData from the stream (covariance not sent over WS — keep a
   // fallback so the uncertainty ellipse still renders from the last known value)
+  const DEMO_COVARIANCE: number[][] = [[0.01, 0, 0], [0, 0.01, 0], [0, 0, 0.005]];
   const [covariance, setCovariance] = useState<number[][]>([[1,0,0],[0,1,0],[0,0,0.5]]);
 
-  // Periodically fetch covariance from REST (low frequency — only needed for ellipse)
+  // Periodically fetch covariance from REST — skipped in demo mode
   useEffect(() => {
+    if (demoMode) {
+      setCovariance(DEMO_COVARIANCE);
+      return;
+    }
     const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '') || 'http://localhost:8000';
     let active = true;
     const fetchCov = async () => {
@@ -186,7 +194,8 @@ const LocalizationPanel: React.FC = () => {
     fetchCov();
     const id = setInterval(fetchCov, 5000);   // 0.2 Hz — just for ellipse
     return () => { active = false; clearInterval(id); };
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoMode]);
 
   const pose: PoseData | null = wsPose
     ? {

@@ -96,10 +96,17 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
   onClearWaypoints,
   onScenarioLoaded,
 }) => {
-  const [missionError, setMissionError] = useState<string | null>(null);
-  const [simLoaded, setSimLoaded]       = useState(false);
+  const [missionError,   setMissionError]   = useState<string | null>(null);
+  const [simLoaded,      setSimLoaded]      = useState(false);
+  const [starting,       setStarting]       = useState(false);
+  const [missionLaunched, setMissionLaunched] = useState(false);
 
-  const apiBase = buildGatewayUrl('');   // e.g. http://localhost:8000
+  // Sim backend is always started locally by sim-launcher — never use the
+  // gateway URL here, which points at the Pi when on LAN/Tailscale profiles.
+  const simBase = 'http://localhost:8000';
+  // Live robot endpoints (EKF reset etc.) still use the gateway.
+  // buildGatewayUrl('') returns a trailing slash — strip it to avoid double-slash.
+  const apiBase = buildGatewayUrl('').replace(/\/$/, '');
 
   // ---------------------------------------------------------------------------
   // Actions
@@ -111,25 +118,29 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
       return;
     }
     setMissionError(null);
+    setStarting(true);
+    setMissionLaunched(false);
 
     try {
-      // Step 1 — Ensure the sim loop is running.
-      // POST /sim/start always succeeds: it (re)creates the robot at origin
-      // and resets the EKF, giving a clean starting state for manual missions.
-      const startRes = await fetch(`${apiBase}/sim/start`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ x: 0, y: 0, theta: 0, hz: 20, reset_ekf: true }),
-      });
-      if (!startRes.ok) {
-        if (startRes.status === 404) {
-          throw new Error('Sim routes not found — start the backend with SIM_MODE=1');
+      // Step 1 — Start the sim loop only if it is not already running.
+      const statusRes = await fetch(`${simBase}/sim/status`);
+      const simStatus = statusRes.ok ? await statusRes.json() : null;
+      if (!simStatus?.running) {
+        const startRes = await fetch(`${simBase}/sim/start`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ x: 0, y: 0, theta: 0, hz: 20, reset_ekf: true }),
+        });
+        if (!startRes.ok) {
+          if (startRes.status === 404) {
+            throw new Error('Sim routes not found — start the backend with SIM_MODE=1');
+          }
+          throw new Error(`Sim start failed: ${startRes.status}`);
         }
-        throw new Error(`Sim start failed: ${startRes.status}`);
       }
 
-      // Step 2 — Load the waypoint mission
-      const res = await fetch(`${apiBase}/sim/mission`, {
+      // Step 2 — Post the waypoint mission
+      const res = await fetch(`${simBase}/sim/mission`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
@@ -140,23 +151,28 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
         }),
       });
       if (!res.ok) throw new Error(`Mission load failed: ${res.status}`);
-      // missionState → 'running' when mission_started arrives on /ws/mission stream
+
+      // Mark as launched — missionState will flip to 'running' when the
+      // mission_started event arrives on /ws/mission.
+      setMissionLaunched(true);
     } catch (err) {
       setMissionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStarting(false);
     }
-  }, [waypoints, apiBase]);
+  }, [waypoints]);
 
   const abortMission = useCallback(async () => {
+    setMissionLaunched(false);
     try {
-      await fetch(`${apiBase}/sim/mission/abort`, { method: 'POST' });
-      // State transitions to 'idle' when backend emits mission_aborted
+      await fetch(`${simBase}/sim/mission/abort`, { method: 'POST' });
     } catch { /* best-effort */ }
-  }, [apiBase]);
+  }, []);
 
   const loadScenario = useCallback(async (name: string) => {
     setMissionError(null);
     try {
-      const res = await fetch(`${apiBase}/sim/scenario`, {
+      const res = await fetch(`${simBase}/sim/scenario`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ name }),
@@ -173,7 +189,7 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
     } catch (err) {
       setMissionError(err instanceof Error ? err.message : String(err));
     }
-  }, [apiBase, onScenarioLoaded]);
+  }, [onScenarioLoaded]);
 
   const resetEkf = useCallback(async () => {
     try {
@@ -345,10 +361,24 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
           </div>
         </div>
 
-        {/* Mission complete banner */}
+        {/* Status banners */}
         {missionState === 'completed' && (
           <div className="bg-emerald-900/40 border border-emerald-600/40 rounded px-2 py-1.5 text-xs text-emerald-300 text-center font-semibold">
-            Mission complete — all waypoints reached
+            ✓ Mission complete — all waypoints reached
+          </div>
+        )}
+        {missionState === 'running' && (
+          <div className="bg-blue-900/40 border border-blue-600/40 rounded px-2 py-1.5 text-xs text-blue-300 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
+            <span>
+              Mission running — waypoint {Math.max(0, activeWpIndex) + 1}/{waypoints.length}
+            </span>
+          </div>
+        )}
+        {missionLaunched && missionState === 'idle' && (
+          <div className="bg-amber-900/30 border border-amber-600/30 rounded px-2 py-1.5 text-xs text-amber-300 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+            <span>Waiting for sim to confirm start…</span>
           </div>
         )}
 
@@ -356,10 +386,19 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
           {missionState !== 'running' ? (
             <button
               onClick={startMission}
-              disabled={waypoints.length === 0}
-              className="flex-1 py-2 rounded bg-emerald-700 hover:bg-emerald-600 disabled:bg-gray-700 disabled:text-gray-500 text-white text-xs font-semibold transition-colors"
+              disabled={waypoints.length === 0 || starting}
+              className="flex-1 py-2 rounded bg-emerald-700 hover:bg-emerald-600 disabled:bg-gray-700 disabled:text-gray-500 text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
             >
-              {missionState === 'completed' ? '↺ Run Again' : '▶ Start Mission'}
+              {starting ? (
+                <>
+                  <span className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  Starting…
+                </>
+              ) : missionState === 'completed' ? (
+                '↺ Run Again'
+              ) : (
+                '▶ Start Mission'
+              )}
             </button>
           ) : (
             <button
@@ -381,7 +420,7 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
 
         {missionError && (
           <p className="text-xs text-red-400 bg-red-900/20 rounded px-2 py-1">
-            {missionError}
+            ⚠ {missionError}
           </p>
         )}
       </div>

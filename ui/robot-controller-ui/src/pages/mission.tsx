@@ -24,6 +24,8 @@ import dynamic from 'next/dynamic';
 
 import { usePoseStream } from '@/hooks/usePoseStream';
 import { useMissionStream } from '@/hooks/useMissionStream';
+import { useDemoMode } from '@/context/DemoModeContext';
+import DemoModeToggle from '@/components/DemoModeToggle';
 import type { Waypoint, MarkerDef } from '@/components/mission/MissionMap';
 import MissionControlPanel from '@/components/mission/MissionControlPanel';
 
@@ -84,22 +86,35 @@ const SCENARIO_WAYPOINTS: Record<string, Waypoint[]> = {
 // ---------------------------------------------------------------------------
 
 export default function MissionPage() {
+  const { demoMode, engine: simEngine } = useDemoMode();
+
   const { pose, status, correctionCount, lastMarkerSeen, isConnected } =
     usePoseStream();
+
+  const [waypoints,       setWaypoints]       = useState<Waypoint[]>([]);
+  const [markers,         setMarkers]         = useState<MarkerDef[]>(DEFAULT_MARKERS);
+  const [mapSize,         setMapSize]         = useState({ w: 600, h: 600 });
+  // When a sim scenario is loaded, point the mission WS at the local sim backend
+  // instead of the gateway (Pi). Undefined = use gateway default.
+  const [simMissionWsUrl, setSimMissionWsUrl] = useState<string | undefined>(undefined);
 
   const {
     waypointIndex: streamWpIndex,
     missionState,
     isConnected: missionConnected,
-  } = useMissionStream();
+  } = useMissionStream(simMissionWsUrl);
 
-  const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
-  const [markers,   setMarkers]   = useState<MarkerDef[]>(DEFAULT_MARKERS);
-  const [mapSize,   setMapSize]   = useState({ w: 600, h: 600 });
+  // In demo mode, activeWpIndex comes from the SimEngine.
+  // In live mode it comes from the mission WebSocket stream.
+  const [demoWpIdx, setDemoWpIdx] = useState(-1);
+  useEffect(() => {
+    if (!demoMode) return;
+    return simEngine.subscribeWpIndex(setDemoWpIdx);
+  }, [demoMode, simEngine]);
 
-  // activeWpIndex drives both map highlighting and panel waypoint list.
-  // -1 = no active waypoint (idle / no mission loaded).
-  const activeWpIndex = missionState !== 'idle' ? streamWpIndex : -1;
+  const activeWpIndex = demoMode
+    ? demoWpIdx
+    : missionState !== 'idle' ? streamWpIndex : -1;
 
   // ---------------------------------------------------------------------------
   // Responsive canvas size
@@ -129,6 +144,9 @@ export default function MissionPage() {
     if (m) setMarkers(m);
     const wps = SCENARIO_WAYPOINTS[scenarioName];
     if (wps) setWaypoints(wps);
+    // Sim backend always runs on localhost — switch mission WS to it so
+    // mission_started / waypoint_reached events actually arrive.
+    setSimMissionWsUrl('ws://localhost:8000/ws/mission');
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -149,7 +167,7 @@ export default function MissionPage() {
         <title>Mission Control — Omega-1</title>
       </Head>
 
-      <div className="min-h-screen bg-gray-900 text-white flex flex-col">
+      <div className="cyber-theme min-h-screen overflow-x-hidden flex flex-col">
 
         {/* ── Top bar ─────────────────────────────────────────────── */}
         <header className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700 flex-shrink-0">
@@ -164,6 +182,26 @@ export default function MissionPage() {
           </div>
 
           <div className="flex items-center gap-3 text-xs">
+            <DemoModeToggle />
+
+            {/* Demo: navigate waypoints button */}
+            {demoMode && waypoints.length > 0 && (
+              <button
+                onClick={() => simEngine.navigateTo(waypoints.map((wp) => ({ x: wp.x, y: wp.y })))}
+                className="px-2 py-1 rounded border border-violet-500/50 bg-violet-900/40 text-violet-300 hover:bg-violet-900/60 text-xs font-medium transition-colors"
+              >
+                ▶ Run Demo Nav
+              </button>
+            )}
+            {demoMode && demoWpIdx >= 0 && (
+              <button
+                onClick={() => simEngine.cancelNav()}
+                className="px-2 py-1 rounded border border-red-500/50 bg-red-900/40 text-red-300 hover:bg-red-900/60 text-xs font-medium transition-colors"
+              >
+                ■ Stop
+              </button>
+            )}
+
             {/* EKF quality pill */}
             <div className={`flex items-center gap-1.5 px-2 py-1 rounded border font-mono ${
               (pose?.quality ?? 0) >= 0.7  ? 'bg-emerald-900/40 border-emerald-600/40 text-emerald-400' :

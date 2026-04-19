@@ -16,6 +16,7 @@ import React, {
   useEffect,
 } from 'react';
 import { connectMovementWs } from '@/utils/connectMovementWs';
+import { useDemoMode } from '@/context/DemoModeContext';
 
 type ServerStatus = 'connecting' | 'connected' | 'disconnected';
 
@@ -162,6 +163,7 @@ export const useCommand = (): CommandContextType => {
 Manages WebSocket connection, command logging, status, and heartbeat. Provides CommandContext to children.
 */
 export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { demoMode, isHydrated } = useDemoMode();
   const [commands, setCommands] = useState<CommandEntry[]>([]);
   const [status, setStatus] = useState<ServerStatus>('disconnected');
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
@@ -223,6 +225,10 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
    * Sends a command via WebSocket, or logs it as offline if the WebSocket is closed.
    */
   const sendCommand = React.useCallback((command: string, data?: Record<string, any>) => {
+    if (demoMode) {
+      addCommand(`[DEMO] ${command}`);
+      return;
+    }
     const payload = JSON.stringify({ command, ...data });
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(payload);
@@ -231,7 +237,7 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
       console.warn(`[WebSocket] Not open. Command logged offline: ${command}`);
       addCommand(`Offline Sent: ${command}`);
     }
-  }, [addCommand]);
+  }, [demoMode, addCommand]);
 
   const applyServoTelemetry = React.useCallback(
     (raw: any, source: ServoTelemetrySource) => {
@@ -359,6 +365,15 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   // ---- Connection lifecycle ----
   useEffect(() => {
+    // Wait for localStorage hydration before deciding whether to connect
+    if (!isHydrated) return;
+    // In demo mode: skip hardware WebSocket and present as connected
+    if (demoMode) {
+      setStatus('connected');
+      addCommand('[DEMO] Demo mode — hardware connections suppressed');
+      return;
+    }
+
     shouldReconnect.current = true;
 
     const setupWebSocket = (wsInstance: WebSocket) => {
@@ -528,7 +543,7 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
           // Exponential backoff + jitter: prevents reconnect storms when multiple
           // subsystems disconnect simultaneously (e.g., on backend restart).
           const delay = Math.min(backoffRef.current, 30000) + Math.random() * 500;
-          reconnectTimer.current = setTimeout(connectAndSetup, delay);
+          reconnectTimer.current = setTimeout(connectAndSetupWithAbort, delay);
           backoffRef.current = Math.min(backoffRef.current * 2, 30000);
         }
       };
@@ -543,15 +558,25 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
       };
     };
 
-    const connectAndSetup = () => {
+    // AbortController lets us cancel an in-flight connectMovementWs() when
+    // the component unmounts (HMR rebuild, page nav). Without this, the async
+    // connection completes after cleanup and creates a ghost socket + retry loop.
+    const abort = new AbortController();
+
+    const connectAndSetupWithAbort = () => {
       setStatus('connecting');
-      connectMovementWs()
+      connectMovementWs({ signal: abort.signal })
         .then((wsInstance) => {
+          if (abort.signal.aborted) {
+            try { wsInstance.close(); } catch {}
+            return;
+          }
           backoffRef.current = 1000;
           wsOfflineLogged.current = false;
           setupWebSocket(wsInstance);
         })
         .catch((err) => {
+          if (abort.signal.aborted) return;
           const errorMsg = err?.message || String(err) || 'Unknown error';
           console.warn('[CommandContext] WebSocket connection failed:', errorMsg);
           if (!wsOfflineLogged.current) {
@@ -561,15 +586,16 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
 
           // Exponential backoff + jitter
           const delay = Math.min(backoffRef.current, 30000) + Math.random() * 500;
-          reconnectTimer.current = setTimeout(connectAndSetup, delay);
+          reconnectTimer.current = setTimeout(connectAndSetupWithAbort, delay);
           backoffRef.current = Math.min(backoffRef.current * 2, 30000);
         });
     };
 
-    connectAndSetup();
+    connectAndSetupWithAbort();
 
     // Cleanup on unmount
     return () => {
+      abort.abort(); // Cancel any in-flight connectMovementWs() promise
       shouldReconnect.current = false;
       connectionVerified.current = false;
       if (reconnectTimer.current) {
@@ -587,7 +613,7 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         addCommand('WebSocket connection closed during cleanup');
       }
     };
-  }, [addCommand, applyServoTelemetry, cleanupHeartbeat, requestStatus, startHeartbeat, startStatusPoll, stopStatusPoll]);
+  }, [demoMode, isHydrated, addCommand, applyServoTelemetry, cleanupHeartbeat, requestStatus, startHeartbeat, startStatusPoll, stopStatusPoll]);
 
   return (
     <CommandContext.Provider

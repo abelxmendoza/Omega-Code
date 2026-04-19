@@ -14,7 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       headers: {
         'Content-Type': 'application/json',
       },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(2000),
     });
 
     if (!response.ok) {
@@ -25,11 +25,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(200).json(data);
     
   } catch (error) {
-    console.warn('[system-mode-proxy] Error fetching mode status:', error instanceof Error ? error.message : String(error));
-    res.status(503).json({ 
-      error: 'System mode API unavailable',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    });
+    console.warn('[system-mode-proxy] Gateway unreachable:', error instanceof Error ? error.message : String(error));
+    res.status(200).json({ mode: 'unknown', available: false });
   }
 }
 

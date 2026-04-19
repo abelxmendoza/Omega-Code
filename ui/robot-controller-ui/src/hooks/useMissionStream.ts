@@ -19,6 +19,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useRobustWebSocket } from '@/utils/RobustWebSocket';
 import { buildGatewayUrl } from '@/config/gateway';
+import { useDemoMode } from '@/context/DemoModeContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,13 +65,16 @@ function buildMissionWsUrl(): string {
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useMissionStream(): UseMissionStreamResult {
+export function useMissionStream(overrideUrl?: string): UseMissionStreamResult {
+  const { demoMode, isHydrated } = useDemoMode();
   const [waypointIndex,  setWaypointIndex]  = useState<number>(-1);
   const [waypointsTotal, setWaypointsTotal] = useState<number>(0);
   const [missionState,   setMissionState]   = useState<MissionState>('idle');
   const [lastEvent,      setLastEvent]      = useState<MissionEvent | null>(null);
 
-  const wsUrl = useRef(buildMissionWsUrl()).current;
+  // Default to gateway URL (Pi). Caller can override to point at the sim backend.
+  const defaultUrl = useRef(buildMissionWsUrl()).current;
+  const wsUrl = overrideUrl ?? defaultUrl;
 
   const handleMessage = useCallback((data: unknown) => {
     if (!data || typeof data !== 'object') return;
@@ -128,12 +132,18 @@ export function useMissionStream(): UseMissionStreamResult {
     }
   }, []);
 
+  const suppress = !isHydrated || demoMode;
+
   const { isConnected } = useRobustWebSocket({
-    url:                  wsUrl,
+    url:                  suppress ? '' : wsUrl,
     reconnectInterval:    2000,
-    maxReconnectAttempts: 20,
+    maxReconnectAttempts: suppress ? 0 : 20,
     onMessage:            handleMessage,
   });
+
+  if (!isHydrated || demoMode) {
+    return { waypointIndex: -1, waypointsTotal: 0, missionState: 'idle', lastEvent: null, isConnected: demoMode };
+  }
 
   return { waypointIndex, waypointsTotal, missionState, lastEvent, isConnected };
 }

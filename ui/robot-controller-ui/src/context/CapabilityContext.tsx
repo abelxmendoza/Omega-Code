@@ -1,5 +1,6 @@
 import React, { createContext, useContext, ReactNode } from 'react';
 import { useCapabilities, CapabilityProfile } from '@/hooks/useCapabilities';
+import { useDemoMode } from '@/context/DemoModeContext';
 
 interface CapabilityContextType {
   capabilities: CapabilityProfile | null;
@@ -19,7 +20,9 @@ interface CapabilityContextType {
 const CapabilityContext = createContext<CapabilityContextType | undefined>(undefined);
 
 export function CapabilityProvider({ children }: { children: ReactNode }) {
-  const capabilitiesData = useCapabilities(true, 30000); // Refresh every 30s
+  const { demoMode, isHydrated } = useDemoMode();
+  // Don't fetch capabilities in demo mode or before localStorage is read
+  const capabilitiesData = useCapabilities(true, 30000, isHydrated && !demoMode);
 
   return (
     <CapabilityContext.Provider value={capabilitiesData}>

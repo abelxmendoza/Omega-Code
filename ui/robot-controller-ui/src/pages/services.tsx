@@ -59,7 +59,7 @@ export default function ServicesPage() {
         <meta name="description" content="Manage OmegaOS services" />
       </Head>
 
-      <div className="min-h-screen bg-gray-950 text-white">
+      <div className="cyber-theme min-h-screen overflow-x-hidden">
 
         {/* ── Sticky top bar ──────────────────────────────────────── */}
         <div className="sticky top-0 z-10 bg-gray-900 border-b border-white/10 px-4 py-2.5 flex items-center justify-between">

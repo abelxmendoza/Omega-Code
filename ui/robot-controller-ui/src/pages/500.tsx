@@ -1,50 +1,41 @@
-/*
-# File: /src/pages/500.tsx
-# Summary:
-#   Custom 500 page for the Pages Router.
-#   - Static (no data fetching) so it can be pre-rendered
-#   - Shown only in production for server-side errors
-#   - Offers Reload / Home actions
-*/
-
 import Head from 'next/head';
 import Link from 'next/link';
 import React from 'react';
 
 export default function FiveHundred() {
   return (
-    <main className="min-h-screen grid place-items-center bg-gray-50 text-gray-800 p-6">
+    <main className="cyber-theme min-h-screen grid place-items-center p-6">
       <Head>
         <title>500 – Server error</title>
         <meta name="robots" content="noindex" />
       </Head>
 
       <div className="text-center max-w-md">
-        <p className="text-sm font-medium text-gray-500">500</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+        <p className="text-sm font-medium text-red-400 uppercase tracking-widest">500</p>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-white">
           Something went wrong
         </h1>
-        <p className="mt-2 text-gray-600">
-          The server encountered an error. It’s not you—it&apos;s us.
+        <p className="mt-2 text-white/50 text-sm">
+          The server encountered an error. It&apos;s not you — it&apos;s us.
         </p>
 
         <div className="mt-6 flex items-center justify-center gap-3">
           <button
             type="button"
             onClick={() => (typeof window !== 'undefined' ? window.location.reload() : null)}
-            className="inline-flex items-center rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-400"
+            className="inline-flex items-center rounded-md bg-purple-700 hover:bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500"
           >
             Reload page
           </button>
           <Link
             href="/"
-            className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-300"
+            className="inline-flex items-center rounded-md border border-white/20 bg-white/5 hover:bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition-colors focus:outline-none focus:ring-2 focus:ring-white/20"
           >
             Go home
           </Link>
         </div>
 
-        <p className="mt-8 text-xs text-gray-500">
+        <p className="mt-8 text-xs text-white/30">
           If the problem persists, check the server logs or try again later.
         </p>
       </div>

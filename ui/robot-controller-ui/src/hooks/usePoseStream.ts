@@ -1,25 +1,20 @@
 /**
- * usePoseStream — subscribes to /ws/pose and returns live SE(2) EKF pose data.
+ * usePoseStream — SE(2) EKF pose, with Demo Mode interception.
  *
- * Built on top of the existing useRobustWebSocket infrastructure so reconnect
- * logic, error handling, and status tracking are already covered.
+ * LIVE mode:  subscribes to /ws/pose WebSocket (existing behaviour).
+ * DEMO mode:  subscribes to the SimEngine in DemoModeContext instead.
+ *             No network connections are made; pose is synthesized locally.
  *
- * Usage:
- *   const { pose, status, correctionCount, lastMarkerSeen } = usePoseStream();
- *
- * The hook derives its WebSocket URL from the gateway config (same host/port
- * as the FastAPI backend) so it automatically respects network profiles
- * (local/lan/tailscale) without extra configuration.
- *
- * pose is null until the first frame arrives.  Components should treat null
- * as "no fix yet" and display a placeholder.
+ * All consumers (LocalizationPanel, MissionMap, mission.tsx) are unaffected —
+ * the returned interface is identical in both modes.
  */
 
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRobustWebSocket } from '@/utils/RobustWebSocket';
 import { buildGatewayUrl } from '@/config/gateway';
+import { useDemoMode } from '@/context/DemoModeContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,7 +28,7 @@ export interface PoseData {
   quality:          number;   // 0–1 EKF confidence
   correction_count: number;   // total ArUco fixes applied
   last_marker_seen: number | null;
-  ts:               number;   // monotonic timestamp from server
+  ts:               number;   // monotonic timestamp
 }
 
 export type PoseStreamStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -47,11 +42,10 @@ export interface UsePoseStreamResult {
 }
 
 // ---------------------------------------------------------------------------
-// URL builder — converts http(s) gateway base to ws(s)
+// URL builder
 // ---------------------------------------------------------------------------
 
 function buildPoseWsUrl(): string {
-  // buildGatewayUrl returns something like http://localhost:8000
   const http = buildGatewayUrl('/ws/pose');
   return http.replace(/^http/, 'ws');
 }
@@ -61,11 +55,39 @@ function buildPoseWsUrl(): string {
 // ---------------------------------------------------------------------------
 
 export function usePoseStream(): UsePoseStreamResult {
-  const [pose, setPose] = useState<PoseData | null>(null);
-  const [correctionCount, setCorrectionCount] = useState(0);
-  const [lastMarkerSeen, setLastMarkerSeen] = useState<number | null>(null);
+  const { demoMode, engine, isHydrated } = useDemoMode();
 
-  // Build URL once per mount — gateway config is static
+  // ── Demo path ──────────────────────────────────────────────────────────────
+  const [demoPose, setDemoPose] = useState<PoseData | null>(null);
+
+  useEffect(() => {
+    if (!demoMode) {
+      setDemoPose(null);
+      return;
+    }
+    const unsub = engine.subscribePose((p) => {
+      setDemoPose({
+        x:                p.x,
+        y:                p.y,
+        theta_rad:        p.theta_rad,
+        theta_deg:        p.theta_rad * (180 / Math.PI),
+        quality:          0.85,   // simulated EKF confidence
+        correction_count: 0,
+        last_marker_seen: null,
+        ts:               Date.now(),
+      });
+    });
+    return unsub;
+  }, [demoMode, engine]);
+
+  // ── Live WS path ───────────────────────────────────────────────────────────
+  // Always called (satisfies React hook rules). Disabled in demo mode by
+  // passing an empty URL — useRobustWebSocket returns 'error' status and
+  // never opens a socket when the URL is falsy.
+  const [livePose, setLivePose] = useState<PoseData | null>(null);
+  const [correctionCount, setCorrectionCount] = useState(0);
+  const [lastMarkerSeen, setLastMarkerSeen]   = useState<number | null>(null);
+
   const wsUrl = useRef(buildPoseWsUrl()).current;
 
   const handleMessage = useCallback((data: unknown) => {
@@ -73,7 +95,7 @@ export function usePoseStream(): UsePoseStreamResult {
     const msg = data as Record<string, unknown>;
 
     if (msg.type === 'pose') {
-      setPose({
+      setLivePose({
         x:                Number(msg.x          ?? 0),
         y:                Number(msg.y          ?? 0),
         theta_rad:        Number(msg.theta_rad  ?? 0),
@@ -88,15 +110,35 @@ export function usePoseStream(): UsePoseStreamResult {
     }
   }, []);
 
+  // Suppress WS until localStorage is read (isHydrated) and demo mode is resolved.
+  // Passing '' to useRobustWebSocket prevents any connection attempt.
+  const suppress = !isHydrated || demoMode;
+
   const { isConnected, connectionStatus } = useRobustWebSocket({
-    url:                  wsUrl,
+    url:                  suppress ? '' : wsUrl,
     reconnectInterval:    2000,
-    maxReconnectAttempts: 20,   // keep trying — sim or robot may restart
+    maxReconnectAttempts: suppress ? 0 : 20,
     onMessage:            handleMessage,
   });
 
+  // ── Return ─────────────────────────────────────────────────────────────────
+
+  if (!isHydrated) {
+    return { pose: null, status: 'connecting', correctionCount: 0, lastMarkerSeen: null, isConnected: false };
+  }
+
+  if (demoMode) {
+    return {
+      pose:            demoPose,
+      status:          'connected',
+      correctionCount: 0,
+      lastMarkerSeen:  null,
+      isConnected:     true,
+    };
+  }
+
   return {
-    pose,
+    pose:            livePose,
     status:          connectionStatus as PoseStreamStatus,
     correctionCount,
     lastMarkerSeen,

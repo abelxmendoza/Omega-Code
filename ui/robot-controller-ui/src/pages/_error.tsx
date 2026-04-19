@@ -7,9 +7,12 @@ interface ErrorProps {
 
 const ErrorPage: NextPage<ErrorProps> = ({ statusCode }) => {
   return (
-    <div className="h-screen flex flex-col justify-center items-center bg-gray-100">
-      <h1 className="text-4xl font-bold">Oops!</h1>
-      <p className="mt-2 text-lg text-gray-700">
+    <div className="cyber-theme h-screen flex flex-col justify-center items-center">
+      <p className="text-sm font-medium text-red-400 uppercase tracking-widest">
+        {statusCode ?? 'Error'}
+      </p>
+      <h1 className="mt-2 text-4xl font-bold text-white">Oops!</h1>
+      <p className="mt-2 text-white/50 text-sm">
         {statusCode
           ? `An error ${statusCode} occurred on the server.`
           : 'An error occurred on the client.'}

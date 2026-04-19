@@ -31,7 +31,7 @@ export interface CapabilitiesResponse {
   error?: string;
 }
 
-export function useCapabilities(autoRefresh = true, refreshInterval = 30000) {
+export function useCapabilities(autoRefresh = true, refreshInterval = 30000, enabled = true) {
   const [capabilities, setCapabilities] = useState<CapabilityProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,16 +66,17 @@ export function useCapabilities(autoRefresh = true, refreshInterval = 30000) {
   };
 
   useEffect(() => {
+    if (!enabled) return;
     fetchCapabilities();
-    
+
     if (autoRefresh) {
       const interval = setInterval(() => {
         fetchCapabilities();
       }, refreshInterval);
-      
+
       return () => clearInterval(interval);
     }
-  }, [autoRefresh, refreshInterval]);
+  }, [autoRefresh, refreshInterval, enabled]);
 
   return {
     capabilities,

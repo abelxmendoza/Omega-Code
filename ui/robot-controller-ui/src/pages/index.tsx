@@ -43,6 +43,7 @@ import { useGamepad } from '../hooks/useGamepad';
 import { usePiGamepad } from '../hooks/usePiGamepad';
 import XboxControllerStatus from '../components/control/XboxControllerStatus';
 import LocalizationPanel from '../components/LocalizationPanel';
+import DemoModeToggle from '../components/DemoModeToggle';
 
 // Autonomy API client (HTTP wire → FastAPI /autonomy/* endpoints)
 import {
@@ -50,6 +51,7 @@ import {
   createHttpWire,
 } from '@/utils/autonomyApi';
 import { getActiveProfile } from '@/utils/envProfile';
+import { useDemoMode } from '@/context/DemoModeContext';
 
 const DEBUG = !!process.env.NEXT_PUBLIC_WS_DEBUG;
 const MOCK_WS = process.env.NEXT_PUBLIC_MOCK_WS === '1';
@@ -75,6 +77,7 @@ const CameraFrame = dynamic(() => import('../components/CameraFrame'), {
 
 export default function Home() {
   const { addCommand, sendCommand, status } = useCommand();
+  const { demoMode, engine: simEngine } = useDemoMode();
 
   const [isLedModalOpen, setIsLedModalOpen] = useState(false);
   const [gamepadPaused, setGamepadPaused] = useState(false);
@@ -177,12 +180,17 @@ export default function Home() {
         `}</style>
       </Head>
 
-      <Header
-        batteryLevel={null}
-        gamepadConnected={gamepadState.connected}
-        gamepadName={gamepadState.name}
-        gamepadPaused={gamepadPaused}
-      />
+      <div className="relative">
+        <Header
+          batteryLevel={null}
+          gamepadConnected={gamepadState.connected}
+          gamepadName={gamepadState.name}
+          gamepadPaused={gamepadPaused}
+        />
+        <div className="absolute top-1/2 right-4 -translate-y-1/2 z-10">
+          <DemoModeToggle />
+        </div>
+      </div>
 
       <main className="cyber-content px-4 xl:px-8 py-4 overflow-x-hidden">
         <div className="max-w-[1600px] mx-auto space-y-6">
@@ -195,6 +203,15 @@ export default function Home() {
                 connected={isConnected}
 
                 onStart={async (mode, params) => {
+                  if (demoMode) {
+                    addCommand(`[DEMO] autonomy-start (${mode})`);
+                    // In demo mode, 'waypoints' mode triggers navigation via sim engine
+                    if (mode === 'waypoints') {
+                      const wps = ((params as any)?.waypoints ?? []) as { x: number; y: number }[];
+                      simEngine.navigateTo(wps);
+                    }
+                    return;
+                  }
                   try {
                     await autonomyApi.start(mode, params);
                     addCommand(`Sent: autonomy-start (${mode})`);
@@ -204,6 +221,11 @@ export default function Home() {
                   }
                 }}
                 onStop={async () => {
+                  if (demoMode) {
+                    simEngine.cancelNav();
+                    addCommand('[DEMO] autonomy-stop');
+                    return;
+                  }
                   try {
                     await autonomyApi.stop();
                     addCommand('Sent: autonomy-stop');

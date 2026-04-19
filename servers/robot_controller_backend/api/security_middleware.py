@@ -83,6 +83,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         "/autonomy/status",
         # Gamepad — presence check polled every 10 s by usePiGamepad
         "/gamepad/status",
+        # Sim — all routes exempt: user-initiated mutations + state reads.
+        # Rate-limiting any sim endpoint causes confusing 429s during normal use.
+        "/sim/start",
+        "/sim/stop",
+        "/sim/status",
+        "/sim/scenario",
+        "/sim/scenarios",
+        "/sim/mission",
+        "/sim/mission/abort",
+        "/sim/markers",
+        "/sim/velocity",
+        "/sim/pose",
     })
 
     async def dispatch(self, request: Request, call_next):
