@@ -44,6 +44,7 @@ import { usePiGamepad } from '../hooks/usePiGamepad';
 import XboxControllerStatus from '../components/control/XboxControllerStatus';
 import LocalizationPanel from '../components/LocalizationPanel';
 import DemoModeToggle from '../components/DemoModeToggle';
+import ConnectionModeSelector from '../components/ConnectionModeSelector';
 
 // Autonomy API client (HTTP wire → FastAPI /autonomy/* endpoints)
 import {
@@ -194,6 +195,9 @@ export default function Home() {
 
       <main className="cyber-content px-4 xl:px-8 py-4 overflow-x-hidden">
         <div className="max-w-[1600px] mx-auto space-y-6">
+
+          {/* Connection Mode — three-way selector */}
+          <ConnectionModeSelector />
 
           {/* Zone 1: Controls | Camera | Camera Controls */}
           <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr_auto] gap-4 xl:gap-6 items-center">

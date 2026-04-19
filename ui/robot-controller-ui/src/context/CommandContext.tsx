@@ -163,7 +163,7 @@ export const useCommand = (): CommandContextType => {
 Manages WebSocket connection, command logging, status, and heartbeat. Provides CommandContext to children.
 */
 export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { demoMode, isHydrated } = useDemoMode();
+  const { demoMode, simBackendMode, isHydrated } = useDemoMode();
   const [commands, setCommands] = useState<CommandEntry[]>([]);
   const [status, setStatus] = useState<ServerStatus>('disconnected');
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
@@ -374,6 +374,12 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
       return;
     }
 
+    // In sim-backend mode: present as connected optimistically.
+    // The actual WS connect below still runs — this just sets immediate feedback.
+    if (simBackendMode) {
+      addCommand('[SIM] Connecting to local sim backend (localhost:8000)…');
+    }
+
     shouldReconnect.current = true;
 
     const setupWebSocket = (wsInstance: WebSocket) => {
@@ -565,7 +571,25 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const connectAndSetupWithAbort = () => {
       setStatus('connecting');
-      connectMovementWs({ signal: abort.signal })
+      // Sim-backend mode: connect directly to the local sim server instead of the Pi
+      const wsPromise = simBackendMode
+        ? new Promise<WebSocket>((resolve, reject) => {
+            if (abort.signal.aborted) { reject(new Error('aborted')); return; }
+            const sock = new WebSocket('ws://localhost:8000/ws/movement');
+            const onOpen  = () => { cleanup(); resolve(sock); };
+            const onError = () => { cleanup(); reject(new Error('sim-backend WS failed')); };
+            const onAbort = () => { cleanup(); sock.close(); reject(new Error('aborted')); };
+            const cleanup = () => {
+              sock.removeEventListener('open', onOpen);
+              sock.removeEventListener('error', onError);
+              abort.signal.removeEventListener('abort', onAbort);
+            };
+            sock.addEventListener('open', onOpen);
+            sock.addEventListener('error', onError);
+            abort.signal.addEventListener('abort', onAbort);
+          })
+        : connectMovementWs({ signal: abort.signal });
+      wsPromise
         .then((wsInstance) => {
           if (abort.signal.aborted) {
             try { wsInstance.close(); } catch {}
@@ -613,7 +637,7 @@ export const CommandProvider: React.FC<{ children: ReactNode }> = ({ children })
         addCommand('WebSocket connection closed during cleanup');
       }
     };
-  }, [demoMode, isHydrated, addCommand, applyServoTelemetry, cleanupHeartbeat, requestStatus, startHeartbeat, startStatusPoll, stopStatusPoll]);
+  }, [demoMode, simBackendMode, isHydrated, addCommand, applyServoTelemetry, cleanupHeartbeat, requestStatus, startHeartbeat, startStatusPoll, stopStatusPoll]);
 
   return (
     <CommandContext.Provider

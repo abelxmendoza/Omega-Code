@@ -55,7 +55,7 @@ function buildPoseWsUrl(): string {
 // ---------------------------------------------------------------------------
 
 export function usePoseStream(): UsePoseStreamResult {
-  const { demoMode, engine, isHydrated } = useDemoMode();
+  const { demoMode, simBackendMode, engine, isHydrated } = useDemoMode();
 
   // ── Demo path ──────────────────────────────────────────────────────────────
   const [demoPose, setDemoPose] = useState<PoseData | null>(null);
@@ -88,7 +88,8 @@ export function usePoseStream(): UsePoseStreamResult {
   const [correctionCount, setCorrectionCount] = useState(0);
   const [lastMarkerSeen, setLastMarkerSeen]   = useState<number | null>(null);
 
-  const wsUrl = useRef(buildPoseWsUrl()).current;
+  const gatewayUrl = useRef(buildPoseWsUrl()).current;
+  const wsUrl = simBackendMode ? 'ws://localhost:8000/ws/pose' : gatewayUrl;
 
   const handleMessage = useCallback((data: unknown) => {
     if (!data || typeof data !== 'object') return;
@@ -113,6 +114,7 @@ export function usePoseStream(): UsePoseStreamResult {
   // Suppress WS until localStorage is read (isHydrated) and demo mode is resolved.
   // Passing '' to useRobustWebSocket prevents any connection attempt.
   const suppress = !isHydrated || demoMode;
+  // simBackendMode uses a different URL but same WS path — suppress only when demoMode
 
   const { isConnected, connectionStatus } = useRobustWebSocket({
     url:                  suppress ? '' : wsUrl,

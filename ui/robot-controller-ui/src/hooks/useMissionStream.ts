@@ -66,15 +66,15 @@ function buildMissionWsUrl(): string {
 // ---------------------------------------------------------------------------
 
 export function useMissionStream(overrideUrl?: string): UseMissionStreamResult {
-  const { demoMode, isHydrated } = useDemoMode();
+  const { demoMode, simBackendMode, isHydrated } = useDemoMode();
   const [waypointIndex,  setWaypointIndex]  = useState<number>(-1);
   const [waypointsTotal, setWaypointsTotal] = useState<number>(0);
   const [missionState,   setMissionState]   = useState<MissionState>('idle');
   const [lastEvent,      setLastEvent]      = useState<MissionEvent | null>(null);
 
-  // Default to gateway URL (Pi). Caller can override to point at the sim backend.
-  const defaultUrl = useRef(buildMissionWsUrl()).current;
-  const wsUrl = overrideUrl ?? defaultUrl;
+  // Priority: explicit override → sim-backend auto → gateway (Pi)
+  const gatewayUrl = useRef(buildMissionWsUrl()).current;
+  const wsUrl = overrideUrl ?? (simBackendMode ? 'ws://localhost:8000/ws/mission' : gatewayUrl);
 
   const handleMessage = useCallback((data: unknown) => {
     if (!data || typeof data !== 'object') return;

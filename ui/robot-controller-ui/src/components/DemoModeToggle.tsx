@@ -16,7 +16,12 @@ interface DemoModeToggleProps {
 }
 
 const DemoModeToggle: React.FC<DemoModeToggleProps> = ({ className = '' }) => {
-  const { demoMode, setDemoMode } = useDemoMode();
+  const { demoMode, setDemoMode, isHydrated } = useDemoMode();
+
+  // Suppress server render to prevent React hydration mismatch (#418/#423).
+  // localStorage is only readable client-side, so the button is meaningless
+  // until we know the actual stored mode.
+  if (!isHydrated) return null;
 
   return (
     <button

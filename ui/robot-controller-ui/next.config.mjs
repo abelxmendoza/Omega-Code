@@ -75,7 +75,7 @@ const nextConfig = {
                 "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com", // <link> stylesheets
                 "font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com https://fonts-api.fontawesome.com",
                 "img-src 'self' data: blob: http: https:",
-                "connect-src 'self' http://localhost:* ws://localhost:* wss://localhost:* http://*:* ws://*:* wss://*:*",
+                "connect-src 'self' http://localhost:* ws://localhost:* wss://localhost:* http: ws: wss:",
                 "frame-src 'self'",
                 "object-src 'none'",
                 "base-uri 'self'",

@@ -20,9 +20,9 @@ interface CapabilityContextType {
 const CapabilityContext = createContext<CapabilityContextType | undefined>(undefined);
 
 export function CapabilityProvider({ children }: { children: ReactNode }) {
-  const { demoMode, isHydrated } = useDemoMode();
-  // Don't fetch capabilities in demo mode or before localStorage is read
-  const capabilitiesData = useCapabilities(true, 30000, isHydrated && !demoMode);
+  const { demoMode, simBackendMode, isHydrated } = useDemoMode();
+  // Don't fetch capabilities in demo mode, sim-backend mode, or before localStorage is read
+  const capabilitiesData = useCapabilities(true, 30000, isHydrated && !demoMode && !simBackendMode);
 
   return (
     <CapabilityContext.Provider value={capabilitiesData}>
