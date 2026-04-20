@@ -25,12 +25,14 @@ export type WpIndexListener = (index: number) => void;
 
 // ── Physics constants ─────────────────────────────────────────────────────────
 
-const DT          = 0.1;   // integration step, seconds (10 Hz)
-const OMEGA_MAX   = 1.8;   // max angular speed during rotate phase, rad/s
-const V_NAV       = 0.4;   // forward speed during nav, m/s
-const DIST_THRESH = 0.05;  // waypoint reached when dist < this, metres
-const ANGLE_THRESH = 0.04; // aligned enough to start driving, radians
-const HEADING_KP   = 2.5;  // proportional gain for in-motion heading correction
+const DT             = 0.1;   // integration step, seconds (10 Hz)
+const OMEGA_MAX      = 1.8;   // max angular speed during rotate phase, rad/s
+const OMEGA_MOVE_MAX = 0.9;   // cap on steering correction while moving
+const V_NAV          = 0.4;   // forward speed during nav, m/s
+const DIST_THRESH    = 0.12;  // waypoint reached when dist < this, metres
+const ANGLE_THRESH   = 0.04;  // aligned enough to start driving, radians
+const HEADING_KP     = 2.5;   // proportional gain for in-motion heading correction
+const REROTATE_THRESH = 0.5;  // if heading drifts > ~29° while moving, stop and re-rotate
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
@@ -206,10 +208,20 @@ export class SimEngine {
         this.emitWpIdx();
       } else {
         // Proportional heading correction while driving
-        const desired  = Math.atan2(dy, dx);
-        const headErr  = wrap(desired - theta_rad);
-        this.omega = headErr * HEADING_KP;
-        this.v     = V_NAV;
+        const desired = Math.atan2(dy, dx);
+        const headErr = wrap(desired - theta_rad);
+
+        if (Math.abs(headErr) > REROTATE_THRESH) {
+          // Heading has drifted too far (common when dx ≈ 0 causes atan2 to
+          // jump quadrants after a slight overshoot). Stop and re-align cleanly
+          // rather than trying to correct at speed, which causes spiralling.
+          this.v        = 0;
+          this.omega    = 0;
+          this.navPhase = 'rotating';
+        } else {
+          this.omega = Math.max(-OMEGA_MOVE_MAX, Math.min(OMEGA_MOVE_MAX, headErr * HEADING_KP));
+          this.v     = V_NAV;
+        }
       }
     }
   }
