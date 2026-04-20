@@ -25,14 +25,15 @@ export type WpIndexListener = (index: number) => void;
 
 // ── Physics constants ─────────────────────────────────────────────────────────
 
-const DT             = 0.1;   // integration step, seconds (10 Hz)
-const OMEGA_MAX      = 1.8;   // max angular speed during rotate phase, rad/s
-const OMEGA_MOVE_MAX = 0.9;   // cap on steering correction while moving
-const V_NAV          = 0.4;   // forward speed during nav, m/s
-const DIST_THRESH    = 0.12;  // waypoint reached when dist < this, metres
-const ANGLE_THRESH   = 0.04;  // aligned enough to start driving, radians
-const HEADING_KP     = 2.5;   // proportional gain for in-motion heading correction
-const REROTATE_THRESH = 0.5;  // if heading drifts > ~29° while moving, stop and re-rotate
+const DT              = 0.1;   // integration step, seconds (10 Hz)
+const OMEGA_MAX       = 1.8;   // max angular speed during rotate phase, rad/s
+const OMEGA_MOVE_MAX  = 0.9;   // cap on steering correction while moving
+const ROTATION_KP     = 8.0;   // P-gain for rotate phase (proportional, not bang-bang)
+const V_NAV           = 0.4;   // forward speed during nav, m/s
+const DIST_THRESH     = 0.12;  // waypoint reached when dist < this, metres
+const ANGLE_THRESH    = 0.04;  // aligned enough to start driving, radians
+const HEADING_KP      = 2.5;   // proportional gain for in-motion heading correction
+const REROTATE_THRESH = 0.5;   // if heading drifts > ~29° while moving, stop and re-rotate
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
@@ -187,7 +188,9 @@ export class SimEngine {
         this.omega    = 0;
         this.navPhase = 'moving';
       } else {
-        this.omega = Math.sign(err) * OMEGA_MAX;
+        // Proportional control: slows down as it converges so it doesn't
+        // overshoot ANGLE_THRESH and oscillate indefinitely.
+        this.omega = Math.max(-OMEGA_MAX, Math.min(OMEGA_MAX, err * ROTATION_KP));
         this.v     = 0;
       }
     }
