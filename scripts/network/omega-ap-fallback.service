@@ -1,0 +1,12 @@
+[Unit]
+Description=Omega-1 AP fallback — activate hotspot if no WiFi client after boot
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/omega-ap-check
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target

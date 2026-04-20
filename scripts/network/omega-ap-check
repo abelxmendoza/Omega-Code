@@ -1,0 +1,14 @@
+#!/bin/bash
+# omega-ap-check — boot fallback: activate AP if no WiFi client found
+# Installed to: /usr/local/bin/omega-ap-check
+# Run by: omega-ap-fallback.service (45 s after NetworkManager starts)
+#
+# Gives NM 45 s to connect to any known WiFi network. If nothing is
+# connected by then, activates Omega1-AP so the robot is reachable
+# in the field without a router.
+
+sleep 45
+if ! nmcli -t -f NAME,TYPE,STATE con show --active 2>/dev/null \
+     | grep ':802-11-wireless:activated' | grep -qv '^Omega1-AP:'; then
+  nmcli con up Omega1-AP 2>/dev/null
+fi

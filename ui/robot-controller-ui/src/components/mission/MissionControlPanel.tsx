@@ -40,6 +40,15 @@ export interface MissionControlPanelProps {
   onClearWaypoints:       () => void;
   /** Called after a scenario is successfully loaded — parent updates map */
   onScenarioLoaded:       (name: string) => void;
+  /**
+   * Demo mode only — true when SimEngine is actively navigating in a mode that
+   * doesn't emit a positive wpIdx (e.g. aruco_seek).
+   */
+  demoIsNavigating?:      boolean;
+  /** Demo mode only — human-readable label for the active behavior */
+  demoBehaviorLabel?:     string;
+  /** Demo mode only — called after SimEngine.reset() to clear map trail + waypoints */
+  onDemoReset?:           () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,8 +105,11 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
   missionStreamConnected,
   onClearWaypoints,
   onScenarioLoaded,
+  demoIsNavigating  = false,
+  demoBehaviorLabel = '',
+  onDemoReset,
 }) => {
-  const { demoMode, engine: simEngine } = useDemoMode();
+  const { demoMode, setDemoMode, engine: simEngine } = useDemoMode();
 
   const [missionError,    setMissionError]    = useState<string | null>(null);
   const [simLoaded,       setSimLoaded]       = useState(false);
@@ -183,36 +195,22 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
     } catch { /* best-effort */ }
   }, [demoMode, simEngine]);
 
-  const loadScenario = useCallback(async (name: string) => {
+  const loadScenario = useCallback((name: string) => {
     setMissionError(null);
-
-    // In demo mode, no backend call — just update the map directly.
-    if (demoMode) {
-      setSimLoaded(true);
-      onScenarioLoaded(name);
-      return;
-    }
-
-    try {
-      const res = await fetch(`${simBase}/sim/scenario`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ name }),
-      });
-      if (!res.ok) {
-        if (res.status === 404) {
-          throw new Error('Backend not in sim mode — restart with SIM_MODE=1');
-        }
-        throw new Error(`${res.status}: ${await res.text()}`);
-      }
-      setSimLoaded(true);
-      onScenarioLoaded(name);
-    } catch (err) {
-      setMissionError(err instanceof Error ? err.message : String(err));
-    }
-  }, [demoMode, onScenarioLoaded]);
+    // Scenario data is baked into the frontend — always update the map immediately.
+    // Also auto-switch to frontend-demo so Start Mission uses SimEngine rather than
+    // trying to reach localhost:8000 (which is blocked on Vercel and other deployments).
+    if (!demoMode) setDemoMode(true);
+    setSimLoaded(true);
+    onScenarioLoaded(name);
+  }, [demoMode, setDemoMode, onScenarioLoaded]);
 
   const resetEkf = useCallback(async () => {
+    if (demoMode) {
+      simEngine.reset();
+      onDemoReset?.();
+      return;
+    }
     try {
       await fetch(`${apiBase}/localization/reset`, {
         method:  'POST',
@@ -220,7 +218,7 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
         body:    JSON.stringify({ x: 0, y: 0, theta: 0 }),
       });
     } catch { /* best-effort */ }
-  }, [apiBase]);
+  }, [demoMode, simEngine, onDemoReset, apiBase]);
 
   // ---------------------------------------------------------------------------
   // Render
@@ -228,9 +226,18 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
 
   const q = pose?.quality ?? 0;
 
-  // In demo mode missionState is always 'idle' (WS suppressed); use activeWpIndex instead.
-  const isRunning  = demoMode ? activeWpIndex >= 0 : missionState === 'running';
+  // In demo mode missionState is always 'idle' (WS suppressed).
+  // Use activeWpIndex for waypoint nav, demoIsNavigating for other behaviors (e.g. aruco_seek).
+  const isRunning  = demoMode ? (activeWpIndex >= 0 || demoIsNavigating) : missionState === 'running';
   const isComplete = !demoMode && missionState === 'completed';
+
+  // Distance to active waypoint and rough ETA
+  const MAX_V_MS = 0.30;  // m/s — matches sim/backend default
+  const activeWp = isRunning && activeWpIndex >= 0 ? waypoints[activeWpIndex] ?? null : null;
+  const distToWp = activeWp && pose
+    ? Math.hypot(activeWp.x - pose.x, activeWp.y - pose.y)
+    : null;
+  const etaSec   = distToWp !== null ? distToWp / MAX_V_MS : null;
 
   const wpDone  = isRunning || isComplete ? Math.max(0, activeWpIndex) : 0;
   const wpTotal = waypoints.length;
@@ -394,11 +401,21 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
           </div>
         )}
         {isRunning && (
-          <div className="bg-blue-900/40 border border-blue-600/40 rounded px-2 py-1.5 text-xs text-blue-300 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
-            <span>
-              Mission running — waypoint {Math.max(0, activeWpIndex) + 1}/{waypoints.length}
-            </span>
+          <div className="bg-blue-900/40 border border-blue-600/40 rounded px-2 py-1.5 text-xs text-blue-300 flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
+              <span>
+                {demoIsNavigating && activeWpIndex < 0
+                  ? demoBehaviorLabel || 'Behavior active…'
+                  : `Mission running — waypoint ${Math.max(0, activeWpIndex) + 1}/${waypoints.length}`}
+              </span>
+            </div>
+            {distToWp !== null && (
+              <div className="flex justify-between font-mono text-[10px] text-blue-400 pl-4">
+                <span>dist: {distToWp.toFixed(2)} m</span>
+                <span>ETA: ~{etaSec!.toFixed(0)} s</span>
+              </div>
+            )}
           </div>
         )}
         {/* Only show "waiting" banner in sim-backend mode (demo mode confirms instantly) */}

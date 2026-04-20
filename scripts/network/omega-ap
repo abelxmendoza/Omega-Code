@@ -1,0 +1,35 @@
+#!/bin/bash
+# omega-ap — toggle Omega-1 between WiFi client and AP (hotspot) mode
+# Usage: omega-ap on | off | status
+#
+# on     Drop home WiFi → broadcast Omega1-AP at 10.42.0.1
+# off    Drop AP        → reconnect to home WiFi
+# status Show active connection and wlan0 IP
+
+set -e
+
+WIFI_CON="SpectrumSetup-89"
+AP_CON="Omega1-AP"
+
+case "${1:-status}" in
+  on)
+    echo "Switching to AP mode (Omega1-AP / 10.42.0.1)..."
+    nmcli con down "$WIFI_CON" 2>/dev/null || true
+    nmcli con up "$AP_CON"
+    echo "AP active — connect to 'Omega1-AP', robot at 10.42.0.1:8000"
+    ;;
+  off)
+    echo "Returning to WiFi client mode..."
+    nmcli con down "$AP_CON" 2>/dev/null || true
+    nmcli con up "$WIFI_CON"
+    echo "WiFi client active"
+    ;;
+  status)
+    nmcli con show --active | grep -E 'Omega1-AP|SpectrumSetup' || echo "Neither active"
+    ip addr show wlan0 | grep inet
+    ;;
+  *)
+    echo "Usage: omega-ap on | off | status"
+    exit 1
+    ;;
+esac

@@ -73,13 +73,18 @@ function qualityDescription(q: number): string {
   return 'No visual correction — using dead reckoning only';
 }
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const TRAIL_MAX = 100;
+
 // ── Canvas drawing ─────────────────────────────────────────────────────────────
 
 function drawPose(
-  ctx:  CanvasRenderingContext2D,
-  pose: PoseData,
-  size: number,
-  ppm:  number,
+  ctx:   CanvasRenderingContext2D,
+  pose:  PoseData,
+  size:  number,
+  ppm:   number,
+  trail: Array<{ x: number; y: number }> = [],
 ) {
   ctx.clearRect(0, 0, size, size);
 
@@ -102,6 +107,33 @@ function drawPose(
   ctx.lineWidth   = 1;
   ctx.beginPath(); ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8); ctx.stroke();
+
+  // ── Pose trail ──────────────────────────────────────────────────────────────
+  if (trail.length > 1) {
+    for (let i = 1; i < trail.length; i++) {
+      const alpha = i / trail.length;   // oldest = 0, newest = 1
+      const tx0 = cx + trail[i - 1].x * ppm;
+      const ty0 = cy - trail[i - 1].y * ppm;
+      const tx1 = cx + trail[i].x * ppm;
+      const ty1 = cy - trail[i].y * ppm;
+      ctx.beginPath();
+      ctx.moveTo(tx0, ty0);
+      ctx.lineTo(tx1, ty1);
+      ctx.strokeStyle = `rgba(96, 165, 250, ${alpha * 0.6})`;
+      ctx.lineWidth   = 1.5;
+      ctx.stroke();
+    }
+    // Dot at each trail point (subtle, only for recent few)
+    for (let i = Math.max(0, trail.length - 20); i < trail.length - 1; i++) {
+      const alpha = (i - (trail.length - 20)) / 20;
+      const tx = cx + trail[i].x * ppm;
+      const ty = cy - trail[i].y * ppm;
+      ctx.beginPath();
+      ctx.arc(tx, ty, 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(96, 165, 250, ${alpha * 0.4})`;
+      ctx.fill();
+    }
+  }
 
   // World → canvas:  canvasX = cx + x*ppm,  canvasY = cy - y*ppm  (+Y up)
   const rx = cx + pose.x * ppm;
@@ -213,9 +245,18 @@ const LocalizationPanel: React.FC = () => {
 
   const [age, setAge] = useState(0);
   const lastTsRef     = useRef<number>(0);
+  const trailRef      = useRef<Array<{ x: number; y: number }>>([]);
 
   useEffect(() => {
-    if (wsPose) { lastTsRef.current = Date.now(); setAge(0); }
+    if (wsPose) {
+      lastTsRef.current = Date.now();
+      setAge(0);
+      // Maintain ring buffer — push latest position, drop oldest beyond TRAIL_MAX
+      trailRef.current = [
+        ...trailRef.current.slice(-(TRAIL_MAX - 1)),
+        { x: wsPose.x, y: wsPose.y },
+      ];
+    }
   }, [wsPose]);
 
   useEffect(() => {
@@ -243,7 +284,7 @@ const LocalizationPanel: React.FC = () => {
       covariance: [[1, 0, 0], [0, 1, 0], [0, 0, 0.5]],
       quality: 0, correction_count: 0, last_marker_seen: null, ts: 0,
     };
-    drawPose(ctx, p, CANVAS_SIZE, PIXELS_PER_METRE);
+    drawPose(ctx, p, CANVAS_SIZE, PIXELS_PER_METRE, trailRef.current);
   }, [pose, fetchStatus]);
 
   // ── Render ────────────────────────────────────────────────────────────────

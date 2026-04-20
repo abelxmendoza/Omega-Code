@@ -27,8 +27,8 @@ sudo reboot
 
 `setup_fresh_pi.sh` installs all system packages, creates the Python venv, runs
 `pip install -r requirements.txt`, fetches Go dependencies, configures I2C/SPI/camera
-in `/boot/firmware/config.txt`, installs the Xbox udev rule, and writes the full
-`@reboot` crontab so all services start automatically after reboot.
+in `/boot/firmware/config.txt`, installs the Xbox udev rule, writes the full
+`@reboot` crontab, and configures AP mode / field hotspot (step 9).
 
 After the reboot, these services start on their own:
 
@@ -289,8 +289,14 @@ Omega-Code/
         └── tests/                  # 156 Jest + MSW + Cypress tests
 
 scripts/
-├── setup_fresh_pi.sh   # Full bootstrap for new Pi/SD card (run once, then reboot)
-└── setup_pi_camera.sh  # Camera-stack-only bootstrap (called by setup_fresh_pi.sh)
+├── setup_fresh_pi.sh        # Full bootstrap for new Pi/SD card (run once, then reboot)
+├── setup_ap_mode.sh         # AP mode / field hotspot setup (called by setup_fresh_pi.sh)
+├── setup_pi_camera.sh       # Camera-stack-only bootstrap (called by setup_fresh_pi.sh)
+└── network/
+    ├── omega-ap             # Toggle script: omega-ap on | off | status
+    ├── 99-ap-fallback       # NM dispatcher: auto-AP when client drops mid-session
+    ├── omega-ap-check       # Boot check: activate AP if no WiFi found after 45 s
+    └── omega-ap-fallback.service  # systemd unit for boot check
 ```
 
 ---
@@ -719,10 +725,12 @@ browser. The `LocalizationPanel` on the main dashboard shows the EKF pose updati
 
 The Mission Control page (`/mission`) provides:
 
-- **2D mission map** — top-down canvas showing robot position (from EKF), waypoints, and path
-- **Waypoint management** — add, remove, and reorder waypoints; send the list to the robot
+- **2D mission map** — top-down canvas showing robot position (from EKF), waypoints, planned A* path, and pose trail
+- **Waypoint management** — click map to place waypoints; list shows live progress with completed/active/pending states
+- **Live distance + ETA** — while a mission is running, shows distance to the active waypoint (`d = √(Δx²+Δy²)`) and estimated time to arrival (`d / max_v`)
 - **Sim Launcher** — start the software simulation engine without touching the terminal
 - **Live EKF feed** — pose quality badge, uncertainty ellipse, ArUco correction count
+- **Scenario quick-launch** — pre-built scenarios (Marker Circuit, Straight Line, Three Point Turn) auto-switch to frontend-demo and load markers/obstacles into the sim
 
 Access: `http://localhost:3000/mission` when running the UI in dev mode, or navigate via the header.
 
@@ -951,11 +959,12 @@ Dead-reckoning only is capped at 0.5 (amber) regardless of covariance.
 
 ### UI panel
 
-`LocalizationPanel` polls `GET /localization/pose` every 2 s and shows:
+`LocalizationPanel` receives pose via `/ws/pose` WebSocket and shows:
 - x / y position (metres) and heading θ (degrees)
-- Quality badge (green / amber / red)
-- Mini 2D top-down canvas: robot dot + heading arrow + 1-σ uncertainty ellipse
-- ArUco correction count and last marker ID seen
+- Quality badge (green / amber / red) with σ uncertainty in cm
+- Mini 2D top-down canvas: robot dot + heading arrow + 1-σ uncertainty ellipse + **fading pose trail** (last 100 positions)
+- ArUco correction count, last marker ID seen, and data age in seconds
+- The pose trail is a ring buffer of `{x, y}` snapshots drawn as a fading blue polyline — oldest entries near-transparent, newest near full opacity
 
 ### Video server integration
 
@@ -964,6 +973,87 @@ Dead-reckoning only is capped at 0.5 (amber) regardless of covariance.
 frame loop is never blocked. Requires `ARUCO_MARKER_LENGTH` (metres) and
 `ARUCO_CALIBRATION_FILE` (camera intrinsics JSON) to be set in the video server
 environment for pose estimation to produce metric results.
+
+---
+
+## Field Deployment — AP Mode
+
+When operating away from home WiFi (outdoors, a lab, a demo), the Pi can act as its own
+WiFi access point. Your laptop connects directly to the robot — no router required.
+
+### Setup (included in `setup_fresh_pi.sh` step 9)
+
+```bash
+# Standalone — run once on the Pi
+./scripts/setup_ap_mode.sh
+
+# Override home WiFi connection name if different from default
+./scripts/setup_ap_mode.sh --wifi-ssid="MyHomeNetwork"
+```
+
+### Usage
+
+```bash
+omega-ap on      # Drop home WiFi → broadcast Omega1-AP at 10.42.0.1
+omega-ap off     # Drop AP → reconnect to home WiFi
+omega-ap status  # Show active connection and wlan0 IP
+```
+
+### Field workflow
+
+1. Power on the Pi anywhere
+2. Wait ~45 seconds — `Omega1-AP` appears automatically if no known WiFi found
+3. Connect laptop WiFi to **`Omega1-AP`** (password: `omega1robot`)
+4. Robot backend: `http://10.42.0.1:8000`
+5. SSH: `ssh omega1@10.42.0.1`
+
+### Auto-fallback behaviour
+
+| Situation | What happens |
+|---|---|
+| Pi boots at home | Connects to home WiFi normally |
+| Pi boots in the field | After 45 s, activates `Omega1-AP` automatically |
+| Home WiFi drops mid-session | After 30 s, activates `Omega1-AP` automatically |
+| `omega-ap off` called | Returns to home WiFi; Tailscale reconnects |
+
+The auto-fallback is implemented in two layers:
+- **`/etc/NetworkManager/dispatcher.d/99-ap-fallback`** — fires when `wlan0` goes down mid-session; waits 30 s; activates AP if still disconnected
+- **`omega-ap-fallback.service`** (systemd) — runs `omega-ap-check` 45 s after boot; activates AP if no client WiFi found
+
+### Implementation details
+
+- Uses **NetworkManager native AP mode** (no hostapd required) with `ipv4.method shared` and `dnsmasq` for DHCP
+- **polkit rules** (`/etc/polkit-1/localauthority/50-local.d/50-nm-omega.pkla`) grant the `omega1` user `wifi.share.protected` permission so `nmcli con up` works without sudo
+- Tailscale drops during AP mode (needs upstream internet); it reconnects automatically when `omega-ap off` restores home WiFi
+- Hardware: BCM43455 (Pi 4B onboard WiFi) supports AP mode via brcmfmac driver on Ubuntu 22.04
+
+---
+
+## Autonomy Modes
+
+The **Autonomy** panel (main dashboard) exposes the three modes that run real hardware on Omega-1:
+
+| Mode | Backend class | Hardware required |
+|---|---|---|
+| **Avoid Obstacles** | `ObstacleAvoidanceMode` | HC-SR04 ultrasonic sensor |
+| **ArUco Seek** | `ArucoSeekMode` | CSI camera + ArUco marker |
+| **Return to Dock** | `DockMode` | Dock position configured |
+
+Parameters are translated from UI units to backend-expected names/units by `toBackendParams()`
+in `AutonomyModal.tsx` before any API call — the backend receives correct values (e.g. `stop_cm`
+in centimetres, `forward_speed` as 0–1 fraction) regardless of how the UI slider is labeled.
+
+### Live FSM state badge
+
+While autonomy is running the modal header shows the current internal state:
+
+| Mode | States |
+|---|---|
+| Avoid Obstacles | `MOVING` · `SLOWING` · `PIVOTING` · `ESTOP` · `SENSOR_OFFLINE` |
+| ArUco Seek | `SEARCHING` · `ALIGNING` · `APPROACHING` · `STOPPED` |
+
+- **Live mode**: polled from `GET /autonomy/status` every 2 s
+- **Demo mode**: derived from `SimEngine.getDemoFsmState()` every 250 ms
 
 ---
 
@@ -1114,3 +1204,6 @@ pip install -e ~/Desktop/Omega-Code/
 | PCA9685 clock locked to 50 Hz | All 16 channels share one global PWM clock; servos on ch8/ch9 require exactly 50 Hz (20 ms period). Setting any higher frequency for DC motors corrupts servo pulse widths. Motor driver and servo init both read back the PRESCALE register and abort/correct if the frequency drifted. |
 | `SystemModeContext` polling consolidation | Multiple components independently polled `/api/system/mode/status` — O(N) requests per component mount. Context wraps the loop in a React context; consumers call `useSystemMode()` instead of spawning their own intervals. |
 | Fire-and-forget ArUco posting from `video_server.py` | Flask video server runs in its own process; spawning a daemon thread for each ArUco observation keeps the MJPEG frame loop non-blocking while feeding the EKF localization endpoint with marker corrections. |
+| NM native AP mode over hostapd | NetworkManager's built-in `wifi.mode ap` + `ipv4.method shared` + dnsmasq handles the full AP/DHCP stack without installing hostapd. Polkit rules grant the robot user `wifi.share.protected` permission so no sudo is needed to toggle modes at runtime. |
+| `toBackendParams()` translation layer in AutonomyModal | The UI exposes human-readable units (cm, %, m) while the backend autonomy modes use different names and units. A single translation function converts at the boundary so mismatches can't silently pass wrong values to hardware. |
+| Pose trail as ring buffer ref (not state) | The LocalizationPanel canvas redraws on every pose update. Storing the trail in a `useRef` rather than `useState` avoids triggering an extra render cycle per pose tick — the ref is read directly in the canvas effect. |

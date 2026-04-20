@@ -1,1301 +1,622 @@
 /*
-# File: /src/components/control/AutonomyModal.tsx
-# Summary:
-#   Simple-first autonomy modal with debounced live updates:
-#     • Top: Mode + Start/Stop, Speed, 2 safety toggles, Waypoints
-#     • Bottom: one "Advanced" fold-out (Navigation, Vision, Behavior, Mapping, Safety, Presets)
-#   - Backwards compatible with onStart/onStop/onDock/onSetWaypoint
-#   - Optional onUpdate(params) is debounced (250ms) to avoid backend spam
-#   - Duplicate param payloads are suppressed
-#   - Optional liveApply (default: true). "Apply Params" flushes pending updates.
-#   - High-contrast colors (dark bg, bright text/borders)
+  AutonomyModal — simplified to the three modes that actually run hardware on Omega-1:
+    • Avoid Obstacles  (ObstacleAvoidanceMode — ultrasonic loop, real motors)
+    • ArUco Seek       (ArucoSeekMode — camera + motor seek loop)
+    • Dock             (DockMode — sends dock command, logs confirmation)
+
+  Parameter translation: UI values are converted to the backend's expected names and
+  units inside toBackendParams() before onStart is called, so the backend actually
+  receives correct values (previous version sent wrong names and wrong units).
 */
 
 'use client';
 
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { Bot, Play, Square, Gauge, Shield, Zap, Flag, Crosshair, Settings2, Save, Upload, Info, HelpCircle, Eye, Package, Network, Activity, Layers, Code, CheckCircle2, Lock, Clock, AlertTriangle, CheckCircle, UserCheck } from 'lucide-react';
+import {
+  Bot, Play, Square, Shield, AlertTriangle, CheckCircle,
+  ChevronDown, ChevronUp, Save, Upload, Info,
+} from 'lucide-react';
 import { useServiceSafety } from '@/hooks/useServiceSafety';
 
-import { Button } from '@/components/ui/button';
+import { Button }                                   from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { Slider } from '@/components/ui/slider';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { useDebouncedCallback } from '@/utils/debounce';
+import { Switch }                                   from '@/components/ui/switch';
+import { Slider }                                   from '@/components/ui/slider';
+import { Input }                                    from '@/components/ui/input';
 
-/* ------------------------------ Types ------------------------------ */
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
-export type AutonomyMode =
-  | 'idle' | 'patrol' | 'follow' | 'dock' | 'line_track' // legacy
-  | 'line_follow' | 'avoid_obstacles' | 'edge_detect' | 'waypoints'
-  | 'color_track' | 'aruco' | 'person_follow' | 'scan_servo';
+export type AutonomyMode = 'idle' | 'avoid_obstacles' | 'aruco' | 'dock'
+  // kept for backward-compat with index.tsx demo-mode switch
+  | 'line_follow' | 'patrol' | 'waypoints' | 'aruco_seek';
 
+/** UI-facing parameters — clean names, sensible units. */
 export type AutonomyParams = {
-  // legacy
-  speedPct: number;        // 0–100
-  aggressiveness: number;  // 0–100
-  obstacleAvoidance: boolean;
-  laneKeeping: boolean;
-  headlights: boolean;     // interpreted as "Auto-lights" permission
-
-  // nav
-  avoidStopDistM: number;
-  line_kP: number;
-  searchYawRate: number;
-
-  // vision (HSV)
-  hsvLow: [number, number, number];
-  hsvHigh:[number, number, number];
-  minArea: number;
-  maxArea: number;
-
-  // behavior priorities
-  priorities: Array<'safety'|'avoid'|'edge'|'line'|'waypoints'|'vision'>;
-
-  // mapping
-  gridEnabled: boolean;
-  gridCellSizeM: number;
-  gridDecay: number;
-
-  // safety
-  batteryMinPct: number;
-
-  // computer vision
-  cvEnabled: boolean;
-  cvMode: 'color_track' | 'face_follow' | 'person_follow' | 'aruco_track' | 'motion_detect' | 'object_detect';
-  cvConfidenceThreshold: number; // 0-100
-  cvMaxDetections: number;
-  cvShowBoundingBoxes: boolean;
-  cvTrackObjects: boolean;
-  cvTrackerType: 'CSRT' | 'KCF' | 'MIL';
-  // Detection type toggles - select which features to run
-  cvDetectFaces: boolean;
-  cvDetectPeople: boolean;
-  cvDetectObjects: boolean;
-  cvDetectAruco: boolean;
-  cvDetectMotion: boolean;
-  cvTrackColor: boolean;
-
-  // ROS (Robot Operating System) controls
-  rosEnabled: boolean;
-  rosMasterUri: string;
-  rosBridgeEnabled: boolean;
-  rosPublishSensors: boolean;
-  rosPublishMovement: boolean;
-  rosPublishCamera: boolean;
-  rosSubscribeCommands: boolean;
-  rosTfEnabled: boolean;
-  rosNodeSlam: boolean;
-  rosNodeSensorFusion: boolean;
-  rosNodePathPlanning: boolean;
-  rosNodeAutonomousDriving: boolean;
-
-  // Algorithm selection
-  pathPlanningAlgorithm: 'a_star' | 'd_star_lite' | 'rrt' | 'none';
-
-  // Enterprise features
-  configVersion?: string;
-  lastModified?: number;
-  modifiedBy?: string;
+  speedPct:       number;   // move speed 0–100 %
+  stopDistCm:     number;   // obstacle avoidance — hard-stop distance (cm)
+  warnDistCm:     number;   // obstacle avoidance — start slowing (cm)
+  cameraAssist:   boolean;  // obstacle avoidance — use camera as 2nd sensor
+  detectOnly:     boolean;  // obstacle avoidance — react only, don't drive
+  arucoStopDistM: number;   // aruco seek — stop distance from marker (m)
+  arucoTargetId:  number;   // aruco seek — -1 = any, 0+ = specific marker ID
+  arucoMarkerM:   number;   // aruco seek — physical marker side length (m)
+  batteryMinPct:  number;   // safety — stop below this battery level
+  headlights:     boolean;  // auto-lights permission (passed to lighting API)
 };
 
 export type AutonomyModalProps = {
-  className?: string;
-  initialMode?: AutonomyMode;
-  initialParams?: Partial<AutonomyParams>;
-  onStart?: (mode: AutonomyMode, params: AutonomyParams) => Promise<void> | void;
-  onStop?: () => Promise<void> | void;
-  onDock?: () => Promise<void> | void;
-  onSetWaypoint?: (label: string, lat: number, lon: number) => Promise<void> | void;
-  onUpdate?: (params: AutonomyParams) => Promise<void> | void; // optional live updates
-  connected?: boolean;
+  className?:    string;
+  initialMode?:  AutonomyMode;
+  connected?:    boolean;
   autonomyActive?: boolean;
-  batteryPct?: number;
+  batteryPct?:   number;
   triggerLabel?: string;
-  /** If true (default), param changes auto-push via debounce. If false, only "Apply Params" sends. */
-  liveApply?: boolean;
-  /** Enterprise: User role for access control */
-  userRole?: 'admin' | 'operator' | 'viewer';
-  /** Enterprise: Enable audit logging */
-  enableAuditLog?: boolean;
+  /** Live FSM state string — shown as a badge when autonomy is active. */
+  fsmState?:     string;
+  onStart?:  (mode: AutonomyMode, params: Record<string, unknown>) => Promise<void> | void;
+  onStop?:   () => Promise<void> | void;
+  onDock?:   () => Promise<void> | void;
+  onUpdate?: (params: Record<string, unknown>) => Promise<void> | void;
+  /** @deprecated GPS waypoints are not used on Omega-1; kept for API compat */
+  onSetWaypoint?: (label: string, lat: number, lon: number) => Promise<void> | void;
 };
 
-/* -------------------------------- Defaults -------------------------------- */
+// ---------------------------------------------------------------------------
+// Defaults
+// ---------------------------------------------------------------------------
 
-const defaults: AutonomyParams = {
-  // legacy/simple
-  speedPct: 40,
-  aggressiveness: 30,
-  obstacleAvoidance: true,
-  laneKeeping: true,
-  headlights: false,
-
-  // nav
-  avoidStopDistM: 0.25,
-  line_kP: 0.9,
-  searchYawRate: 35,
-
-  // vision
-  hsvLow: [0, 120, 120],
-  hsvHigh:[10, 255, 255],
-  minArea: 500,
-  maxArea: 25000,
-
-  // behavior order (top = highest priority)
-  priorities: ['safety','avoid','edge','line','waypoints','vision'],
-
-  // mapping
-  gridEnabled: false,
-  gridCellSizeM: 0.15,
-  gridDecay: 0.04,
-
-  // safety
-  batteryMinPct: 15,
-
-  // computer vision
-  cvEnabled: false,
-  cvMode: 'color_track',
-  cvConfidenceThreshold: 70,
-  cvMaxDetections: 5,
-  cvShowBoundingBoxes: true,
-  cvTrackObjects: true,
-  cvTrackerType: 'CSRT',
-  // Detection toggles - start with mode-based defaults
-  cvDetectFaces: false,
-  cvDetectPeople: false,
-  cvDetectObjects: false,
-  cvDetectAruco: false,
-  cvDetectMotion: false,
-  cvTrackColor: true, // default for color_track mode
-
-  // ROS defaults
-  rosEnabled: false,
-  rosMasterUri: 'http://localhost:11311',
-  rosBridgeEnabled: true,
-  rosPublishSensors: true,
-  rosPublishMovement: true,
-  rosPublishCamera: true,
-  rosSubscribeCommands: true,
-  rosTfEnabled: true,
-  rosNodeSlam: false,
-  rosNodeSensorFusion: true,
-  rosNodePathPlanning: false,
-  rosNodeAutonomousDriving: false,
-
-  // Algorithm selection
-  pathPlanningAlgorithm: 'a_star',
+const DEFAULTS: AutonomyParams = {
+  speedPct:       40,
+  stopDistCm:     25,
+  warnDistCm:     50,
+  cameraAssist:   false,
+  detectOnly:     false,
+  arucoStopDistM: 0.40,
+  arucoTargetId:  -1,
+  arucoMarkerM:   0.10,
+  batteryMinPct:  15,
+  headlights:     false,
 };
 
-/* -------------------------------- Component -------------------------------- */
+// ---------------------------------------------------------------------------
+// Parameter translation — UI units → backend names and units
+// ---------------------------------------------------------------------------
+
+function toBackendParams(mode: AutonomyMode, p: AutonomyParams): Record<string, unknown> {
+  const fwd = Math.max(0.1, Math.min(1.0, p.speedPct / 100));
+
+  switch (mode) {
+    case 'avoid_obstacles':
+      return {
+        forward_speed:  fwd,
+        stop_cm:        p.stopDistCm,
+        warn_cm:        p.warnDistCm,
+        drive:          !p.detectOnly,
+        camera_assist:  p.cameraAssist,
+      };
+
+    case 'aruco':
+    case 'aruco_seek':
+      return {
+        forward_speed:  fwd * 0.7,   // approach speed (gentler than top speed)
+        search_speed:   fwd * 0.5,   // rotation speed while searching
+        stop_dist:      p.arucoStopDistM,
+        target_id:      p.arucoTargetId,
+        marker_length:  p.arucoMarkerM,
+      };
+
+    case 'dock':
+      return { forward_speed: fwd };
+
+    default:
+      return { forward_speed: fwd };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mode definitions
+// ---------------------------------------------------------------------------
+
+const MODES = [
+  {
+    value:   'avoid_obstacles' as AutonomyMode,
+    label:   'Avoid Obstacles',
+    icon:    '🛡',
+    summary: 'Robot drives forward and automatically steers around anything in its path using the ultrasonic sensor.',
+    needs:   'Ultrasonic sensor',
+  },
+  {
+    value:   'aruco' as AutonomyMode,
+    label:   'ArUco Seek',
+    icon:    '◎',
+    summary: 'Robot searches by rotating, locks onto an ArUco marker with the camera, aligns itself, and stops in front of it.',
+    needs:   'Camera + ArUco marker',
+  },
+  {
+    value:   'dock' as AutonomyMode,
+    label:   'Return to Dock',
+    icon:    '⌂',
+    summary: 'Sends a dock command — robot will attempt to return to its home/charging position.',
+    needs:   'Dock position configured',
+  },
+] as const;
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export default function AutonomyModal({
   className,
-  initialMode = 'idle',
-  initialParams = {},
+  initialMode = 'avoid_obstacles',
+  connected   = true,
+  autonomyActive = false,
+  batteryPct  = 100,
+  triggerLabel = 'Autonomy',
+  fsmState,
   onStart,
   onStop,
   onDock,
-  onSetWaypoint,
-  onUpdate,
-  connected = true,
-  autonomyActive = false,
-  batteryPct = 100,
-  triggerLabel = 'Autonomy',
-  liveApply = true,
-  userRole = 'operator',
-  enableAuditLog = true,
 }: AutonomyModalProps) {
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<AutonomyMode>(initialMode);
-  const [params, setParams] = useState<AutonomyParams>({ ...defaults, ...initialParams });
+  const [open, setOpen]     = useState(false);
+  const [mode, setMode]     = useState<AutonomyMode>(
+    initialMode === 'idle' ? 'avoid_obstacles' : initialMode,
+  );
+  const [params, setParams] = useState<AutonomyParams>({ ...DEFAULTS });
+  const [busy,  setBusy]    = useState(false);
+  const [showAdv, setShowAdv] = useState(false);
+  const fileRef = React.useRef<HTMLInputElement>(null);
 
-  // Waypoints (client-side preview + push to backend via onSetWaypoint)
-  const [wpLabel, setWpLabel] = useState('Home');
-  const [wpLat, setWpLat] = useState<string>('');
-  const [wpLon, setWpLon] = useState<string>('');
-  const [waypoints, setWaypoints] = useState<Array<{label:string, lat:number, lon:number}>>([]);
-
-  // UI
-  const [busy, setBusy] = useState(false);
-  const [showNavAdv, setShowNavAdv] = useState(false);
-  const [showSafetyAdv, setShowSafetyAdv] = useState(false);
-  const [showSysAdv, setShowSysAdv] = useState(false);
-  const [configHistory, setConfigHistory] = useState<Array<{version: string, timestamp: number, user: string}>>([]);
-  const [visionModeLabel, setVisionModeLabel] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  // Safety: derived from live service status
   const { movementReady, sensorsReady, blockedReason } = useServiceSafety();
   const safetyBlocked = !movementReady || !sensorsReady;
 
-  // Fetch current vision mode label for status row
-  useEffect(() => {
-    if (!open) return;
-    fetch('/api/system/mode/status')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (!d) return;
-        const LABELS: Record<number, string> = {
-          0: 'Raw Stream', 1: 'Motion Detection', 2: 'Object Tracking',
-          3: 'Face Detection', 4: 'ArUco Markers', 5: 'Pi Record',
-          6: 'YOLOv8', 7: 'Full Autonomy',
-        };
-        setVisionModeLabel(d.mode != null ? (LABELS[d.mode] ?? `Mode ${d.mode}`) : null);
-      })
-      .catch(() => {});
-  }, [open]);
-
-  // Enterprise: Role-based permissions
-  const isAdmin = userRole === 'admin';
-  const isOperator = userRole === 'operator' || isAdmin;
-  const isViewer = userRole === 'viewer';
-
-  const statusTone = useMemo(() => {
-    if (!connected) return 'bg-red-500/25 text-red-200 border-red-500/60';
-    if (autonomyActive) return 'bg-emerald-600/25 text-emerald-200 border-emerald-500/70';
-    return 'bg-amber-500/25 text-amber-200 border-amber-500/70';
-  }, [connected, autonomyActive]);
-
-  /* --------------------------- Debounced onUpdate --------------------------- */
-  // Suppress duplicate payloads (same JSON)
-  const lastSentRef = useRef<string>('');
-
-  const debouncedPush = useDebouncedCallback(
-    async (next: AutonomyParams) => {
-      if (!onUpdate) return;
-      const json = safeStableStringify(next);
-      if (json === lastSentRef.current) return;
-      lastSentRef.current = json;
-      try { await onUpdate(next); }
-      catch (e) { console.warn('autonomy onUpdate failed:', e); }
-    },
-    250, // ms
-    { trailing: true, leading: false },
-    [onUpdate]
-  );
-
-  // Helper: update local state and schedule debounced backend push (if liveApply)
   function setParam<K extends keyof AutonomyParams>(key: K, value: AutonomyParams[K]) {
-    setParams(prev => {
-      const next = { ...prev, [key]: value };
-      next.lastModified = Date.now();
-      next.modifiedBy = 'User'; // TODO: Get from auth context
-      if (liveApply && onUpdate) debouncedPush(next);
-      
-      // Enterprise audit logging for sensitive changes
-      if (enableAuditLog) {
-        const sensitiveKeys = ['obstacleAvoidance', 'rosEnabled', 'cvEnabled', 'pathPlanningAlgorithm'];
-        if (sensitiveKeys.includes(key as string)) {
-          const auditEntry = {
-            action: 'config_change',
-            key,
-            value,
-            timestamp: new Date().toISOString(),
-            user: userRole,
-            mode,
-          };
-          console.log('[Audit]', auditEntry);
-          // TODO: Send to audit log API endpoint
-        }
-      }
-      
-      return next;
-    });
+    setParams(prev => ({ ...prev, [key]: value }));
   }
-
-  /* -------------------------------- Handlers -------------------------------- */
 
   async function handleStart() {
-    if (safetyBlocked) return; // critical services down — refuse to start
+    if (safetyBlocked) return;
     setBusy(true);
-    try { await onStart?.(canonicalizeMode(mode), params); }
-    catch (e) { console.warn('autonomy start failed:', e); }
-    finally { setBusy(false); }
+    try {
+      await onStart?.(mode, toBackendParams(mode, params));
+    } catch (e) {
+      console.warn('autonomy start failed:', e);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  async function handleStop()  {
+  async function handleStop() {
     setBusy(true);
     try { await onStop?.(); }
     catch (e) { console.warn('autonomy stop failed:', e); }
     finally { setBusy(false); }
   }
 
-  async function handleDock()  {
+  async function handleDock() {
     setBusy(true);
-    try { setMode('dock'); await onDock?.(); }
+    try { await onDock?.(); }
     catch (e) { console.warn('autonomy dock failed:', e); }
     finally { setBusy(false); }
   }
 
-  async function handleSetWaypoint() {
-    const lat = Number(wpLat), lon = Number(wpLon);
-    const valid =
-      wpLabel.trim().length > 0 &&
-      Number.isFinite(lat) && Number.isFinite(lon) &&
-      lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
-    if (!valid) return;
-
-    setBusy(true);
-    try {
-      await onSetWaypoint?.(wpLabel.trim(), lat, lon);
-      setWaypoints((prev) => [...prev, { label: wpLabel.trim(), lat, lon }]);
-      setWpLabel(''); setWpLat(''); setWpLon('');
-    } catch (e) {
-      console.warn('set waypoint failed:', e);
-    } finally {
-      setBusy(false);
-    }
+  function exportConfig() {
+    const blob = new Blob([JSON.stringify({ mode, params }, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `omega-autonomy-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
-  async function handleApplyParams() {
-    if (!onUpdate) return;
-    setBusy(true);
-    try {
-      if (liveApply) {
-        // Force any pending debounced call to run immediately
-        debouncedPush.flush();
-      } else {
-        lastSentRef.current = ''; // ensure not suppressed
-        await onUpdate(params);
-      }
-    } catch (e) {
-      console.warn('apply params failed:', e);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // presets with enterprise features
-  function downloadPresets() {
-    try {
-      const config = {
-        version: '1.0',
-        exportedAt: new Date().toISOString(),
-        exportedBy: 'User', // TODO: Get from auth context
-        mode,
-        params: {
-          ...params,
-          configVersion: (params.configVersion || '1.0'),
-          lastModified: Date.now(),
-          modifiedBy: 'User',
-        },
-        waypoints,
-        metadata: {
-          robotModel: 'Omega Robot',
-          firmwareVersion: '1.0.0',
-          systemHealth: {
-            connected,
-            autonomyActive,
-            batteryPct,
-          }
-        }
-      };
-      const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const a = document.createElement('a'); 
-      a.href = url; 
-      a.download = `autonomy-config-${timestamp}.json`; 
-      a.click();
-      URL.revokeObjectURL(url);
-      
-      // Log export action (enterprise audit trail)
-      console.log('[Audit] Configuration exported:', { mode, timestamp, params: Object.keys(params).length });
-    } catch (e) {
-      console.warn('export presets failed:', e);
-    }
-  }
-  function openFileDialog() { fileRef.current?.click(); }
   function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]; if (!f) return;
+    const f = e.target.files?.[0];
+    if (!f) return;
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const json = JSON.parse(String(reader.result || '{}'));
-        
-        // Validate config structure (enterprise validation)
-        if (json.version && !json.version.startsWith('1.')) {
-          console.warn('[Enterprise] Config version mismatch. Expected 1.x, got:', json.version);
-        }
-        
-        // Safety validation before applying
-        const importedParams = json.params || json; // Support both formats
-        const validationErrors: string[] = [];
-        
-        if (importedParams.speedPct > 100) {
-          validationErrors.push('Speed exceeds maximum (100%)');
-          importedParams.speedPct = Math.min(100, importedParams.speedPct);
-        }
-        if (importedParams.batteryMinPct < 0 || importedParams.batteryMinPct > 100) {
-          validationErrors.push('Invalid battery threshold');
-          importedParams.batteryMinPct = Math.max(0, Math.min(100, importedParams.batteryMinPct || 15));
-        }
-        
-        if (validationErrors.length > 0) {
-          console.warn('[Enterprise] Config validation warnings:', validationErrors);
-        }
-        
-        // Apply imported config
-        if (json.mode) setMode(json.mode);
-        if (json.params || importedParams) {
-          setParams((p) => {
-            const next = { ...p, ...(json.params || importedParams) };
-            next.configVersion = json.version || (p.configVersion || '1.0');
-            next.lastModified = Date.now();
-            next.modifiedBy = json.exportedBy || 'User';
-            if (liveApply && onUpdate) debouncedPush(next);
-            return next;
-          });
-        }
-        if (Array.isArray(json.waypoints)) setWaypoints(json.waypoints);
-        
-        // Log import action (enterprise audit trail)
-        console.log('[Audit] Configuration imported:', {
-          version: json.version,
-          exportedAt: json.exportedAt,
-          mode: json.mode,
-          validationErrors: validationErrors.length,
-        });
-      } catch (err) {
-        console.error('[Enterprise] Config import failed:', err);
-        alert('Failed to import configuration. Please check the file format.');
-      }
+        if (json.mode)   setMode(json.mode);
+        if (json.params) setParams(p => ({ ...p, ...json.params }));
+      } catch { /* ignore malformed file */ }
     };
     reader.readAsText(f);
     e.target.value = '';
   }
 
-  /* --------------------------------- Render --------------------------------- */
-
-  const waypointError =
-    (wpLat && !isFinite(+wpLat)) || (wpLon && !isFinite(+wpLon)) ||
-    (+wpLat < -90 || +wpLat > 90 || +wpLon < -180 || +wpLon > 180);
+  const selectedMode = MODES.find(m => m.value === mode);
+  const statusColor  = !connected       ? 'text-red-400'
+                     : autonomyActive   ? 'text-emerald-400'
+                     :                   'text-amber-400';
+  const statusLabel  = !connected       ? 'Offline'
+                     : autonomyActive   ? 'Running'
+                     :                   'Ready';
 
   return (
     <div className={className}>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
           <Button
-            className="
-              mt-3 gap-2 border-0
-              bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600
+            className="mt-3 gap-2 border-0 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600
               hover:from-emerald-500 hover:via-teal-500 hover:to-cyan-500
-              text-white shadow-lg shadow-emerald-500/25
-              focus-visible:ring-2 focus-visible:ring-emerald-400/70
-            "
+              text-white shadow-lg shadow-emerald-500/25"
             aria-label="Open Autonomy settings"
           >
             <Bot className="h-4 w-4" /> {triggerLabel}
           </Button>
         </DialogTrigger>
 
-        <DialogContent className="sm:max-w-xl max-h-[85vh] p-0 overflow-hidden border border-neutral-800 bg-neutral-950 text-neutral-100 flex flex-col">
-          <DialogHeader className="px-5 pt-5 pb-2 flex-shrink-0">
+        <DialogContent className="sm:max-w-md max-h-[88vh] p-0 overflow-hidden border border-neutral-800 bg-neutral-950 text-neutral-100 flex flex-col">
+
+          {/* ── Header ─────────────────────────────────────── */}
+          <DialogHeader className="px-5 pt-5 pb-3 flex-shrink-0 border-b border-neutral-800">
             <div className="flex items-center justify-between">
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <Bot className="h-5 w-5 text-emerald-400" />
+                Autonomous Mode
+              </DialogTitle>
               <div className="flex items-center gap-2">
-                <Settings2 className="h-5 w-5" />
-                <DialogTitle className="text-lg">Autonomy Control</DialogTitle>
+                {autonomyActive && fsmState && (
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-900/50 border border-emerald-600/40 text-emerald-300 tracking-widest">
+                    {fsmState}
+                  </span>
+                )}
+                <span className={`text-xs font-semibold ${statusColor}`}>
+                  ● {statusLabel}
+                </span>
               </div>
-              {isViewer && (
-                <Badge variant="outline" className="text-[10px] border-orange-500/50 text-orange-300">
-                  <Lock className="h-3 w-3 mr-1" /> View Only
-                </Badge>
-              )}
-              {isAdmin && (
-                <Badge variant="outline" className="text-[10px] border-purple-500/50 text-purple-300">
-                  <UserCheck className="h-3 w-3 mr-1" /> Administrator
-                </Badge>
-              )}
             </div>
-            <p className="text-xs text-neutral-400 mt-1">
-              Choose a mode, adjust settings, and start your robot&apos;s autonomous behavior
+            <p className="text-xs text-neutral-400 mt-1 leading-snug">
+              Choose a behavior, adjust settings for your environment, then press <strong>Start</strong>.
+              Hit <strong>Stop</strong> any time to halt the robot immediately.
             </p>
-            <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded text-[11px] text-amber-200 flex items-start gap-2">
-              <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-              <div>
-                <strong>How it works:</strong> Toggles configure what features will run when you click &quot;Start&quot;. 
-                Changes apply when autonomy starts (or immediately if live updates are enabled). 
-                Each toggle enables/disables a specific feature to save CPU and improve performance.
-              </div>
-            </div>
           </DialogHeader>
 
-          {/* Status */}
-          <div className="px-5 pb-3 flex items-center justify-between gap-2 flex-shrink-0">
-            <Badge variant="outline" className={`${statusTone} border`} aria-live="polite">
-              {connected ? (autonomyActive ? 'Active' : 'Connected') : 'Disconnected'}
-            </Badge>
-            <div className="flex items-center gap-2 text-xs text-neutral-100">
-              <Gauge className="h-4 w-4" aria-hidden /> {batteryPct}%
+          <div className="px-5 py-4 flex flex-col gap-4 overflow-y-auto flex-1 min-h-0">
+
+            {/* ── Safety gate ────────────────────────────────── */}
+            {safetyBlocked && (
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-md bg-rose-600/15 border border-rose-500/40" role="alert">
+                <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-rose-300">Cannot start — services offline</p>
+                  <p className="text-[11px] text-rose-400 mt-0.5">{blockedReason}</p>
+                  <p className="text-[10px] text-rose-500 mt-1">
+                    Go to{' '}
+                    <Link href="/services" className="underline hover:text-rose-300">
+                      Service Management
+                    </Link>{' '}
+                    to start the required services.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* ── Mode picker ─────────────────────────────────── */}
+            <div>
+              <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wide block mb-2">
+                Behavior
+              </label>
+              <div className="grid grid-cols-1 gap-2">
+                {MODES.map(m => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => setMode(m.value)}
+                    className={[
+                      'text-left rounded-lg border px-3 py-2.5 transition-colors',
+                      mode === m.value
+                        ? 'bg-emerald-900/40 border-emerald-500/60'
+                        : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700',
+                    ].join(' ')}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-base leading-none">{m.icon}</span>
+                      <div>
+                        <div className="text-sm font-medium text-neutral-100">{m.label}</div>
+                        <div className="text-[11px] text-neutral-400 mt-0.5 leading-snug">{m.summary}</div>
+                        <div className="text-[10px] text-neutral-600 mt-0.5">Requires: {m.needs}</div>
+                      </div>
+                      {mode === m.value && (
+                        <CheckCircle className="h-4 w-4 text-emerald-400 ml-auto shrink-0" />
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* ── Speed ───────────────────────────────────────── */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wide">
+                  Move Speed
+                </label>
+                <span className="text-xs font-bold text-neutral-100 tabular-nums">{params.speedPct}%</span>
+              </div>
+              <Slider
+                value={[params.speedPct]}
+                onValueChange={([v]) => setParam('speedPct', v ?? 40)}
+                min={10} max={100} step={5}
+                aria-label="Move speed"
+              />
+              <div className="flex justify-between text-[10px] text-neutral-500 mt-1">
+                <span>Slow (safer)</span>
+                <span>Start here: 30–40%</span>
+                <span>Fast</span>
+              </div>
+            </div>
+
+            {/* ── Mode-specific settings ──────────────────────── */}
+            {mode === 'avoid_obstacles' && (
+              <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3 space-y-3">
+                <div className="text-xs font-semibold text-neutral-300 uppercase tracking-wide">
+                  Obstacle Avoidance Settings
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] text-neutral-400 block mb-1">
+                      Hard Stop Distance
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        value={params.stopDistCm}
+                        min={5} max={80} step={1}
+                        className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs h-8"
+                        onChange={e => {
+                          const n = parseInt(e.target.value, 10);
+                          if (isFinite(n)) setParam('stopDistCm', Math.max(5, Math.min(80, n)));
+                        }}
+                      />
+                      <span className="text-[11px] text-neutral-500 shrink-0">cm</span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-0.5">
+                      Stop &amp; pivot when an obstacle is this close. Default: 25 cm.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] text-neutral-400 block mb-1">
+                      Slow-Down Distance
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        value={params.warnDistCm}
+                        min={20} max={200} step={5}
+                        className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs h-8"
+                        onChange={e => {
+                          const n = parseInt(e.target.value, 10);
+                          if (isFinite(n)) setParam('warnDistCm', Math.max(20, Math.min(200, n)));
+                        }}
+                      />
+                      <span className="text-[11px] text-neutral-500 shrink-0">cm</span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-0.5">
+                      Begin braking when an obstacle is this close. Default: 50 cm.
+                    </p>
+                  </div>
+                </div>
+
+                <ToggleRow
+                  label="Detect-only (no driving)"
+                  description="Robot stays still but still stops if something enters the stop zone. Good for testing sensor readings."
+                  checked={params.detectOnly}
+                  onCheckedChange={v => setParam('detectOnly', v)}
+                />
+                <ToggleRow
+                  label="Camera assist"
+                  description="Use the camera as a second obstacle sensor in addition to the ultrasonic sensor. Requires CSI camera connected."
+                  checked={params.cameraAssist}
+                  onCheckedChange={v => setParam('cameraAssist', v)}
+                />
+              </div>
+            )}
+
+            {mode === 'aruco' && (
+              <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3 space-y-3">
+                <div className="text-xs font-semibold text-neutral-300 uppercase tracking-wide">
+                  ArUco Seek Settings
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] text-neutral-400 block mb-1">
+                      Stop Distance
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        value={params.arucoStopDistM}
+                        min={0.1} max={2.0} step={0.05}
+                        className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs h-8"
+                        onChange={e => {
+                          const n = parseFloat(e.target.value);
+                          if (isFinite(n)) setParam('arucoStopDistM', Math.max(0.1, Math.min(2.0, n)));
+                        }}
+                      />
+                      <span className="text-[11px] text-neutral-500 shrink-0">m</span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-0.5">
+                      Stop this far in front of the marker. Default: 0.40 m.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] text-neutral-400 block mb-1">
+                      Target Marker ID
+                    </label>
+                    <Input
+                      type="number"
+                      value={params.arucoTargetId}
+                      min={-1} max={999} step={1}
+                      className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs h-8"
+                      onChange={e => {
+                        const n = parseInt(e.target.value, 10);
+                        if (isFinite(n)) setParam('arucoTargetId', Math.max(-1, n));
+                      }}
+                    />
+                    <p className="text-[10px] text-neutral-500 mt-0.5">
+                      -1 = lock onto the nearest marker. 0, 1, 2… = seek that specific ID.
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-neutral-400 block mb-1">
+                    Marker Physical Size
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      value={params.arucoMarkerM}
+                      min={0.03} max={0.5} step={0.01}
+                      className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs h-8 w-28"
+                      onChange={e => {
+                        const n = parseFloat(e.target.value);
+                        if (isFinite(n)) setParam('arucoMarkerM', Math.max(0.03, Math.min(0.5, n)));
+                      }}
+                    />
+                    <span className="text-[11px] text-neutral-500 shrink-0">m</span>
+                  </div>
+                  <p className="text-[10px] text-neutral-500 mt-0.5">
+                    The printed side length of your ArUco marker. Accurate size = accurate distance estimate.
+                    Default: 0.10 m (10 cm).
+                  </p>
+                </div>
+
+                <div className="flex items-start gap-2 px-2.5 py-2 rounded bg-indigo-900/20 border border-indigo-800/40 text-[11px] text-indigo-300">
+                  <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    The robot will rotate in place until it sees a marker, then align and approach.
+                    Make sure the camera is pointing forward and the marker is within line of sight.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {mode === 'dock' && (
+              <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
+                <div className="flex items-start gap-2 text-[11px] text-neutral-400 leading-snug">
+                  <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-400" />
+                  <span>
+                    Sends the dock command to the backend. The robot will attempt to return to its home
+                    position. Make sure the path back is clear before starting.
+                    You can also use the <strong className="text-neutral-300">Return to Dock</strong> button below as a shortcut.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* ── Safety check ─────────────────────────────────── */}
+            {batteryPct < params.batteryMinPct && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded bg-red-900/20 border border-red-700/40 text-[11px] text-red-300">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                Battery {batteryPct}% is below your safety floor ({params.batteryMinPct}%).
+                Charge the robot before running autonomy.
+              </div>
+            )}
+            {batteryPct >= params.batteryMinPct && connected && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded bg-emerald-900/20 border border-emerald-700/40 text-[11px] text-emerald-300">
+                <CheckCircle className="h-3.5 w-3.5 shrink-0" />
+                Ready — press Start to begin.
+              </div>
+            )}
+
+            {/* ── Start / Stop / Dock ──────────────────────────── */}
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                disabled={busy || !connected || safetyBlocked || batteryPct < params.batteryMinPct}
+                onClick={handleStart}
+                className="gap-2"
+                title={safetyBlocked ? blockedReason ?? 'Services offline' : undefined}
+              >
+                <Play className="h-4 w-4" />
+                {busy ? 'Starting…' : 'Start'}
+              </Button>
+              <Button
+                disabled={busy}
+                variant="destructive"
+                onClick={handleStop}
+                className="gap-2"
+              >
+                <Square className="h-4 w-4" /> Stop
+              </Button>
+            </div>
+
+            <Button
+              disabled={busy}
+              variant="secondary"
+              onClick={handleDock}
+              className="w-full gap-2"
+            >
+              <Bot className="h-4 w-4" /> Return to Dock
+            </Button>
+
+            {/* ── Advanced ────────────────────────────────────── */}
+            <button
+              type="button"
+              onClick={() => setShowAdv(v => !v)}
+              className="flex items-center justify-between w-full text-xs text-neutral-400 hover:text-neutral-200 transition-colors py-1"
+            >
+              <div className="flex items-center gap-1.5">
+                <Shield className="h-3.5 w-3.5" />
+                Advanced &amp; Safety
+              </div>
+              {showAdv ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+
+            {showAdv && (
+              <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3 space-y-3">
+                <div>
+                  <label className="text-[11px] text-neutral-400 block mb-1">
+                    Battery Safety Floor
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      value={params.batteryMinPct}
+                      min={0} max={50} step={1}
+                      className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs h-8 w-20"
+                      onChange={e => {
+                        const n = parseInt(e.target.value, 10);
+                        if (isFinite(n)) setParam('batteryMinPct', Math.max(0, Math.min(50, n)));
+                      }}
+                    />
+                    <span className="text-[11px] text-neutral-500">%</span>
+                  </div>
+                  <p className="text-[10px] text-neutral-500 mt-0.5">
+                    Block start if battery is below this level. Default: 15%.
+                  </p>
+                </div>
+
+                <div className="border-t border-neutral-800/50 pt-3">
+                  <div className="text-[11px] text-neutral-400 mb-2">Save / Load Config</div>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" className="gap-1.5 text-xs h-8" onClick={exportConfig}>
+                      <Save className="h-3.5 w-3.5" /> Export JSON
+                    </Button>
+                    <Button variant="secondary" className="gap-1.5 text-xs h-8" onClick={() => fileRef.current?.click()}>
+                      <Upload className="h-3.5 w-3.5" /> Import JSON
+                    </Button>
+                    <input ref={fileRef} type="file" accept="application/json" className="hidden" onChange={onFileSelected} />
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
 
-          {/* Safety gate — shown when critical services are down */}
-          {safetyBlocked && (
-            <div className="mx-5 mb-3 flex items-start gap-2 px-3 py-2.5 rounded-md bg-rose-600/15 border border-rose-500/40 flex-shrink-0" role="alert">
-              <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-rose-300">Cannot start autonomy</p>
-                <p className="text-[11px] text-rose-400 mt-0.5">{blockedReason}</p>
-                <p className="text-[10px] text-rose-500 mt-1">
-                  Start the required services in{' '}
-                  <Link href="/services" className="underline hover:text-rose-300 transition-colors">
-                    Service Management
-                  </Link>{' '}
-                  before launching autonomy.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div className="px-5 pb-5 grid grid-cols-1 gap-3 overflow-y-auto flex-1 min-h-0">
-            {/* BASIC: Mode + Start/Stop */}
-            <Card className="bg-neutral-900/80 border-neutral-800">
-              <CardContent className="p-3 grid gap-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
-                  <div>
-                    <div className="flex items-center gap-1 mb-1">
-                      <label className="text-xs text-neutral-200 font-medium">Autonomy Mode</label>
-                      <div className="group relative">
-                        <HelpCircle className="h-3 w-3 text-neutral-400 cursor-help" />
-                        <div className="absolute left-0 top-4 w-48 bg-neutral-900 border border-neutral-700 rounded-md p-2 text-xs text-neutral-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-lg">
-                          <strong>Mode Options:</strong><br/>
-                          • <strong>Line Follow:</strong> Follows marked lines on the ground<br/>
-                          • <strong>Avoid Obstacles:</strong> Drives while avoiding objects<br/>
-                          • <strong>Patrol:</strong> Follows a preset route<br/>
-                          • <strong>Waypoints:</strong> Navigates to specific locations<br/>
-                          • <strong>Color Track:</strong> Tracks objects by color
-                        </div>
-                      </div>
-                    </div>
-                    <Select value={mode} onValueChange={(v: string) => setMode(v as AutonomyMode)}>
-                      <SelectTrigger className="mt-1 bg-neutral-950 border-neutral-800 text-neutral-100">
-                        <SelectValue placeholder="Select mode" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-neutral-950 border-neutral-800 text-neutral-100">
-                        <SelectItem value="idle">
-                          <div>
-                            <div className="font-medium">Idle</div>
-                            <div className="text-xs text-neutral-400">Robot stays still</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="line_follow">
-                          <div>
-                            <div className="font-medium">Line Follow</div>
-                            <div className="text-xs text-neutral-400">Follows marked lines</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="avoid_obstacles">
-                          <div>
-                            <div className="font-medium">Avoid Obstacles</div>
-                            <div className="text-xs text-neutral-400">Drives safely around objects</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="patrol">
-                          <div>
-                            <div className="font-medium">Patrol</div>
-                            <div className="text-xs text-neutral-400">Follows a preset route</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="waypoints">
-                          <div>
-                            <div className="font-medium">Waypoints</div>
-                            <div className="text-xs text-neutral-400">Navigate to specific locations</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="color_track">
-                          <div>
-                            <div className="font-medium">Color Track</div>
-                            <div className="text-xs text-neutral-400">Follow objects by HSV color</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="aruco">
-                          <div>
-                            <div className="font-medium">ArUco Track</div>
-                            <div className="text-xs text-neutral-400">Navigate to ArUco markers</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="person_follow">
-                          <div>
-                            <div className="font-medium">Person Follow</div>
-                            <div className="text-xs text-neutral-400">Detect and follow people</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="dock">
-                          <div>
-                            <div className="font-medium">Dock</div>
-                            <div className="text-xs text-neutral-400">Return to charging station</div>
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      disabled={busy || !connected || isViewer || safetyBlocked}
-                      onClick={handleStart}
-                      className="gap-2 flex-1"
-                      aria-busy={busy}
-                      title={
-                        safetyBlocked ? blockedReason ?? 'Critical services offline' :
-                        isViewer ? 'Viewer role cannot start autonomy' : undefined
-                      }
-                    >
-                      <Play className="h-4 w-4" /> Start
-                    </Button>
-                    <Button 
-                      disabled={busy || isViewer} 
-                      variant="destructive" 
-                      onClick={handleStop} 
-                      className="gap-2 flex-1" 
-                      aria-busy={busy}
-                      title={isViewer ? 'Viewer role cannot stop autonomy' : undefined}
-                    >
-                      <Square className="h-4 w-4" /> Stop
-                    </Button>
-                  </div>
-                </div>
-
-                {/* BASIC: Speed + two obvious toggles */}
-                <div className="space-y-3 pt-2 border-t border-neutral-800/50">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-medium text-neutral-200">Speed</span>
-                        <div className="group relative">
-                          <HelpCircle className="h-3 w-3 text-neutral-400 cursor-help" />
-                          <div className="absolute left-0 top-4 w-56 bg-neutral-900 border border-neutral-700 rounded-md p-2 text-xs text-neutral-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-lg">
-                            Controls how fast the robot moves (0-100%). Start with 30-40% for safe testing.
-                          </div>
-                        </div>
-                      </div>
-                      <span className="text-xs font-bold text-neutral-100">{params.speedPct}%</span>
-                    </div>
-                    <Slider
-                      value={[params.speedPct]}
-                      onValueChange={(v: number[]) => setParam('speedPct', v[0] ?? 0)}
-                      min={0}
-                      max={100}
-                      step={5}
-                      className="mt-2"
-                      aria-label="Speed"
-                    />
-                    <div className="flex justify-between text-[10px] text-neutral-500 mt-1">
-                      <span>Slow</span>
-                      <span>Fast</span>
-                    </div>
-                </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-medium text-neutral-200">Response Speed</span>
-                        <div className="group relative">
-                          <HelpCircle className="h-3 w-3 text-neutral-400 cursor-help" />
-                          <div className="absolute left-0 top-4 w-56 bg-neutral-900 border border-neutral-700 rounded-md p-2 text-xs text-neutral-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-lg">
-                            How quickly the robot reacts to changes. Lower = smoother, Higher = more responsive.
-                          </div>
-                        </div>
-                      </div>
-                      <span className="text-xs font-bold text-neutral-100">{params.aggressiveness}%</span>
-                    </div>
-                    <Slider
-                      value={[params.aggressiveness]}
-                      onValueChange={(v: number[]) => setParam('aggressiveness', v[0] ?? 0)}
-                      min={0}
-                      max={100}
-                      step={5}
-                      className="mt-2"
-                      aria-label="Response Speed"
-                    />
-                    <div className="flex justify-between text-[10px] text-neutral-500 mt-1">
-                      <span>Smooth</span>
-                      <span>Responsive</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2 pt-2 border-t border-neutral-800/50">
-                  <div className="text-xs font-medium text-neutral-300 mb-2">Safety Features</div>
-                  <ToggleRow
-                    icon={<Shield className="h-4 w-4 text-emerald-400" />}
-                    label="Obstacle Avoidance"
-                    description="ON: Robot avoids obstacles. OFF: Robot ignores obstacles (dangerous!)."
-                    checked={params.obstacleAvoidance}
-                    onCheckedChange={(v) => setParam('obstacleAvoidance', v)}
-                  />
-                  <ToggleRow
-                    icon={<Zap className="h-4 w-4 text-yellow-400" />}
-                    label="Auto-lights"
-                    description="ON: LEDs adjust automatically. OFF: Manual LED control only."
-                    checked={params.headlights}
-                    onCheckedChange={(v) => setParam('headlights', v)}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* BASIC: Waypoints - Only show if waypoints mode is selected */}
-            {mode === 'waypoints' && (
-            <Card className="bg-neutral-900/80 border-neutral-800">
-                <CardContent className="p-3 grid gap-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
-                    <Flag className="h-4 w-4" /> Navigation Waypoints
-                </div>
-                  <p className="text-xs text-neutral-400">
-                    Set specific locations for your robot to navigate to. GPS coordinates required.
-                  </p>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                    <Input value={wpLabel} onChange={(e) => setWpLabel(e.target.value)} placeholder="Location name"
-                         className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
-                    <Input value={wpLat}   onChange={(e) => setWpLat(e.target.value)}   placeholder="Latitude"
-                         inputMode="decimal" className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
-                    <Input value={wpLon}   onChange={(e) => setWpLon(e.target.value)}   placeholder="Longitude"
-                         inputMode="decimal" className="bg-neutral-950 border-neutral-800 placeholder:text-neutral-500" />
-                  <Button
-                    disabled={busy || waypointError || !wpLat || !wpLon || !wpLabel.trim()}
-                    onClick={handleSetWaypoint}
-                    className="gap-2"
-                    aria-disabled={busy || waypointError}
-                      title={waypointError ? 'Latitude must be -90 to 90, Longitude -180 to 180' : 'Add waypoint'}
-                  >
-                    <Crosshair className="h-4 w-4" /> Add
-                  </Button>
-                </div>
-                {waypointError && (
-                    <div className="text-[11px] text-red-300 flex items-center gap-1">
-                      <Info className="h-3 w-3" /> Invalid coordinates. Latitude: -90 to 90, Longitude: -180 to 180.
-                    </div>
-                )}
-
-                {waypoints.length > 0 && (
-                    <div className="mt-2">
-                      <div className="text-xs text-neutral-400 mb-2">Saved Waypoints ({waypoints.length}):</div>
-                      <div className="text-xs text-neutral-300 grid gap-1">
-                    {waypoints.map((w, i) => (
-                      <div key={`${w.label}-${i}`} className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-950 px-2 py-1">
-                        <span className="font-medium text-neutral-100">{w.label}</span>
-                            <span className="tabular-nums text-neutral-300 text-[10px]">{w.lat.toFixed(5)}, {w.lon.toFixed(5)}</span>
-                      </div>
-                    ))}
-                      </div>
-                  </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Active Algorithms Display */}
-            <Card className="bg-neutral-900/80 border-neutral-800">
-              <CardContent className="p-3 grid gap-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
-                  <Code className="h-4 w-4 text-indigo-400" /> Active Algorithms
-                </div>
-                <p className="text-xs text-neutral-400">
-                  Algorithms currently running based on your settings:
-                </p>
-
-                <div className="space-y-2 pt-2">
-                  {/* Path Planning Algorithms */}
-                  {(params.rosNodePathPlanning || mode === 'waypoints') && (
-                    <div className="flex items-center justify-between rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-2">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-indigo-400" />
-                        <span className="text-xs font-medium text-neutral-200">
-                          Path Planning: <span className="text-indigo-300">{params.pathPlanningAlgorithm.toUpperCase()}</span>
-                        </span>
-                      </div>
-                      <Badge variant="outline" className="text-[10px] border-indigo-500/50 text-indigo-300">
-                        {params.pathPlanningAlgorithm === 'a_star' ? 'Heuristic Search' : 
-                         params.pathPlanningAlgorithm === 'd_star_lite' ? 'Dynamic Replanning' : 
-                         params.pathPlanningAlgorithm === 'rrt' ? 'Sampling-Based' : 'None'}
-                      </Badge>
-                    </div>
-                  )}
-
-                  {/* SLAM */}
-                  {params.rosNodeSlam && (
-                    <div className="flex items-center justify-between rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-2">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-yellow-400" />
-                        <span className="text-xs font-medium text-neutral-200">
-                          SLAM: <span className="text-yellow-300">gmapping</span>
-                        </span>
-                      </div>
-                      <Badge variant="outline" className="text-[10px] border-yellow-500/50 text-yellow-300">
-                        Mapping
-                      </Badge>
-                    </div>
-                  )}
-
-                  {/* Sensor Fusion */}
-                  {params.rosNodeSensorFusion && (
-                    <div className="flex items-center justify-between rounded-lg border border-orange-500/30 bg-orange-500/10 px-2.5 py-2">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-orange-400" />
-                        <span className="text-xs font-medium text-neutral-200">
-                          Sensor Fusion: <span className="text-orange-300">Multi-Sensor Fusion</span>
-                        </span>
-                      </div>
-                      <Badge variant="outline" className="text-[10px] border-orange-500/50 text-orange-300">
-                        Data Fusion
-                      </Badge>
-                    </div>
-                  )}
-
-                  {/* Obstacle Avoidance */}
-                  {params.obstacleAvoidance && (
-                    <div className="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-2">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                        <span className="text-xs font-medium text-neutral-200">
-                          Obstacle Avoidance: <span className="text-emerald-300">Collision Detection</span>
-                        </span>
-                      </div>
-                      <Badge variant="outline" className="text-[10px] border-emerald-500/50 text-emerald-300">
-                        Safety
-                      </Badge>
-                    </div>
-                  )}
-
-                  {/* Line Following */}
-                  {(mode === 'line_follow' || mode === 'line_track') && params.laneKeeping && (
-                    <div className="flex items-center justify-between rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-2">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-cyan-400" />
-                        <span className="text-xs font-medium text-neutral-200">
-                          Line Following: <span className="text-cyan-300">PID Control</span>
-                        </span>
-                      </div>
-                      <Badge variant="outline" className="text-[10px] border-cyan-500/50 text-cyan-300">
-                        Control
-                      </Badge>
-                    </div>
-                  )}
-
-                  {/* No algorithms active */}
-                  {!params.rosNodePathPlanning && !params.rosNodeSlam && !params.rosNodeSensorFusion &&
-                   !params.obstacleAvoidance &&
-                   (mode !== 'line_follow' && mode !== 'line_track') && (
-                    <div className="text-xs text-neutral-500 italic text-center py-2">
-                      No algorithms active. Enable features above to see active algorithms.
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Vision Mode Status */}
-            <Card className="bg-neutral-900/80 border-neutral-800">
-              <CardContent className="p-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Eye className="h-4 w-4 text-violet-400 flex-shrink-0" />
-                  <div>
-                    <div className="text-xs font-semibold text-neutral-100">Vision Mode</div>
-                    <div className="text-[11px] text-neutral-400 mt-0.5">
-                      {visionModeLabel
-                        ? <span className="text-violet-300 font-medium">{visionModeLabel}</span>
-                        : <span className="italic">Offline / not set</span>}
-                      {' — configure in the Vision Mode panel on the main page'}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Quick Actions */}
-            <Card className="bg-neutral-900/80 border-neutral-800">
-              <CardContent className="p-3 grid gap-2">
-                <div className="text-xs font-medium text-neutral-300">Quick Actions</div>
-                <div className="flex gap-2">
-                  <Button disabled={busy} variant="secondary" onClick={handleDock} className="gap-2 flex-1" aria-busy={busy}>
-                    <Bot className="h-4 w-4" /> Return to Dock
-                  </Button>
-                </div>
-                <p className="text-xs text-neutral-400">
-                  Use &quot;Return to Dock&quot; to send your robot back to its charging/home position.
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* ── Advanced: Navigation ───────────────────────────────── */}
-            <button
-              type="button"
-              onClick={() => setShowNavAdv(v => !v)}
-              className="text-left w-full rounded-md border border-neutral-800 bg-neutral-900/80 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-900 flex items-center justify-between transition-colors"
-              aria-expanded={showNavAdv}
-            >
-              <div className="flex items-center gap-2">
-                <Crosshair className="h-4 w-4 text-teal-400" />
-                <span>Navigation &amp; Tuning</span>
-              </div>
-              <span className="text-neutral-400 text-xs">{showNavAdv ? 'Hide' : 'Show'}</span>
-            </button>
-
-            {showNavAdv && (
-              <div className="grid grid-cols-1 gap-3 pl-3 border-l-2 border-neutral-800">
-                <Card className="bg-neutral-900/80 border-neutral-800">
-                  <CardContent className="p-3 grid gap-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <NumberField label="Stop Distance (m)" value={params.avoidStopDistM} step={0.05} min={0.05} max={1.5}
-                        onChange={(n) => setParam('avoidStopDistM', n)} />
-                      <NumberField label="Line kP" value={params.line_kP} step={0.05} min={0} max={3}
-                        onChange={(n) => setParam('line_kP', n)} />
-                      <NumberField label="Search Yaw Rate (°/s)" value={params.searchYawRate} step={1} min={5} max={120}
-                        onChange={(n) => setParam('searchYawRate', n)} />
-                    </div>
-                    <ToggleRow
-                      icon={<span className="inline-block h-4 w-4 rounded-sm bg-neutral-400" />}
-                      label="Lane Keeping (IR line hold)"
-                      checked={params.laneKeeping}
-                      onCheckedChange={(v) => setParam('laneKeeping', v)}
-                    />
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-neutral-900/80 border-neutral-800">
-                  <CardContent className="p-3 grid gap-3">
-                    <p className="text-xs text-neutral-300">
-                      Color/Object tracking uses HSV thresholds; steering centers the blob, speed scales by area.
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <TripletField
-                        label="HSV Low"
-                        value={params.hsvLow}
-                        onChange={(arr) => setParam('hsvLow', arr as [number,number,number])}
-                      />
-                      <TripletField
-                        label="HSV High"
-                        value={params.hsvHigh}
-                        onChange={(arr) => setParam('hsvHigh', arr as [number,number,number])}
-                      />
-                      <div className="grid grid-cols-2 gap-3">
-                        <NumberField label="Min Area (px)" value={params.minArea} min={0} max={200000} step={100}
-                          onChange={(n)=> setParam('minArea', n)} />
-                        <NumberField label="Max Area (px)" value={params.maxArea} min={100} max={500000} step={100}
-                          onChange={(n)=> setParam('maxArea', n)} />
-                      </div>
-                    </div>
-                    <div className="text-[11px] text-neutral-400">
-                      For ArUco/face modes the backend publishes <code>{'{ id, dist, bearing }'}</code>; UI sends <code>mode</code> + params.
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-neutral-900/80 border-neutral-800">
-                  <CardContent className="p-3 grid gap-3">
-                    <p className="text-xs text-neutral-300">Behavior priority (top preempts lower). Use arrows to reorder.</p>
-                    <PriorityEditor
-                      items={params.priorities}
-                      onChange={(items) => setParam('priorities', items)}
-                    />
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            {/* ── Advanced: Safety ───────────────────────────────────── */}
-            <button
-              type="button"
-              onClick={() => setShowSafetyAdv(v => !v)}
-              className="text-left w-full rounded-md border border-neutral-800 bg-neutral-900/80 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-900 flex items-center justify-between transition-colors"
-              aria-expanded={showSafetyAdv}
-            >
-              <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-emerald-400" />
-                <span>Safety &amp; Mapping</span>
-              </div>
-              <span className="text-neutral-400 text-xs">{showSafetyAdv ? 'Hide' : 'Show'}</span>
-            </button>
-
-            {showSafetyAdv && (
-              <div className="grid grid-cols-1 gap-3 pl-3 border-l-2 border-neutral-800">
-                <Card className="bg-neutral-900/80 border-neutral-800">
-                  <CardContent className="p-3 grid gap-3">
-                    <ToggleRow
-                      icon={<span className="inline-block h-4 w-4 rounded-sm bg-neutral-400" />}
-                      label="Enable Grid Mapping"
-                      checked={params.gridEnabled}
-                      onCheckedChange={(v) => setParam('gridEnabled', v)}
-                    />
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <NumberField label="Cell Size (m)" value={params.gridCellSizeM} min={0.05} max={0.5} step={0.01}
-                        onChange={(n)=> setParam('gridCellSizeM', n)} />
-                      <NumberField label="Decay (0–1)" value={params.gridDecay} min={0} max={1} step={0.01}
-                        onChange={(n)=> setParam('gridDecay', n)} />
-                      <NumberField label="Battery Floor (%)" value={params.batteryMinPct} min={0} max={100} step={1}
-                        onChange={(n)=> setParam('batteryMinPct', n)} />
-                    </div>
-                    <div className="text-[11px] text-neutral-400">
-                      Safety overrides always win. Backend stops if battery below floor, cliff detected, or ultrasonic &lt; stop distance.
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-neutral-900/80 border-neutral-800">
-                  <CardContent className="p-3 grid gap-2">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-neutral-200">
-                      <Shield className="h-3.5 w-3.5 text-emerald-400" /> Safety Checks
-                    </div>
-                    <div className="space-y-1.5">
-                      {!params.obstacleAvoidance && (
-                        <div className="flex items-center gap-1.5 text-[11px] text-amber-300">
-                          <AlertTriangle className="h-3 w-3" />
-                          <span>Warning: Obstacle avoidance is disabled</span>
-                        </div>
-                      )}
-                      {batteryPct < params.batteryMinPct && (
-                        <div className="flex items-center gap-1.5 text-[11px] text-red-300">
-                          <AlertTriangle className="h-3 w-3" />
-                          <span>Low battery ({batteryPct}% &lt; {params.batteryMinPct}%)</span>
-                        </div>
-                      )}
-                      {params.speedPct > 80 && (
-                        <div className="flex items-center gap-1.5 text-[11px] text-yellow-300">
-                          <AlertTriangle className="h-3 w-3" />
-                          <span>High speed ({params.speedPct}%) — consider lowering for safety</span>
-                        </div>
-                      )}
-                      {params.obstacleAvoidance && batteryPct >= params.batteryMinPct && params.speedPct <= 80 && (
-                        <div className="flex items-center gap-1.5 text-[11px] text-emerald-300">
-                          <CheckCircle className="h-3 w-3" />
-                          <span>All safety checks passed</span>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            {/* ── Advanced: System ───────────────────────────────────── */}
-            <button
-              type="button"
-              onClick={() => setShowSysAdv(v => !v)}
-              className="text-left w-full rounded-md border border-neutral-800 bg-neutral-900/80 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-900 flex items-center justify-between transition-colors"
-              aria-expanded={showSysAdv}
-            >
-              <div className="flex items-center gap-2">
-                <Network className="h-4 w-4 text-amber-400" />
-                <span>System &amp; Integration</span>
-              </div>
-              <span className="text-neutral-400 text-xs">{showSysAdv ? 'Hide' : 'Show'}</span>
-            </button>
-
-            {showSysAdv && (
-              <div className="grid grid-cols-1 gap-3 pl-3 border-l-2 border-neutral-800">
-                {/* ROS Integration */}
-                <Card className="bg-neutral-900/80 border-neutral-800">
-                  <CardContent className="p-3 grid gap-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
-                        <Network className="h-4 w-4 text-amber-400" /> ROS Integration
-                      </div>
-                      <Link
-                        href="/ros"
-                        className="text-xs text-amber-400 hover:text-amber-300 underline flex items-center gap-1"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Manage ROS →
-                      </Link>
-                    </div>
-                    <p className="text-xs text-neutral-400">
-                      Configure which ROS features to use during autonomy. Manage containers and topics via the{' '}
-                      <Link href="/ros" className="text-amber-400 hover:text-amber-300 underline">ROS Dashboard</Link>.
-                    </p>
-
-                    <ToggleRow
-                      icon={<Network className="h-4 w-4 text-amber-400" />}
-                      label="Enable ROS Integration"
-                      description="ON: Use ROS for autonomy (requires containers running). OFF: Saves resources."
-                      checked={params.rosEnabled}
-                      onCheckedChange={(v) => setParam('rosEnabled', v)}
-                    />
-
-                    {params.rosEnabled && (
-                      <>
-                        <div>
-                          <label className="text-xs font-medium text-neutral-200 mb-1 block">ROS Master URI</label>
-                          <Input
-                            value={params.rosMasterUri}
-                            onChange={(e) => setParam('rosMasterUri', e.target.value)}
-                            placeholder="http://localhost:11311"
-                            className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs"
-                          />
-                          <div className="text-[10px] text-neutral-500 mt-1">
-                            Default: http://localhost:11311
-                          </div>
-                        </div>
-
-                        <div className="space-y-2 pt-2 border-t border-neutral-800/50">
-                          <div className="text-xs font-medium text-neutral-300 mb-1">Data Publishing</div>
-                          <ToggleRow
-                            icon={<Activity className="h-3.5 w-3.5 text-blue-400" />}
-                            label="Publish Sensors"
-                            description="ON: Send sensor data to ROS."
-                            checked={params.rosPublishSensors}
-                            onCheckedChange={(v) => setParam('rosPublishSensors', v)}
-                          />
-                          <ToggleRow
-                            icon={<Bot className="h-3.5 w-3.5 text-green-400" />}
-                            label="Publish Movement"
-                            description="ON: Send movement commands to ROS."
-                            checked={params.rosPublishMovement}
-                            onCheckedChange={(v) => setParam('rosPublishMovement', v)}
-                          />
-                          <ToggleRow
-                            icon={<Eye className="h-3.5 w-3.5 text-cyan-400" />}
-                            label="Publish Camera"
-                            description="ON: Send camera feed to ROS."
-                            checked={params.rosPublishCamera}
-                            onCheckedChange={(v) => setParam('rosPublishCamera', v)}
-                          />
-                          <ToggleRow
-                            icon={<Flag className="h-3.5 w-3.5 text-purple-400" />}
-                            label="Subscribe Commands"
-                            description="ON: Receive commands from ROS."
-                            checked={params.rosSubscribeCommands}
-                            onCheckedChange={(v) => setParam('rosSubscribeCommands', v)}
-                          />
-                        </div>
-
-                        <div className="space-y-2 pt-2 border-t border-neutral-800/50">
-                          <div className="text-xs font-medium text-neutral-300 mb-1">ROS Nodes</div>
-                          <ToggleRow
-                            icon={<Layers className="h-3.5 w-3.5 text-yellow-400" />}
-                            label="SLAM (Mapping)"
-                            description="ON: Build map while exploring."
-                            checked={params.rosNodeSlam}
-                            onCheckedChange={(v) => setParam('rosNodeSlam', v)}
-                          />
-                          <ToggleRow
-                            icon={<Package className="h-3.5 w-3.5 text-orange-400" />}
-                            label="Sensor Fusion"
-                            description="ON: Combine sensor data."
-                            checked={params.rosNodeSensorFusion}
-                            onCheckedChange={(v) => setParam('rosNodeSensorFusion', v)}
-                          />
-                          <ToggleRow
-                            icon={<Crosshair className="h-3.5 w-3.5 text-red-400" />}
-                            label="Path Planning"
-                            description="ON: Run pathfinding algorithm."
-                            checked={params.rosNodePathPlanning}
-                            onCheckedChange={(v) => setParam('rosNodePathPlanning', v)}
-                          />
-                          {params.rosNodePathPlanning && (
-                            <div className="ml-6">
-                              <label className="text-xs text-neutral-300 mb-1 block">Algorithm</label>
-                              <Select
-                                value={params.pathPlanningAlgorithm}
-                                onValueChange={(v) => setParam('pathPlanningAlgorithm', v as AutonomyParams['pathPlanningAlgorithm'])}
-                              >
-                                <SelectTrigger className="bg-neutral-950 border-neutral-800 text-neutral-100 text-xs h-8">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent className="bg-neutral-950 border-neutral-800 text-neutral-100">
-                                  <SelectItem value="a_star">
-                                    <div><div className="font-medium">A*</div><div className="text-[10px] text-neutral-400">Heuristic search, optimal paths</div></div>
-                                  </SelectItem>
-                                  <SelectItem value="d_star_lite">
-                                    <div><div className="font-medium">D* Lite</div><div className="text-[10px] text-neutral-400">Dynamic replanning</div></div>
-                                  </SelectItem>
-                                  <SelectItem value="rrt">
-                                    <div><div className="font-medium">RRT</div><div className="text-[10px] text-neutral-400">Rapidly-exploring random trees</div></div>
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          )}
-                          <ToggleRow
-                            icon={<Play className="h-3.5 w-3.5 text-emerald-400" />}
-                            label="Autonomous Driving"
-                            description="ON: Enable ROS navigation node."
-                            checked={params.rosNodeAutonomousDriving}
-                            onCheckedChange={(v) => setParam('rosNodeAutonomousDriving', v)}
-                          />
-                        </div>
-
-                        <div className="space-y-2 pt-2 border-t border-neutral-800/50">
-                          <div className="text-xs font-medium text-neutral-300 mb-1">Bridge &amp; Transforms</div>
-                          <ToggleRow
-                            icon={<Network className="h-3.5 w-3.5 text-pink-400" />}
-                            label="ROS Bridge"
-                            description="ON: Convert WebSocket ↔ ROS."
-                            checked={params.rosBridgeEnabled}
-                            onCheckedChange={(v) => setParam('rosBridgeEnabled', v)}
-                          />
-                          <ToggleRow
-                            icon={<Settings2 className="h-3.5 w-3.5 text-sky-400" />}
-                            label="TF (Transforms)"
-                            description="ON: Enable coordinate transforms."
-                            checked={params.rosTfEnabled}
-                            onCheckedChange={(v) => setParam('rosTfEnabled', v)}
-                          />
-                        </div>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Presets */}
-                <Card className="bg-neutral-900/80 border-neutral-800">
-                  <CardContent className="p-3 grid gap-2">
-                    <div className="text-xs font-semibold text-neutral-200">Configuration Presets</div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="secondary"
-                        className="gap-2"
-                        onClick={downloadPresets}
-                        disabled={isViewer}
-                        title={isViewer ? 'Viewer role cannot export' : undefined}
-                      >
-                        <Save className="h-4 w-4" /> Export JSON
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        className="gap-2"
-                        onClick={openFileDialog}
-                        disabled={isViewer}
-                        title={isViewer ? 'Viewer role cannot import' : undefined}
-                      >
-                        <Upload className="h-4 w-4" /> Import JSON
-                      </Button>
-                      <input ref={fileRef} type="file" accept="application/json" className="hidden" onChange={onFileSelected} />
-                    </div>
-                    {params.configVersion && (
-                      <div className="text-[10px] text-neutral-500 flex items-center gap-2">
-                        <Clock className="h-3 w-3" />
-                        <span>v{params.configVersion} • {params.lastModified ? new Date(params.lastModified).toLocaleString() : 'Never modified'}</span>
-                      </div>
-                    )}
-                    <div className="text-[11px] text-neutral-400">
-                      Exports include mode, params, and waypoints. Import merges into current config.
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <div className="flex items-center justify-end gap-2">
-                  <Button disabled={busy || !onUpdate} onClick={handleApplyParams} variant="secondary" aria-busy={busy}>
-                    Apply Params
-                  </Button>
-                </div>
-              </div>
-            )}
-            {/* Footer tip */}
-            <div className="text-[11px] text-neutral-300 flex items-start gap-2 flex-shrink-0">
-              <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-neutral-500/70" />
-              Hook these handlers to your WS/ROS bridge. The modal sends commands/params; stream telemetry elsewhere.
-            </div>
-
-            <div className="flex justify-end flex-shrink-0 sticky bottom-0 bg-neutral-950 pt-2 pb-2">
-              <Button onClick={() => setOpen(false)}>Close</Button>
-            </div>
+          {/* ── Footer ──────────────────────────────────────── */}
+          <div className="px-5 py-3 border-t border-neutral-800 flex-shrink-0">
+            <Button variant="secondary" className="w-full" onClick={() => setOpen(false)}>
+              Close
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1303,152 +624,32 @@ export default function AutonomyModal({
   );
 }
 
-/* --------------------------------- Helpers --------------------------------- */
-
-function canonicalizeMode(m: AutonomyMode): AutonomyMode {
-  // Keep compatibility with the old "line_track" name
-  if (m === 'line_track') return 'line_follow';
-  return m;
-}
+// ---------------------------------------------------------------------------
+// ToggleRow helper
+// ---------------------------------------------------------------------------
 
 function ToggleRow({
-  icon, label, description, checked, onCheckedChange,
-}: { icon: React.ReactNode; label: string; description?: string; checked: boolean; onCheckedChange: (v: boolean) => void }) {
-  return (
-    <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-2">
-      <div className="flex-1">
-        <div className="flex items-center gap-1.5 text-xs text-neutral-100">
-          {icon} <span className="font-medium">{label}</span>
-        </div>
-        {description && (
-          <div className="text-[10px] text-neutral-400 mt-0.5 ml-5">{description}</div>
-        )}
-      </div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={label} className="scale-75" />
-    </div>
-  );
-}
-
-function SliderField({
-  label, value, onChange,
-}: { label: string; value: number; onChange: (n: number) => void }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between text-xs text-neutral-300">
-        <span>{label}</span>
-        <span className="tabular-nums text-neutral-100">{value}%</span>
-      </div>
-      <Slider
-        value={[value]}
-        onValueChange={(v: number[]) => onChange(v[0] ?? 0)}
-        min={0}
-        max={100}
-        step={1}
-        className="mt-2"
-        aria-label={label}
-      />
-    </div>
-  );
-}
-
-function NumberField({
-  label, value, onChange, step = 0.1, min, max,
-}: {
-  label: string; value: number; onChange: (n: number) => void; step?: number; min?: number; max?: number;
-}) {
-  return (
-    <div className="grid gap-1">
-      <label className="text-xs text-neutral-300">{label}</label>
-      <Input
-        type="number"
-        className="bg-neutral-950 border-neutral-800 text-neutral-100"
-        value={Number.isFinite(value) ? value : 0}
-        step={step}
-        min={min}
-        max={max}
-        inputMode="decimal"
-        onChange={(e) => {
-          const n = Number(e.target.value);
-          if (Number.isFinite(n)) onChange(clamp(n, min, max));
-        }}
-      />
-    </div>
-  );
-}
-
-function TripletField({
-  label, value, onChange,
+  label, description, checked, onCheckedChange,
 }: {
   label: string;
-  value: [number,number,number];
-  onChange: (arr: number[]) => void;
+  description?: string;
+  checked: boolean;
+  onCheckedChange: (v: boolean) => void;
 }) {
-  const [h, s, v] = value;
   return (
-    <div className="grid gap-1">
-      <label className="text-xs text-neutral-300">{label}</label>
-      <div className="grid grid-cols-3 gap-2">
-        <Input type="number" value={h} min={0} max={179} step={1}
-          className="bg-neutral-950 border-neutral-800 text-neutral-100"
-          onChange={(e)=> onChange([clampNum(e.target.value, h, 0, 179), s, v])} />
-        <Input type="number" value={s} min={0} max={255} step={1}
-          className="bg-neutral-950 border-neutral-800 text-neutral-100"
-          onChange={(e)=> onChange([h, clampNum(e.target.value, s, 0, 255), v])} />
-        <Input type="number" value={v} min={0} max={255} step={1}
-          className="bg-neutral-950 border-neutral-800 text-neutral-100"
-          onChange={(e)=> onChange([h, s, clampNum(e.target.value, v, 0, 255)])} />
+    <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-2 gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-medium text-neutral-100">{label}</div>
+        {description && (
+          <div className="text-[10px] text-neutral-400 mt-0.5 leading-snug">{description}</div>
+        )}
       </div>
+      <Switch
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        aria-label={label}
+        className="scale-75 shrink-0"
+      />
     </div>
   );
-}
-
-function PriorityEditor({
-  items, onChange,
-}: {
-  items: Array<'safety'|'avoid'|'edge'|'line'|'waypoints'|'vision'>;
-  onChange: (items: Array<'safety'|'avoid'|'edge'|'line'|'waypoints'|'vision'>) => void;
-}) {
-  const move = (i: number, dir: -1 | 1) => {
-    const j = i + dir;
-    if (j < 0 || j >= items.length) return;
-    const copy = items.slice();
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-    onChange(copy);
-  };
-  return (
-    <div className="grid gap-2">
-      {items.map((k, i) => (
-        <div key={`${k}-${i}`} className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-950 px-2 py-1">
-          <span className="text-sm capitalize text-neutral-100">{k}</span>
-          <div className="flex gap-1">
-            <Button variant="secondary" size="sm" onClick={() => move(i, -1)} disabled={i===0} aria-label={`Move ${k} up`}>↑</Button>
-            <Button variant="secondary" size="sm" onClick={() => move(i, +1)} disabled={i===items.length-1} aria-label={`Move ${k} down`}>↓</Button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* utils */
-function clamp(n: number, min?: number, max?: number) {
-  let v = n;
-  if (typeof min === 'number') v = Math.max(min, v);
-  if (typeof max === 'number') v = Math.min(max, v);
-  return v;
-}
-function num(s: string, fallback: number) { const n = Number(s); return Number.isFinite(n) ? n : fallback; }
-function clampNum(s: string, fallback: number, min: number, max: number) {
-  return clamp(num(s, fallback), min, max);
-}
-function canonicalize(obj: any): any {
-  // stable stringify (sort keys shallowly; arrays kept order)
-  if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-    return Object.keys(obj).sort().reduce((acc:any, k) => { acc[k] = canonicalize(obj[k]); return acc; }, {} as any);
-  }
-  if (Array.isArray(obj)) return obj.map(canonicalize);
-  return obj;
-}
-function safeStableStringify(x: any) {
-  try { return JSON.stringify(canonicalize(x)); } catch { return ''; }
 }

@@ -38,7 +38,7 @@ UI="$REPO_ROOT/ui/robot-controller-ui"
 USER_HOME="$HOME"
 PI_USER="$(whoami)"
 
-echo "=== Omega-1 Fresh Pi Setup ==="
+echo "=== Omega-1 Fresh Pi Setup (steps 1–9) ==="
 echo "Repo:    $REPO_ROOT"
 echo "Backend: $BACKEND"
 echo "User:    $PI_USER ($USER_HOME)"
@@ -199,6 +199,17 @@ if [ -f "$CAMERA_SCRIPT" ]; then
 else
     echo "  Camera setup script not found at $CAMERA_SCRIPT — skipping."
     echo "  Run scripts/setup_pi_camera.sh separately after clone."
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. AP mode (field hotspot + auto-fallback)
+# ─────────────────────────────────────────────────────────────────────────────
+echo "[9/9] Configuring AP mode..."
+AP_SCRIPT="$REPO_ROOT/scripts/setup_ap_mode.sh"
+if [ -f "$AP_SCRIPT" ]; then
+    bash "$AP_SCRIPT"
+else
+    echo "  AP setup script not found — skipping. Run scripts/setup_ap_mode.sh manually."
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

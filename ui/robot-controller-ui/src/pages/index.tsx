@@ -43,6 +43,7 @@ import { useGamepad } from '../hooks/useGamepad';
 import { usePiGamepad } from '../hooks/usePiGamepad';
 import XboxControllerStatus from '../components/control/XboxControllerStatus';
 import LocalizationPanel from '../components/LocalizationPanel';
+import { useArucoStream } from '../hooks/useArucoStream';
 
 // Autonomy API client (HTTP wire → FastAPI /autonomy/* endpoints)
 import {
@@ -127,13 +128,46 @@ export default function Home() {
 
   /* ---- Pi-side controller detection (polls /gamepad/status every 3 s) ---- */
   const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '') || 'http://localhost:8000';
-  const piGamepad = usePiGamepad(apiBase);
+  const piGamepad = usePiGamepad(apiBase, demoMode);
+
+  /* ---- ArUco overlay detections from /ws/aruco ---- */
+  const arucoDetections = useArucoStream();
 
   /* ---------------- Autonomy API (HTTP wire → FastAPI :8000) --------------- */
   const autonomyApi = useMemo(() => {
     const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '') || 'http://localhost:8000';
     return makeAutonomyApi(createHttpWire(apiBase));
   }, []);
+
+  /* ---- Autonomy FSM state — fed to AutonomyModal badge ------------------- */
+  const [autonomyRunning, setAutonomyRunning] = useState(false);
+  const [fsmState,        setFsmState]        = useState('');
+
+  useEffect(() => {
+    if (!autonomyRunning) { setFsmState(''); return; }
+
+    if (demoMode) {
+      // Poll SimEngine every 250 ms — getDemoFsmState() is pure/cheap
+      const id = setInterval(() => setFsmState(simEngine.getDemoFsmState()), 250);
+      return () => clearInterval(id);
+    }
+
+    // Live mode: poll backend /autonomy/status every 2 s
+    const base = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '') || 'http://localhost:8000';
+    let active = true;
+    const poll = async () => {
+      try {
+        const res = await fetch(`${base}/autonomy/status`);
+        if (!res.ok || !active) return;
+        const json = await res.json();
+        const state: string = json?.autonomy?.params?.state ?? json?.autonomy?.mode ?? '';
+        if (state) setFsmState(state.toUpperCase());
+      } catch { /* backend unreachable — keep last known */ }
+    };
+    poll();
+    const id = setInterval(poll, 2000);
+    return () => { active = false; clearInterval(id); };
+  }, [autonomyRunning, demoMode, simEngine]);
 
   /* ---------------------- Send command helper with logs --------------------- */
   const sendCommandWithLog = useCallback(
@@ -197,14 +231,47 @@ export default function Home() {
               <CarControlPanel />
               <AutonomyPanel
                 connected={isConnected}
+                autonomyActive={autonomyRunning}
+                fsmState={fsmState}
 
                 onStart={async (mode, params) => {
+                  setAutonomyRunning(true);
                   if (demoMode) {
                     addCommand(`[DEMO] autonomy-start (${mode})`);
-                    // In demo mode, 'waypoints' mode triggers navigation via sim engine
-                    if (mode === 'waypoints') {
-                      const wps = ((params as any)?.waypoints ?? []) as { x: number; y: number }[];
-                      simEngine.navigateTo(wps);
+                    // Push tunable params from modal into sim engine before starting.
+                    // params are already backend-mapped by toBackendParams() in AutonomyModal.
+                    simEngine.setBehaviorConfig({
+                      avoidStopDistM:   ((params as any).stop_cm    ?? 25) / 100,
+                      avoidTurnRate:    0.8,
+                      seekSearchRate:   (params as any).search_speed  ?? 0.4,
+                      seekForwardSpeed: (params as any).forward_speed ?? 0.35,
+                    });
+                    switch (mode) {
+                      case 'waypoints':
+                      case 'line_follow': {
+                        const wps = ((params as any)?.waypoints ?? []) as { x: number; y: number }[];
+                        simEngine.navigateTo(wps, false);
+                        break;
+                      }
+                      case 'patrol':
+                        simEngine.navigateTo(
+                          ((params as any)?.waypoints ?? []) as { x: number; y: number }[],
+                          true,
+                        );
+                        break;
+                      case 'aruco':
+                        simEngine.startArUcoSeek(null);
+                        break;
+                      case 'avoid_obstacles':
+                        // Pure reactive — behavior config already updated above; nav stays idle.
+                        // Robot will rotate away from anything the ultrasonic sees.
+                        simEngine.navigateTo([]);
+                        break;
+                      case 'dock':
+                        simEngine.dock();
+                        break;
+                      default:
+                        addCommand(`[DEMO] mode "${mode}" has no sim behavior yet`);
                     }
                     return;
                   }
@@ -217,6 +284,7 @@ export default function Home() {
                   }
                 }}
                 onStop={async () => {
+                  setAutonomyRunning(false);
                   if (demoMode) {
                     simEngine.cancelNav();
                     addCommand('[DEMO] autonomy-stop');
@@ -230,6 +298,11 @@ export default function Home() {
                   }
                 }}
                 onDock={async () => {
+                  if (demoMode) {
+                    simEngine.dock();
+                    addCommand('[DEMO] autonomy-dock → navigating to origin');
+                    return;
+                  }
                   try {
                     await autonomyApi.dock();
                     addCommand('Sent: autonomy-dock');
@@ -268,6 +341,7 @@ export default function Home() {
                 src={cameraProxyUrl}
                 title="Front Camera"
                 className="w-full"
+                arucoDetections={arucoDetections}
               />
               <VisionModePanel />
             </div>

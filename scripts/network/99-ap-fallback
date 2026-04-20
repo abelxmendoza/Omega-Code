@@ -1,0 +1,22 @@
+#!/bin/bash
+# NetworkManager dispatcher — auto-activate AP when wlan0 client drops
+# Installed to: /etc/NetworkManager/dispatcher.d/99-ap-fallback
+#
+# Fires on every NM event. When wlan0 goes "down" (client disconnected)
+# and it wasn't the AP itself going down, waits 30 s then checks if any
+# WiFi client connection came back. If not, activates Omega1-AP.
+
+IFACE="$1"
+ACTION="$2"
+
+[ "$IFACE" = "wlan0" ] || exit 0
+[ "$ACTION" = "down" ]  || exit 0
+[ "${CONNECTION_ID}" = "Omega1-AP" ] && exit 0   # AP went down — don't loop
+
+(
+  sleep 30
+  if ! nmcli -t -f NAME,TYPE,STATE con show --active 2>/dev/null \
+       | grep ':802-11-wireless:activated' | grep -qv '^Omega1-AP:'; then
+    nmcli con up Omega1-AP 2>/dev/null
+  fi
+) &
