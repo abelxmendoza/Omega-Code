@@ -399,10 +399,20 @@ const MissionMap: React.FC<MissionMapProps> = ({
   const widthRef      = useRef(width);
   const heightRef     = useRef(height);
 
+  // Track previous activeWpIndex to detect mission restarts
+  const prevActiveWpIndexRef = useRef(activeWpIndex);
+
   // Sync mutable refs whenever props change
   useEffect(() => { markersRef.current   = markers;       }, [markers]);
   useEffect(() => { waypointsRef.current = waypoints;     }, [waypoints]);
-  useEffect(() => { activeIdxRef.current = activeWpIndex; }, [activeWpIndex]);
+  useEffect(() => {
+    activeIdxRef.current = activeWpIndex;
+    // Clear trail when a new mission starts (index resets to 0 from anything else)
+    if (activeWpIndex === 0 && prevActiveWpIndexRef.current !== 0) {
+      trailRef.current = [];
+    }
+    prevActiveWpIndexRef.current = activeWpIndex;
+  }, [activeWpIndex]);
   useEffect(() => { ppmRef.current       = ppm;           }, [ppm]);
   useEffect(() => { widthRef.current     = width;         }, [width]);
   useEffect(() => { heightRef.current    = height;        }, [height]);
