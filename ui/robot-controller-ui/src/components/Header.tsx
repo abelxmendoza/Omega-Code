@@ -24,6 +24,7 @@ import { net } from '@/utils/netProfile';
 import { toHealthUrl } from '@/utils/urlHelpers';
 import { CapabilityInfoModal } from './capability/CapabilityInfoModal';
 import { useServiceSafety } from '@/hooks/useServiceSafety';
+import ConnectionModeBadge from './ConnectionModeBadge';
 
 // Install button component for PWA
 const InstallButton: React.FC = () => {
@@ -454,6 +455,10 @@ const Header: React.FC<HeaderProps> = ({ batteryLevel, gamepadConnected = false,
           <span className="text-[10px] xl4:text-sm px-1.5 xl4:px-2 py-0.5 xl4:py-1 rounded bg-white/10 border border-white/15">
             {profile.toUpperCase()}
           </span>
+
+          {/* Connection mode picker — click to switch between Live / Sim / Demo */}
+          <ConnectionModeBadge />
+
           {MOCK_WS && (
             <span className="text-[10px] xl4:text-sm px-1.5 xl4:px-2 py-0.5 xl4:py-1 rounded bg-amber-500/20 border border-amber-400/40 text-amber-100">
               MOCK

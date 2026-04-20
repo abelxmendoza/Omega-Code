@@ -53,10 +53,17 @@ function ModeCard({ id, icon, title, description, badge, active, onClick }: Mode
 
 interface ConnectionModeSelectorProps {
   className?: string;
+  /** Called after a mode card is clicked — lets a parent dropdown close itself. */
+  onSelect?: () => void;
 }
 
-const ConnectionModeSelector: React.FC<ConnectionModeSelectorProps> = ({ className = '' }) => {
+const ConnectionModeSelector: React.FC<ConnectionModeSelectorProps> = ({ className = '', onSelect }) => {
   const { connectionMode, setConnectionMode, isHydrated } = useDemoMode();
+
+  const select = (mode: Parameters<typeof setConnectionMode>[0]) => {
+    setConnectionMode(mode);
+    onSelect?.();
+  };
   const [isHttps, setIsHttps] = useState(false);
 
   useEffect(() => {
@@ -86,7 +93,7 @@ const ConnectionModeSelector: React.FC<ConnectionModeSelectorProps> = ({ classNa
           title="Live Robot"
           description="Connects to the physical Omega-1 robot over the network gateway. Requires Wi-Fi access to the Pi."
           active={connectionMode === 'live'}
-          onClick={() => setConnectionMode('live')}
+          onClick={() => select('live')}
         />
 
         <ModeCard
@@ -96,7 +103,7 @@ const ConnectionModeSelector: React.FC<ConnectionModeSelectorProps> = ({ classNa
           description="Connects to a local simulation server (localhost:8000). Full backend physics, no physical robot needed."
           badge={simBackendWarning}
           active={connectionMode === 'sim-backend'}
-          onClick={() => setConnectionMode('sim-backend')}
+          onClick={() => select('sim-backend')}
         />
 
         <ModeCard
@@ -105,7 +112,7 @@ const ConnectionModeSelector: React.FC<ConnectionModeSelectorProps> = ({ classNa
           title="Browser Demo"
           description="Fully client-side demo — no server or robot needed. Works from any URL including the Vercel deployment."
           active={connectionMode === 'frontend-demo'}
-          onClick={() => setConnectionMode('frontend-demo')}
+          onClick={() => select('frontend-demo')}
         />
       </div>
 
