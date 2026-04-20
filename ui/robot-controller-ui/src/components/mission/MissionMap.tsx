@@ -386,8 +386,9 @@ const MissionMap: React.FC<MissionMapProps> = ({
   const poseRef   = useRef<PoseData | null>(null);
   // Viewport centre (world coords that map to canvas centre)
   const viewRef   = useRef({ x: 0, y: 0 });
-  // Follow mode: keep robot centred
-  const followRef = useRef(true);
+  // Follow mode: off by default so the robot visually moves across the map.
+  // Double-click the canvas to toggle.
+  const followRef = useRef(false);
   // Animation frame handle
   const rafRef    = useRef<number>(0);
   // Stable refs for props used inside rAF
@@ -603,7 +604,7 @@ const MissionMap: React.FC<MissionMapProps> = ({
       {/* Follow mode indicator (top-left) */}
       <div className="absolute top-2 left-2 flex items-center gap-1 text-[10px] text-gray-400 bg-gray-900/70 rounded px-2 py-1 pointer-events-none">
         <span className={followRef.current ? 'text-blue-400' : 'text-gray-500'}>
-          {followRef.current ? '⊙ Following' : '⊙ Free view'}
+          {followRef.current ? '⊙ Following robot' : '⊙ Free view · dbl-click to follow'}
         </span>
       </div>
 
