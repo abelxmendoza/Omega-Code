@@ -20,6 +20,7 @@ import type { MissionState } from '@/hooks/useMissionStream';
 import type { Waypoint } from './MissionMap';
 import { buildGatewayUrl } from '@/config/gateway';
 import SimLauncherCard from './SimLauncherCard';
+import { useDemoMode } from '@/context/DemoModeContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -96,9 +97,11 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
   onClearWaypoints,
   onScenarioLoaded,
 }) => {
-  const [missionError,   setMissionError]   = useState<string | null>(null);
-  const [simLoaded,      setSimLoaded]      = useState(false);
-  const [starting,       setStarting]       = useState(false);
+  const { demoMode, engine: simEngine } = useDemoMode();
+
+  const [missionError,    setMissionError]    = useState<string | null>(null);
+  const [simLoaded,       setSimLoaded]       = useState(false);
+  const [starting,        setStarting]        = useState(false);
   const [missionLaunched, setMissionLaunched] = useState(false);
 
   // Sim backend is always started locally by sim-launcher — never use the
@@ -118,9 +121,16 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
       return;
     }
     setMissionError(null);
-    setStarting(true);
     setMissionLaunched(false);
 
+    // ── Frontend-demo mode: drive SimEngine directly, no backend needed ──
+    if (demoMode) {
+      simEngine.navigateTo(waypoints.map((w) => ({ x: w.x, y: w.y })));
+      return;
+    }
+
+    // ── Sim-backend / live mode: call the backend API ────────────────────
+    setStarting(true);
     try {
       // Step 1 — Start the sim loop only if it is not already running.
       const statusRes = await fetch(`${simBase}/sim/status`);
@@ -160,17 +170,29 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
     } finally {
       setStarting(false);
     }
-  }, [waypoints]);
+  }, [demoMode, simEngine, waypoints]);
 
   const abortMission = useCallback(async () => {
     setMissionLaunched(false);
+    if (demoMode) {
+      simEngine.cancelNav();
+      return;
+    }
     try {
       await fetch(`${simBase}/sim/mission/abort`, { method: 'POST' });
     } catch { /* best-effort */ }
-  }, []);
+  }, [demoMode, simEngine]);
 
   const loadScenario = useCallback(async (name: string) => {
     setMissionError(null);
+
+    // In demo mode, no backend call — just update the map directly.
+    if (demoMode) {
+      setSimLoaded(true);
+      onScenarioLoaded(name);
+      return;
+    }
+
     try {
       const res = await fetch(`${simBase}/sim/scenario`, {
         method:  'POST',
@@ -184,12 +206,11 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
         throw new Error(`${res.status}: ${await res.text()}`);
       }
       setSimLoaded(true);
-      onScenarioLoaded(name);  // parent updates markers + waypoints on the map
-      // missionState → 'running' when mission_started arrives on /ws/mission stream
+      onScenarioLoaded(name);
     } catch (err) {
       setMissionError(err instanceof Error ? err.message : String(err));
     }
-  }, [onScenarioLoaded]);
+  }, [demoMode, onScenarioLoaded]);
 
   const resetEkf = useCallback(async () => {
     try {
@@ -205,9 +226,14 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
   // Render
   // ---------------------------------------------------------------------------
 
-  const q        = pose?.quality ?? 0;
-  const wpDone   = missionState !== 'idle' ? Math.max(0, activeWpIndex) : 0;
-  const wpTotal  = waypoints.length;
+  const q = pose?.quality ?? 0;
+
+  // In demo mode missionState is always 'idle' (WS suppressed); use activeWpIndex instead.
+  const isRunning  = demoMode ? activeWpIndex >= 0 : missionState === 'running';
+  const isComplete = !demoMode && missionState === 'completed';
+
+  const wpDone  = isRunning || isComplete ? Math.max(0, activeWpIndex) : 0;
+  const wpTotal = waypoints.length;
 
   return (
     <div className="flex flex-col gap-3 text-white text-sm min-w-[240px]">
@@ -306,8 +332,8 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
         ) : (
           <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto pr-1">
             {waypoints.map((wp, i) => {
-              const isDone   = missionState !== 'idle' && i < activeWpIndex;
-              const isActive = i === activeWpIndex && missionState === 'running';
+              const isDone   = (isRunning || isComplete) && i < activeWpIndex;
+              const isActive = i === activeWpIndex && isRunning;
               return (
                 <div
                   key={wp.id}
@@ -362,12 +388,12 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
         </div>
 
         {/* Status banners */}
-        {missionState === 'completed' && (
+        {isComplete && (
           <div className="bg-emerald-900/40 border border-emerald-600/40 rounded px-2 py-1.5 text-xs text-emerald-300 text-center font-semibold">
             ✓ Mission complete — all waypoints reached
           </div>
         )}
-        {missionState === 'running' && (
+        {isRunning && (
           <div className="bg-blue-900/40 border border-blue-600/40 rounded px-2 py-1.5 text-xs text-blue-300 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
             <span>
@@ -375,7 +401,8 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
             </span>
           </div>
         )}
-        {missionLaunched && missionState === 'idle' && (
+        {/* Only show "waiting" banner in sim-backend mode (demo mode confirms instantly) */}
+        {!demoMode && missionLaunched && missionState === 'idle' && (
           <div className="bg-amber-900/30 border border-amber-600/30 rounded px-2 py-1.5 text-xs text-amber-300 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
             <span>Waiting for sim to confirm start…</span>
@@ -383,7 +410,7 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
         )}
 
         <div className="flex gap-2">
-          {missionState !== 'running' ? (
+          {!isRunning ? (
             <button
               onClick={startMission}
               disabled={waypoints.length === 0 || starting}
@@ -394,7 +421,7 @@ const MissionControlPanel: React.FC<MissionControlPanelProps> = ({
                   <span className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                   Starting…
                 </>
-              ) : missionState === 'completed' ? (
+              ) : isComplete ? (
                 '↺ Run Again'
               ) : (
                 '▶ Start Mission'
