@@ -904,6 +904,11 @@ decision_node (Pi)
 
 Bandwidth: 640×480 JPEG @ 80% ≈ 40–60 KB/frame × 10fps ≈ 400–600 KB/s over Tailscale.
 
+Recorded depth-policy reports from the separate Jetson/RealSense project can be
+validated offline without connecting them to motor control. See
+[`docs/PERCEPTION_REPORTS.md`](docs/PERCEPTION_REPORTS.md). This adapter is for
+recorded verification only; live rover gating remains future hardware work.
+
 ---
 
 ## SE(2) EKF Localization
