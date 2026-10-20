@@ -1,4 +1,3 @@
-"""Hardware-free tests for the read-only Freenove diagnostic."""
 import importlib.util
 import pathlib
 import unittest
@@ -42,7 +41,16 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(module.diagnose(fail)["stage"], "open_bus")
     def test_invalid_address(self):
         with self.assertRaises(ValueError):
-            module.inspect_controller(FakeBus(1), 0x80)
+            module.diagnose(FakeBus, 0x80)
+    def test_negative_bus(self):
+        with self.assertRaises(ValueError):
+            module.diagnose(FakeBus, bus_number=-1)
+    def test_nominal_frequency_is_estimate(self):
+        result = module.diagnose(FakeBus)
+        self.assertIn("25 MHz", result["note"])
+        self.assertGreater(result["estimated_pwm_hz"], 49)
+    def test_mock_cli(self):
+        self.assertEqual(module.main(["--mock"]), 0)
 
 if __name__ == "__main__":
     unittest.main()
